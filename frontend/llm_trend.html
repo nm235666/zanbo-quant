@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM 股票走势分析</title>
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --text: #111827;
+        --muted: #4b5563;
+        --primary: #0f766e;
+        --primary-dark: #115e59;
+        --border: #d1d5db;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 5% 0%, #dff7f3 0%, transparent 40%),
+          radial-gradient(circle at 95% 100%, #e5edff 0%, transparent 45%),
+          var(--bg);
+      }
+      .wrap { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+      .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .link { color: var(--primary); text-decoration: none; font-size: 14px; }
+      .controls { margin-top: 12px; display: grid; grid-template-columns: 180px 120px 180px 100px; gap: 10px; }
+      input, select, button { height: 40px; border: 1px solid var(--border); border-radius: 10px; padding: 0 12px; font-size: 14px; background: #fff; }
+      button { background: var(--primary); color: #fff; border: none; cursor: pointer; }
+      button:hover { background: var(--primary-dark); }
+      .meta { margin: 10px 0; color: var(--muted); font-size: 13px; min-height: 18px; }
+      .box { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #fff; }
+      pre { margin: 0; white-space: pre-wrap; line-height: 1.6; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+
+      .markdown-body {
+        color: #1f2937;
+        line-height: 1.9;
+        font-size: 15px;
+      }
+      .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+        margin: 10px 0 8px;
+        line-height: 1.45;
+        color: #0f172a;
+      }
+      .markdown-body h1 { font-size: 22px; }
+      .markdown-body h2 { font-size: 19px; }
+      .markdown-body h3 { font-size: 17px; }
+      .markdown-body h4 { font-size: 16px; }
+      .markdown-body p { margin: 8px 0; }
+      .markdown-body ul, .markdown-body ol { margin: 8px 0; padding-left: 22px; }
+      .markdown-body li { margin: 5px 0; }
+      .markdown-body blockquote {
+        margin: 10px 0;
+        padding: 6px 12px;
+        border-left: 4px solid #94a3b8;
+        color: #334155;
+        background: #f8fafc;
+      }
+      .markdown-body code {
+        background: #f1f5f9;
+        border-radius: 6px;
+        padding: 1px 6px;
+        font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+        font-size: 13px;
+      }
+      .markdown-body pre {
+        background: #0b1220;
+        color: #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+        overflow: auto;
+        line-height: 1.6;
+      }
+      .markdown-body pre code {
+        background: transparent;
+        padding: 0;
+        color: inherit;
+      }
+
+      @media (max-width: 900px) { .controls { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="topbar">
+          <h1>LLM 股票走势分析</h1>
+          <div>
+            <a class="link" href="/index.html">股票代码页</a>
+            <span style="margin:0 6px;color:#94a3b8;">|</span>
+            <a class="link" href="/prices.html">日线页</a>
+            <span style="margin:0 6px;color:#94a3b8;">|</span>
+            <a class="link" href="/minline.html">分钟线页</a>
+            <span style="margin:0 6px;color:#94a3b8;">|</span>
+            <a class="link" href="/multi_role_review.html">多角色分析</a>
+            <span style="margin:0 6px;color:#94a3b8;">|</span>
+            <a class="link" href="/macro.html">宏观看板</a>
+          </div>
+        </div>
+
+        <div class="controls">
+          <input id="ts_code" value="000001.SZ" placeholder="股票代码，如 000001.SZ" />
+          <input id="lookback" value="120" placeholder="回看天数" />
+          <select id="model">
+            <option value="GPT-5.4">GPT-5.4</option>
+            <option value="kimi-k2.5">kimi-k2.5</option>
+            <option value="deepseek-chat">deepseek-chat</option>
+            <option value="deepseek-reasoner">deepseek-reasoner</option>
+          </select>
+          <button id="run_btn">分析</button>
+        </div>
+
+        <div class="meta" id="meta">准备就绪</div>
+
+        <div class="grid">
+          <div class="box">
+            <h3 style="margin:0 0 8px;">分析结论</h3>
+            <div id="analysis" class="markdown-body">
+              <p>（点击“分析”开始）</p>
+            </div>
+          </div>
+          <div class="box">
+            <h3 style="margin:0 0 8px;">特征摘要</h3>
+            <pre id="features">-</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+      const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://127.0.0.1:8077'
+        : `http://${window.location.hostname}:8077`;
+
+      const els = {
+        ts_code: document.getElementById('ts_code'),
+        lookback: document.getElementById('lookback'),
+        model: document.getElementById('model'),
+        run_btn: document.getElementById('run_btn'),
+        meta: document.getElementById('meta'),
+        analysis: document.getElementById('analysis'),
+        features: document.getElementById('features'),
+      };
+
+      function renderAnalysis(text) {
+        const raw = (text || '').trim();
+        if (!raw) {
+          els.analysis.innerHTML = '<p>暂无分析结果</p>';
+          return;
+        }
+        marked.setOptions({
+          gfm: true,
+          breaks: true,
+        });
+        els.analysis.innerHTML = marked.parse(raw);
+      }
+
+      function fmtFeatures(f) {
+        if (!f) return '-';
+        const t = f.trend_metrics || {};
+        const l = f.latest || {};
+        return [
+          `名称: ${f.name || ''}`,
+          `样本数: ${f.samples || 0}`,
+          `区间: ${f.date_range?.start || ''} ~ ${f.date_range?.end || ''}`,
+          `最新收盘: ${l.close ?? ''} (${l.trade_date || ''})`,
+          `区间收益(%): ${t.total_return_pct ?? ''}`,
+          `MA5/10/20/60: ${t.ma5 ?? ''} / ${t.ma10 ?? ''} / ${t.ma20 ?? ''} / ${t.ma60 ?? ''}`,
+          `距MA20(%): ${t.distance_to_ma20_pct ?? ''}`,
+          `年化波动(%): ${t.annualized_volatility_pct ?? ''}`,
+          `平均日涨跌(%): ${t.avg_daily_pct_chg ?? ''}`,
+          `平均成交量: ${t.avg_volume ?? ''}`,
+        ].join('\n');
+      }
+
+      async function run() {
+        const tsCode = els.ts_code.value.trim().toUpperCase();
+        const lookback = Number(els.lookback.value.trim() || '120');
+        const model = els.model.value;
+        if (!tsCode) {
+          els.meta.textContent = '请输入 ts_code';
+          return;
+        }
+
+        els.run_btn.disabled = true;
+        els.meta.textContent = '大模型分析中，请稍候...';
+        els.analysis.innerHTML = '<p>正在生成分析结论...</p>';
+        els.features.textContent = '';
+
+        try {
+          const q = new URLSearchParams({ ts_code: tsCode, lookback: String(lookback), model });
+          const res = await fetch(`${API_BASE}/api/llm/trend?${q.toString()}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '请求失败');
+
+          els.meta.textContent = `分析完成：${data.ts_code} ${data.name || ''}，模型 ${data.model}`;
+          renderAnalysis(data.analysis || '');
+          els.features.textContent = fmtFeatures(data.features);
+        } catch (err) {
+          els.meta.textContent = `请求失败: ${err.message}`;
+          renderAnalysis('');
+          els.features.textContent = '';
+        } finally {
+          els.run_btn.disabled = false;
+        }
+      }
+
+      els.run_btn.addEventListener('click', run);
+      [els.ts_code, els.lookback].forEach((el) => {
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') run();
+        });
+      });
+    </script>
+  </body>
+</html>

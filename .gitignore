@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env / local deps
+.venv/
+.deps/
+.pytools/
+
+# Runtime / checkpoints / logs
+*.log
+*.pid
+.minline_fetch_checkpoint.json
+nginx_runtime/
+
+# Local data / databases / exports
+*.db
+*.sqlite
+*.sqlite3
+all_stock_codes.csv
+
+# Temporary / OS
+.DS_Store
+Thumbs.db
+
+# Backups and large generated artifacts
+backups/
+
+# Local runtime env overrides
+.env
