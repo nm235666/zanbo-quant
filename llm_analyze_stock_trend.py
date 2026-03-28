@@ -6,16 +6,12 @@ import json
 import math
 import db_compat as sqlite3
 import statistics
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+from llm_gateway import chat_completion_text
 
 DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,15 +133,6 @@ def call_llm(
     ts_code: str,
     features: dict,
 ) -> str:
-    m = (model or "").strip().lower()
-    if m.startswith("gpt-5.4"):
-        base_url = GPT54_BASE_URL
-        api_key = GPT54_API_KEY
-    elif m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        base_url = KIMI_BASE_URL
-        api_key = KIMI_API_KEY
-
-    url = base_url.rstrip("/") + "/chat/completions"
     system_prompt = (
         "你是专业的A股量化研究助手。"
         "请基于给定特征做趋势分析，输出要客观，明确不确定性。"
@@ -162,53 +149,18 @@ def call_llm(
         "6) 免责声明（非投资建议）\n\n"
         f"输入特征JSON：\n{json.dumps(features, ensure_ascii=False)}"
     )
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=120,
+        max_retries=3,
+        messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-
-    # 兼容不同网关的鉴权头写法
-    candidate_headers = [
-        {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        {
-            "Content-Type": "application/json",
-            "Authorization": api_key,
-        },
-        {
-            "Content-Type": "application/json",
-            "api-key": api_key,
-        },
-        {
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-        },
-    ]
-
-    last_error = None
-    for headers in candidate_headers:
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                text = resp.read().decode("utf-8", errors="ignore")
-            obj = json.loads(text)
-            return obj["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            last_error = f"HTTP {e.code} {e.reason} | {detail}"
-            if e.code not in (401, 403):
-                break
-        except Exception as e:  # pragma: no cover
-            last_error = str(e)
-
-    raise RuntimeError(f"调用LLM失败: {last_error}")
+    )
 
 
 def main() -> int:

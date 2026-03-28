@@ -5,33 +5,14 @@ import argparse
 import json
 import db_compat as sqlite3
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
+
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 DEFAULT_IMPORTANCE = ("极高", "高", "中")
-
-
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or "GPT-5.4"
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,15 +53,6 @@ def now_utc_str() -> str:
 
 def today_utc_date() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-
-def resolve_provider(model: str, base_url: str, api_key: str) -> tuple[str, str]:
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return base_url, api_key
 
 
 def ensure_summary_table(conn: sqlite3.Connection) -> None:
@@ -272,56 +244,28 @@ def call_llm(
     max_retries: int,
     retry_backoff: float,
 ) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
-            {"role": "system", "content": "你是专业、克制、面向交易与风控的金融分析助手。"},
-            {"role": "user", "content": prompt},
-        ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-
-    header_candidates = [
-        {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        {"Content-Type": "application/json", "Authorization": api_key},
-        {"Content-Type": "application/json", "api-key": api_key},
-        {"Content-Type": "application/json", "x-api-key": api_key},
-    ]
-
-    transient_http_codes = {408, 429, 500, 502, 503, 504, 520, 522, 524}
     last_error = None
-
     for attempt in range(max_retries + 1):
-        transient_failed = False
-        for headers in header_candidates:
-            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-            try:
-                with urllib.request.urlopen(req, timeout=max(request_timeout, 30)) as resp:
-                    text = resp.read().decode("utf-8", errors="ignore")
-                obj = json.loads(text)
-                return obj["choices"][0]["message"]["content"]
-            except urllib.error.HTTPError as e:
-                detail = e.read().decode("utf-8", errors="ignore")
-                last_error = f"HTTP {e.code} {e.reason} | {detail}"
-                if e.code in transient_http_codes:
-                    transient_failed = True
-                    continue
-                if e.code in (401, 403):
-                    continue
-                raise RuntimeError(f"调用LLM失败: {last_error}") from e
-            except Exception as e:  # pragma: no cover
-                last_error = str(e)
-                transient_failed = True
+        try:
+            return chat_completion_text(
+                model=model,
+                base_url=base_url,
+                api_key=api_key,
+                temperature=temperature,
+                timeout_s=max(request_timeout, 30),
+                max_retries=1,
+                messages=[
+                    {"role": "system", "content": "你是专业、克制、面向交易与风控的金融分析助手。"},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_retries:
+                sleep_s = max(retry_backoff, 0.1) * (2**attempt)
+                time.sleep(sleep_s)
                 continue
-
-        if attempt < max_retries and transient_failed:
-            sleep_s = max(retry_backoff, 0.1) * (2**attempt)
-            time.sleep(sleep_s)
-            continue
-        break
-
+            break
     raise RuntimeError(f"调用LLM失败: {last_error}")
 
 

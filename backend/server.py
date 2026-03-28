@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import bisect
+import hashlib
 import json
 import math
 import os
@@ -25,18 +26,22 @@ if str(ROOT_DIR) not in sys.path:
 
 import db_compat as sqlite3
 from db_compat import assert_database_ready, cache_get_json, cache_set_json, db_label, get_redis_client
+from job_orchestrator import query_job_definitions, query_job_runs, run_job
+from llm_gateway import (
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_LLM_MODEL,
+    build_route,
+    normalize_model_name,
+    normalize_temperature_for_model,
+    post_chat_completions,
+    resolve_provider,
+)
 from realtime_streams import publish_app_event
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
 DB_PATH = ROOT_DIR / "stock_codes.db"
-DEFAULT_LLM_BASE_URL = "https://api.deepseek.com/v1"
-DEFAULT_LLM_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-DEFAULT_LLM_MODEL = "GPT-5.4"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 DEFAULT_MULTI_ROLES = [
     "宏观经济分析师",
     "股票分析师",
@@ -95,22 +100,26 @@ STOCK_SCORE_CACHE: dict[str, object] = {
 }
 REDIS_CACHE_TTL_SOURCE_MONITOR = 30
 REDIS_CACHE_TTL_DASHBOARD = 30
+AUDIT_REPORT_PATH = ROOT_DIR / "docs" / "database_audit_report.md"
 
-
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or DEFAULT_LLM_MODEL
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
-
+def resolve_signal_table(conn, scope: str) -> tuple[str, str]:
+    scope = (scope or "").strip().lower()
+    table_name = "investment_signal_tracker_7d"
+    normalized_scope = "7d"
+    if scope in {"1d", "1day", "one_day", "recent"}:
+        table_name = "investment_signal_tracker_1d"
+        normalized_scope = "1d"
+    elif scope in {"", "7d", "7day", "seven_day"}:
+        table_name = "investment_signal_tracker_7d"
+        normalized_scope = "7d"
+    table_exists = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()[0]
+    if not table_exists:
+        table_name = "investment_signal_tracker"
+        normalized_scope = "main"
+    return table_name, normalized_scope
 
 def query_stocks(keyword: str, status: str, market: str, area: str, page: int, page_size: int):
     keyword = keyword.strip()
@@ -1433,13 +1442,21 @@ def query_news(
             params.extend(valid_levels)
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
-        select_scored = (
-            "llm_system_score, llm_finance_impact_score, llm_finance_importance, llm_impacts_json, llm_model, llm_scored_at"
-            if "llm_system_score" in cols
-            else (
-                "NULL AS llm_system_score, NULL AS llm_finance_impact_score, "
-                "NULL AS llm_finance_importance, NULL AS llm_impacts_json, NULL AS llm_model, NULL AS llm_scored_at"
-            )
+        select_scored = ", ".join(
+            [
+                "llm_system_score" if "llm_system_score" in cols else "NULL AS llm_system_score",
+                "llm_finance_impact_score" if "llm_finance_impact_score" in cols else "NULL AS llm_finance_impact_score",
+                "llm_finance_importance" if "llm_finance_importance" in cols else "NULL AS llm_finance_importance",
+                "llm_impacts_json" if "llm_impacts_json" in cols else "NULL AS llm_impacts_json",
+                "llm_model" if "llm_model" in cols else "NULL AS llm_model",
+                "llm_scored_at" if "llm_scored_at" in cols else "NULL AS llm_scored_at",
+                "llm_sentiment_score" if "llm_sentiment_score" in cols else "NULL AS llm_sentiment_score",
+                "llm_sentiment_label" if "llm_sentiment_label" in cols else "NULL AS llm_sentiment_label",
+                "llm_sentiment_reason" if "llm_sentiment_reason" in cols else "NULL AS llm_sentiment_reason",
+                "llm_sentiment_confidence" if "llm_sentiment_confidence" in cols else "NULL AS llm_sentiment_confidence",
+                "llm_sentiment_model" if "llm_sentiment_model" in cols else "NULL AS llm_sentiment_model",
+                "llm_sentiment_scored_at" if "llm_sentiment_scored_at" in cols else "NULL AS llm_sentiment_scored_at",
+            ]
         )
 
         count_sql = f"SELECT COUNT(*) FROM news_feed_items{where_sql}"
@@ -1499,13 +1516,25 @@ def query_stock_news(ts_code: str, company_name: str, keyword: str, page: int, p
         if not table_exists:
             return {"page": page, "page_size": page_size, "total": 0, "total_pages": 0, "items": []}
 
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(stock_news_items)").fetchall()}
         count_sql = f"SELECT COUNT(*) FROM stock_news_items{where_sql}"
+        select_sentiment = ", ".join(
+            [
+                "llm_sentiment_score" if "llm_sentiment_score" in cols else "NULL AS llm_sentiment_score",
+                "llm_sentiment_label" if "llm_sentiment_label" in cols else "NULL AS llm_sentiment_label",
+                "llm_sentiment_reason" if "llm_sentiment_reason" in cols else "NULL AS llm_sentiment_reason",
+                "llm_sentiment_confidence" if "llm_sentiment_confidence" in cols else "NULL AS llm_sentiment_confidence",
+                "llm_sentiment_model" if "llm_sentiment_model" in cols else "NULL AS llm_sentiment_model",
+                "llm_sentiment_scored_at" if "llm_sentiment_scored_at" in cols else "NULL AS llm_sentiment_scored_at",
+            ]
+        )
         data_sql = f"""
         SELECT
             id, ts_code, company_name, source, news_code, title, summary, link, pub_time,
             comment_num, relation_stock_tags_json,
             llm_system_score, llm_finance_impact_score, llm_finance_importance, llm_impacts_json,
             llm_summary, llm_model, llm_scored_at,
+            {select_sentiment},
             fetched_at, update_time
         FROM stock_news_items
         {where_sql}
@@ -1944,6 +1973,17 @@ def query_chatroom_investment_analysis(
                 "summary": {},
                 "filters": {"final_biases": []},
             }
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(chatroom_investment_analysis)").fetchall()}
+        select_chatroom_sentiment = ", ".join(
+            [
+                "a.llm_sentiment_score" if "llm_sentiment_score" in cols else "NULL AS llm_sentiment_score",
+                "a.llm_sentiment_label" if "llm_sentiment_label" in cols else "NULL AS llm_sentiment_label",
+                "a.llm_sentiment_reason" if "llm_sentiment_reason" in cols else "NULL AS llm_sentiment_reason",
+                "a.llm_sentiment_confidence" if "llm_sentiment_confidence" in cols else "NULL AS llm_sentiment_confidence",
+                "a.llm_sentiment_model" if "llm_sentiment_model" in cols else "NULL AS llm_sentiment_model",
+                "a.llm_sentiment_scored_at" if "llm_sentiment_scored_at" in cols else "NULL AS llm_sentiment_scored_at",
+            ]
+        )
 
         where_clauses = []
         params: list[object] = []
@@ -1984,6 +2024,7 @@ def query_chatroom_investment_analysis(
             a.room_summary,
             a.targets_json,
             a.final_bias,
+            {select_chatroom_sentiment},
             a.model,
             a.prompt_version,
             a.created_at,
@@ -2004,7 +2045,7 @@ def query_chatroom_investment_analysis(
         total = conn.execute(count_sql, params).fetchone()[0]
         rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
         summary = {
-            "analysis_total": conn.execute(f"SELECT COUNT(*) FROM ({latest_subquery})").fetchone()[0],
+            "analysis_total": conn.execute(f"SELECT COUNT(*) FROM ({latest_subquery}) latest_all").fetchone()[0],
             "bullish_total": conn.execute(
                 f"""
                 SELECT COUNT(*)
@@ -2112,7 +2153,7 @@ def query_chatroom_candidate_pool(
             f"""
             SELECT
                 id, candidate_name, candidate_type, bullish_room_count, bearish_room_count,
-                net_score, dominant_bias, mention_count, room_count, latest_analysis_date,
+                net_score, dominant_bias, mention_count, room_count, latest_analysis_date, ts_code,
                 sample_reasons_json, source_room_ids_json, source_talkers_json, created_at, update_time
             FROM chatroom_stock_candidate_pool
             {where_sql}
@@ -2147,7 +2188,23 @@ def query_chatroom_candidate_pool(
                 ).fetchall()
             ],
         }
-        data = [dict(r) for r in rows]
+        stock_name_map = {}
+        try:
+            stock_name_map = {
+                str(r[0] or "").strip().upper(): str(r[1] or "").strip()
+                for r in conn.execute("SELECT ts_code, name FROM stock_codes").fetchall()
+            }
+        except Exception:
+            stock_name_map = {}
+        data = []
+        for r in rows:
+            item = dict(r)
+            ts_code = str(item.get("ts_code") or "").strip().upper()
+            display_name = item.get("candidate_name") or ""
+            if ts_code and stock_name_map.get(ts_code):
+                display_name = stock_name_map.get(ts_code) or display_name
+            item["display_name"] = display_name
+            data.append(item)
     finally:
         conn.close()
 
@@ -2160,6 +2217,868 @@ def query_chatroom_candidate_pool(
         "summary": summary,
         "filters": filters,
     }
+
+
+def query_investment_signals(
+    keyword: str,
+    signal_type: str,
+    signal_group: str,
+    scope: str,
+    source_filter: str,
+    direction: str,
+    signal_status: str,
+    page: int,
+    page_size: int,
+):
+    keyword = (keyword or "").strip()
+    signal_type = (signal_type or "").strip()
+    signal_group = (signal_group or "").strip()
+    scope = (scope or "").strip().lower()
+    source_filter = (source_filter or "").strip()
+    direction = (direction or "").strip()
+    signal_status = (signal_status or "").strip()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+    offset = (page - 1) * page_size
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        table_name, normalized_scope = resolve_signal_table(conn, scope)
+        table_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()[0]
+        if not table_exists:
+            return {
+                "page": page,
+                "page_size": page_size,
+                "total": 0,
+                "total_pages": 0,
+                "items": [],
+                "summary": {},
+                "filters": {"signal_types": [], "directions": [], "signal_statuses": []},
+                "scope": normalized_scope,
+            }
+        where_clauses = []
+        params: list[object] = []
+        if keyword:
+            kw = f"%{keyword}%"
+            where_clauses.append("(subject_name LIKE ? OR COALESCE(ts_code, '') LIKE ? OR COALESCE(evidence_json, '') LIKE ?)")
+            params.extend([kw, kw, kw])
+        if signal_type:
+            where_clauses.append("signal_type = ?")
+            params.append(signal_type)
+        elif signal_group == "stock":
+            where_clauses.append("signal_type = 'stock'")
+        elif signal_group == "non_stock":
+            where_clauses.append("signal_type <> 'stock'")
+        elif signal_group == "chatroom_stock":
+            where_clauses.append("signal_type = 'stock'")
+            where_clauses.append("COALESCE(chatroom_count, 0) > 0")
+        if source_filter == "chatroom":
+            where_clauses.append("COALESCE(chatroom_count, 0) > 0")
+        if direction:
+            where_clauses.append("direction = ?")
+            params.append(direction)
+        if signal_status:
+            where_clauses.append("signal_status = ?")
+            params.append(signal_status)
+        where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM {table_name}{where_sql}",
+            params,
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT
+                id, signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                evidence_count, news_count, stock_news_count, chatroom_count, signal_status,
+                latest_signal_date, evidence_json, source_summary_json, created_at, update_time
+            FROM {table_name}
+            {where_sql}
+            ORDER BY signal_strength DESC, confidence DESC, latest_signal_date DESC, subject_name
+            LIMIT ? OFFSET ?
+            """,
+            [*params, page_size, offset],
+        ).fetchall()
+        summary = {
+            "signal_total": conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0],
+            "bullish_total": conn.execute(
+                f"SELECT COUNT(*) FROM {table_name} WHERE direction = '看多'"
+            ).fetchone()[0],
+            "bearish_total": conn.execute(
+                f"SELECT COUNT(*) FROM {table_name} WHERE direction = '看空'"
+            ).fetchone()[0],
+            "active_total": conn.execute(
+                f"SELECT COUNT(*) FROM {table_name} WHERE signal_status = '活跃'"
+            ).fetchone()[0],
+            "stock_total": conn.execute(
+                f"SELECT COUNT(*) FROM {table_name} WHERE signal_type = 'stock'"
+            ).fetchone()[0],
+        }
+        filters = {
+            "signal_types": [
+                r[0]
+                for r in conn.execute(
+                    f"SELECT DISTINCT signal_type FROM {table_name} WHERE signal_type IS NOT NULL AND signal_type <> '' ORDER BY signal_type"
+                ).fetchall()
+            ],
+            "directions": [
+                r[0]
+                for r in conn.execute(
+                    f"SELECT DISTINCT direction FROM {table_name} WHERE direction IS NOT NULL AND direction <> '' ORDER BY direction"
+                ).fetchall()
+            ],
+            "signal_statuses": [
+                r[0]
+                for r in conn.execute(
+                    f"SELECT DISTINCT signal_status FROM {table_name} WHERE signal_status IS NOT NULL AND signal_status <> '' ORDER BY signal_status"
+                ).fetchall()
+            ],
+        }
+        data = [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size if total else 0,
+        "items": data,
+        "summary": summary,
+        "filters": filters,
+        "scope": normalized_scope,
+    }
+
+
+def query_investment_signal_timeline(signal_key: str, page: int, page_size: int):
+    signal_key = (signal_key or "").strip()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+    offset = (page - 1) * page_size
+    if not signal_key:
+        raise ValueError("缺少 signal_key")
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        events_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='investment_signal_events'"
+        ).fetchone()[0]
+        snapshots_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='investment_signal_daily_snapshots'"
+        ).fetchone()[0]
+        tracker_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='investment_signal_tracker'"
+        ).fetchone()[0]
+        if not tracker_exists:
+            return {"signal": None, "events": [], "snapshots": [], "page": page, "page_size": page_size, "total": 0, "total_pages": 0}
+
+        signal_row = conn.execute(
+            """
+            SELECT id, signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                   evidence_count, news_count, stock_news_count, chatroom_count, signal_status, latest_signal_date,
+                   evidence_json, source_summary_json, created_at, update_time
+            FROM investment_signal_tracker
+            WHERE signal_key = ?
+            LIMIT 1
+            """,
+            (signal_key,),
+        ).fetchone()
+        total = 0
+        events: list[dict] = []
+        if events_exists:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM investment_signal_events WHERE signal_key = ?",
+                (signal_key,),
+            ).fetchone()[0]
+            rows = conn.execute(
+                """
+                SELECT id, signal_key, event_time, event_date, event_type, old_direction, new_direction,
+                       old_strength, new_strength, delta_strength, old_confidence, new_confidence,
+                       delta_confidence, event_level, driver_type, driver_source, driver_ref_id,
+                       driver_title, status_after_event, event_summary, evidence_json,
+                       snapshot_before_json, snapshot_after_json, created_at
+                FROM investment_signal_events
+                WHERE signal_key = ?
+                ORDER BY event_time DESC, id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (signal_key, page_size, offset),
+            ).fetchall()
+            events = []
+            for r in rows:
+                item = dict(r)
+                event_logic = get_or_build_cached_logic_view(
+                    conn,
+                    entity_type="investment_signal_event",
+                    entity_key=str(item.get("id") or ""),
+                    source_payload={
+                        "event_time": item.get("event_time"),
+                        "event_type": item.get("event_type"),
+                        "driver_type": item.get("driver_type"),
+                        "driver_source": item.get("driver_source"),
+                        "event_summary": item.get("event_summary"),
+                        "new_direction": item.get("new_direction"),
+                        "status_after_event": item.get("status_after_event"),
+                        "evidence_json": item.get("evidence_json"),
+                    },
+                    builder=lambda row=item: build_signal_event_logic_view(row),
+                )
+                item["logic_view"] = event_logic
+                item["evidence_items"] = event_logic.get("evidence_chain", [])
+                events.append(item)
+        snapshots: list[dict] = []
+        if snapshots_exists:
+            rows = conn.execute(
+                """
+                SELECT snapshot_at, snapshot_date, signal_key, signal_type, subject_name, ts_code, direction,
+                       signal_strength, confidence, evidence_count, news_count, stock_news_count, chatroom_count,
+                       signal_status, latest_signal_date, source_summary_json
+                FROM investment_signal_daily_snapshots
+                WHERE signal_key = ?
+                ORDER BY snapshot_at DESC, id DESC
+                LIMIT 60
+                """,
+                (signal_key,),
+            ).fetchall()
+            snapshots = [dict(r) for r in rows]
+        signal = dict(signal_row) if signal_row else None
+        signal_logic = (
+            get_or_build_cached_logic_view(
+                conn,
+                entity_type="investment_signal",
+                entity_key=str(signal.get("signal_key") or ""),
+                source_payload={
+                    "signal_key": signal.get("signal_key"),
+                    "subject_name": signal.get("subject_name"),
+                    "direction": signal.get("direction"),
+                    "signal_strength": signal.get("signal_strength"),
+                    "confidence": signal.get("confidence"),
+                    "signal_status": signal.get("signal_status"),
+                    "source_summary_json": signal.get("source_summary_json"),
+                    "evidence_json": signal.get("evidence_json"),
+                },
+                builder=lambda row=signal: build_signal_logic_view(row),
+            )
+            if signal
+            else {"summary": {}, "chains": [], "has_logic": False, "evidence_chain": []}
+        )
+        if signal is not None:
+            signal["logic_view"] = signal_logic
+    finally:
+        conn.close()
+
+    return {
+        "signal": signal,
+        "events": events,
+        "snapshots": snapshots,
+        "logic_view": signal_logic,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size if total else 0,
+    }
+
+
+def _top_market_expectations_for_theme(conn, theme_name: str, limit: int = 8):
+    if not theme_name:
+        return []
+    exists = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='market_expectation_items'"
+    ).fetchone()[0]
+    if not exists:
+        return []
+    rows = conn.execute(
+        """
+        SELECT question, volume, liquidity, end_date, source_url, related_theme_names_json, outcome_prices_json
+        FROM market_expectation_items
+        WHERE related_theme_names_json LIKE ?
+        ORDER BY COALESCE(volume, 0) DESC, COALESCE(liquidity, 0) DESC, id DESC
+        LIMIT ?
+        """,
+        (f'%"{theme_name}"%', limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_theme_hotspots(keyword: str, theme_group: str, direction: str, heat_level: str, state_filter: str, page: int, page_size: int):
+    keyword = (keyword or "").strip()
+    theme_group = (theme_group or "").strip()
+    direction = (direction or "").strip()
+    heat_level = (heat_level or "").strip()
+    state_filter = (state_filter or "").strip()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+    offset = (page - 1) * page_size
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        tracker_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='theme_hotspot_tracker'"
+        ).fetchone()[0]
+        if not tracker_exists:
+            return {"page": page, "page_size": page_size, "total": 0, "total_pages": 0, "items": [], "summary": {}, "filters": {}}
+        where = []
+        params: list[object] = []
+        if keyword:
+            kw = f"%{keyword}%"
+            where.append("(t.theme_name LIKE ? OR COALESCE(t.theme_group,'') LIKE ? OR COALESCE(t.top_terms_json,'') LIKE ?)")
+            params.extend([kw, kw, kw])
+        if theme_group:
+            where.append("t.theme_group = ?")
+            params.append(theme_group)
+        if direction:
+            where.append("t.direction = ?")
+            params.append(direction)
+        if heat_level:
+            where.append("t.heat_level = ?")
+            params.append(heat_level)
+        if state_filter:
+            where.append("COALESCE(s.current_state, '') = ?")
+            params.append(state_filter)
+        where_sql = " WHERE " + " AND ".join(where) if where else ""
+        total = conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM theme_hotspot_tracker t
+            LEFT JOIN signal_state_tracker s
+              ON s.signal_scope = 'theme' AND s.signal_key = ('theme:' || t.theme_name)
+            {where_sql}
+            """,
+            params,
+        ).fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT
+              t.theme_name, t.theme_group, t.direction, t.theme_strength, t.confidence, t.evidence_count,
+              t.intl_news_count, t.domestic_news_count, t.stock_news_count, t.chatroom_count,
+              t.stock_link_count, t.latest_evidence_time, t.heat_level, t.top_terms_json, t.top_stocks_json,
+              t.source_summary_json, t.evidence_json,
+              s.current_state, s.prev_state, s.driver_type, s.driver_title
+            FROM theme_hotspot_tracker t
+            LEFT JOIN signal_state_tracker s
+              ON s.signal_scope = 'theme' AND s.signal_key = ('theme:' || t.theme_name)
+            {where_sql}
+            ORDER BY t.theme_strength DESC, t.confidence DESC, t.theme_name
+            LIMIT ? OFFSET ?
+            """,
+            [*params, page_size, offset],
+        ).fetchall()
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["market_expectations"] = _top_market_expectations_for_theme(conn, str(item.get("theme_name") or ""), limit=5)
+            items.append(item)
+        summary = {
+            "theme_total": conn.execute("SELECT COUNT(*) FROM theme_hotspot_tracker").fetchone()[0],
+            "bullish_total": conn.execute("SELECT COUNT(*) FROM theme_hotspot_tracker WHERE direction='看多'").fetchone()[0],
+            "bearish_total": conn.execute("SELECT COUNT(*) FROM theme_hotspot_tracker WHERE direction='看空'").fetchone()[0],
+            "high_heat_total": conn.execute("SELECT COUNT(*) FROM theme_hotspot_tracker WHERE heat_level IN ('极高','高')").fetchone()[0],
+        }
+        filters = {
+            "theme_groups": [r[0] for r in conn.execute("SELECT DISTINCT theme_group FROM theme_hotspot_tracker WHERE COALESCE(theme_group,'')<>'' ORDER BY theme_group").fetchall()],
+            "directions": [r[0] for r in conn.execute("SELECT DISTINCT direction FROM theme_hotspot_tracker WHERE COALESCE(direction,'')<>'' ORDER BY direction").fetchall()],
+            "heat_levels": [r[0] for r in conn.execute("SELECT DISTINCT heat_level FROM theme_hotspot_tracker WHERE COALESCE(heat_level,'')<>'' ORDER BY heat_level").fetchall()],
+            "states": [r[0] for r in conn.execute("SELECT DISTINCT current_state FROM signal_state_tracker WHERE signal_scope='theme' AND COALESCE(current_state,'')<>'' ORDER BY current_state").fetchall()],
+        }
+    finally:
+        conn.close()
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size if total else 0,
+        "items": items,
+        "summary": summary,
+        "filters": filters,
+    }
+
+
+def query_signal_state_timeline(signal_scope: str, signal_key: str, page: int, page_size: int):
+    signal_scope = (signal_scope or "").strip()
+    signal_key = (signal_key or "").strip()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+    offset = (page - 1) * page_size
+    if not signal_key:
+        raise ValueError("缺少 signal_key")
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        state_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='signal_state_tracker'"
+        ).fetchone()[0]
+        event_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='signal_state_events'"
+        ).fetchone()[0]
+        if not state_exists:
+            return {"signal": None, "events": [], "page": page, "page_size": page_size, "total": 0, "total_pages": 0}
+        where_extra = ""
+        params: list[object] = [signal_key]
+        if signal_scope:
+            where_extra = " AND signal_scope = ?"
+            params.append(signal_scope)
+        signal = conn.execute(
+            f"""
+            SELECT *
+            FROM signal_state_tracker
+            WHERE signal_key = ?{where_extra}
+            ORDER BY update_time DESC, id DESC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+        total = 0
+        events = []
+        if event_exists:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM signal_state_events WHERE signal_key = ?{where_extra}",
+                params,
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM signal_state_events
+                WHERE signal_key = ?{where_extra}
+                ORDER BY event_time DESC, id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, page_size, offset],
+            ).fetchall()
+            events = [dict(r) for r in rows]
+        expectations = []
+        if signal and str(signal["signal_scope"] or "") == "theme":
+            expectations = _top_market_expectations_for_theme(conn, str(signal["subject_name"] or ""), limit=8)
+        return {
+            "signal": dict(signal) if signal else None,
+            "events": events,
+            "market_expectations": expectations,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": (total + page_size - 1) // page_size if total else 0,
+        }
+    finally:
+        conn.close()
+
+
+def _market_expectations_for_report(conn, report_type: str, subject_key: str, context_json_text: str, limit: int = 8):
+    exists = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='market_expectation_items'"
+    ).fetchone()[0]
+    if not exists:
+        return []
+    themes: list[str] = []
+    if report_type == "theme":
+        themes = [subject_key]
+    elif report_type == "market":
+        ctx = _parse_json_text(context_json_text) or {}
+        for row in (ctx.get("theme_rows") or [])[:5]:
+            if isinstance(row, (list, tuple)) and row:
+                themes.append(str(row[0]))
+    elif report_type == "stock":
+        ctx = _parse_json_text(context_json_text) or {}
+        for row in (ctx.get("themes") or [])[:5]:
+            if isinstance(row, (list, tuple)) and row:
+                themes.append(str(row[0]))
+    if not themes:
+        return []
+    seen = set()
+    out = []
+    for theme in themes:
+        for item in _top_market_expectations_for_theme(conn, theme, limit=limit):
+            q = str(item.get("question") or "")
+            if q in seen:
+                continue
+            seen.add(q)
+            out.append(item)
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def query_research_reports(report_type: str, keyword: str, report_date: str, page: int, page_size: int):
+    report_type = (report_type or "").strip()
+    keyword = (keyword or "").strip()
+    report_date = (report_date or "").strip()
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+    offset = (page - 1) * page_size
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='research_reports'"
+        ).fetchone()[0]
+        if not exists:
+            return {"page": page, "page_size": page_size, "total": 0, "total_pages": 0, "items": [], "filters": {}}
+        where = []
+        params: list[object] = []
+        if report_type:
+            where.append("report_type = ?")
+            params.append(report_type)
+        if keyword:
+            kw = f"%{keyword}%"
+            where.append("(subject_key LIKE ? OR COALESCE(subject_name,'') LIKE ? OR COALESCE(markdown_content,'') LIKE ?)")
+            params.extend([kw, kw, kw])
+        if report_date:
+            where.append("report_date = ?")
+            params.append(report_date)
+        where_sql = " WHERE " + " AND ".join(where) if where else ""
+        total = conn.execute(f"SELECT COUNT(*) FROM research_reports{where_sql}", params).fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT id, report_date, report_type, subject_key, subject_name, model, markdown_content, context_json, created_at, update_time
+            FROM research_reports
+            {where_sql}
+            ORDER BY report_date DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
+            [*params, page_size, offset],
+        ).fetchall()
+        items = []
+        for r in rows:
+            item = dict(r)
+            item["market_expectations"] = _market_expectations_for_report(conn, str(item.get("report_type") or ""), str(item.get("subject_key") or ""), str(item.get("context_json") or ""), limit=6)
+            items.append(item)
+        filters = {
+            "report_types": [r[0] for r in conn.execute("SELECT DISTINCT report_type FROM research_reports ORDER BY report_type").fetchall()],
+            "report_dates": [r[0] for r in conn.execute("SELECT DISTINCT report_date FROM research_reports ORDER BY report_date DESC LIMIT 30").fetchall()],
+        }
+    finally:
+        conn.close()
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size if total else 0,
+        "items": items,
+        "filters": filters,
+    }
+
+
+def query_signal_audit(scope: str = "7d"):
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        table_name, normalized_scope = resolve_signal_table(conn, scope)
+        table_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+            (table_name,),
+        ).fetchone()[0]
+        if not table_exists:
+            return {
+                "scope": normalized_scope,
+                "table_name": table_name,
+                "summary": {},
+                "stats": {},
+                "sections": {},
+                "generated_at": generated_at,
+            }
+        rows = conn.execute(
+            f"""
+            SELECT signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                   evidence_count, news_count, stock_news_count, chatroom_count, signal_status,
+                   latest_signal_date, evidence_json, source_summary_json
+            FROM {table_name}
+            ORDER BY signal_strength DESC, confidence DESC, latest_signal_date DESC
+            """
+        ).fetchall()
+        stock_name_map = {
+            str(r[0] or "").strip().upper(): str(r[1] or "").strip()
+            for r in conn.execute("SELECT ts_code, name FROM stock_codes").fetchall()
+        }
+    finally:
+        conn.close()
+
+    def parse_obj(raw):
+        try:
+            obj = json.loads(raw or "{}")
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
+
+    def parse_list(raw):
+        try:
+            obj = json.loads(raw or "[]")
+            return obj if isinstance(obj, list) else []
+        except Exception:
+            return []
+
+    def top_evidence_title(item: dict) -> str:
+        evidences = parse_list(item.get("evidence_json"))
+        if evidences:
+            ev = evidences[0] if isinstance(evidences[0], dict) else {}
+            return str(ev.get("title") or ev.get("theme_name") or ev.get("source") or "").strip()
+        return ""
+
+    def dominant_source(item: dict) -> str:
+        source_summary = parse_obj(item.get("source_summary_json"))
+        counts = {
+            "国际新闻": int(source_summary.get("intl_news", 0)),
+            "国内新闻": int(source_summary.get("domestic_news", 0)),
+            "个股新闻": int(source_summary.get("stock_news", 0)),
+            "群聊": int(source_summary.get("chatroom", 0)),
+            "主题映射": int(source_summary.get("theme_mapping", 0)),
+        }
+        best = max(counts.items(), key=lambda kv: kv[1]) if counts else ("无", 0)
+        return best[0] if best[1] > 0 else "无"
+
+    all_items = [dict(r) for r in rows]
+    stock_items = [r for r in all_items if str(r.get("signal_type") or "") == "stock"]
+    active_items = [r for r in all_items if str(r.get("signal_status") or "") == "活跃"]
+    code_name_re = re.compile(r"^\d{6}\.(SZ|SH|BJ)$")
+
+    code_named_stocks = []
+    theme_only_stocks = []
+    low_conf_active = []
+    missing_ts_stock = []
+    weak_chatroom_stocks = []
+    no_direct_source_stocks = []
+
+    for item in stock_items:
+        subject_name = str(item.get("subject_name") or "").strip()
+        ts_code = str(item.get("ts_code") or "").strip().upper()
+        source_summary = parse_obj(item.get("source_summary_json"))
+        news_ct = int(item.get("news_count") or 0)
+        stock_news_ct = int(item.get("stock_news_count") or 0)
+        chatroom_ct = int(item.get("chatroom_count") or 0)
+        theme_ct = int(source_summary.get("theme_mapping", 0))
+        confidence = float(item.get("confidence") or 0.0)
+        strength = float(item.get("signal_strength") or 0.0)
+        base = {
+            "signal_key": item.get("signal_key"),
+            "subject_name": subject_name,
+            "display_name": stock_name_map.get(ts_code) or subject_name or ts_code,
+            "ts_code": ts_code,
+            "direction": item.get("direction"),
+            "signal_strength": strength,
+            "confidence": confidence,
+            "signal_status": item.get("signal_status"),
+            "latest_signal_date": item.get("latest_signal_date"),
+            "dominant_source": dominant_source(item),
+            "top_evidence": top_evidence_title(item),
+            "news_count": news_ct,
+            "stock_news_count": stock_news_ct,
+            "chatroom_count": chatroom_ct,
+            "theme_mapping_count": theme_ct,
+        }
+        if code_name_re.fullmatch(subject_name):
+            code_named_stocks.append(base)
+        if not ts_code:
+            missing_ts_stock.append(base)
+        if news_ct == 0 and stock_news_ct == 0 and chatroom_ct == 0 and theme_ct > 0:
+            theme_only_stocks.append(base)
+        if str(item.get("signal_status") or "") == "活跃" and confidence < 40:
+            low_conf_active.append(base)
+        if chatroom_ct > 0 and strength < 3.0:
+            weak_chatroom_stocks.append(base)
+        if news_ct == 0 and stock_news_ct == 0 and chatroom_ct == 0:
+            no_direct_source_stocks.append(base)
+
+    def sort_rows(items: list[dict]) -> list[dict]:
+        return sorted(
+            items,
+            key=lambda x: (-float(x.get("signal_strength") or 0.0), -float(x.get("confidence") or 0.0), str(x.get("display_name") or "")),
+        )
+
+    summary = {
+        "signal_total": len(all_items),
+        "stock_total": len(stock_items),
+        "active_total": len(active_items),
+        "chatroom_stock_total": sum(1 for x in stock_items if int(x.get("chatroom_count") or 0) > 0),
+        "theme_only_stock_total": len(theme_only_stocks),
+        "code_named_stock_total": len(code_named_stocks),
+        "low_conf_active_total": len(low_conf_active),
+        "missing_ts_stock_total": len(missing_ts_stock),
+    }
+    stats = {
+        "scope_label": "最近1天" if normalized_scope == "1d" else "近7天累计" if normalized_scope == "7d" else "主表",
+        "table_name": table_name,
+        "quality_score": max(
+            0,
+            min(
+                100,
+                int(
+                    100
+                    - len(code_named_stocks) * 2
+                    - len(missing_ts_stock) * 4
+                    - len(low_conf_active) * 3
+                    - len(theme_only_stocks)
+                ),
+            ),
+        ),
+    }
+    sections = {
+        "code_named_stocks": sort_rows(code_named_stocks)[:30],
+        "missing_ts_stock": sort_rows(missing_ts_stock)[:30],
+        "theme_only_stocks": sort_rows(theme_only_stocks)[:30],
+        "low_conf_active": sort_rows(low_conf_active)[:30],
+        "weak_chatroom_stocks": sort_rows(weak_chatroom_stocks)[:30],
+        "no_direct_source_stocks": sort_rows(no_direct_source_stocks)[:30],
+    }
+    return {
+        "scope": normalized_scope,
+        "table_name": table_name,
+        "summary": summary,
+        "stats": stats,
+        "sections": sections,
+        "generated_at": generated_at,
+    }
+
+
+def query_signal_quality_config():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        rules_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='signal_quality_rules'"
+        ).fetchone()[0]
+        block_exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='signal_mapping_blocklist'"
+        ).fetchone()[0]
+        rules = []
+        blocklist = []
+        if rules_exists:
+            rules = [
+                dict(r)
+                for r in conn.execute(
+                    """
+                    SELECT rule_key, rule_value, value_type, category, description, enabled, update_time
+                    FROM signal_quality_rules
+                    ORDER BY category, rule_key
+                    """
+                ).fetchall()
+            ]
+        if block_exists:
+            blocklist = [
+                dict(r)
+                for r in conn.execute(
+                    """
+                    SELECT id, term, target_type, match_type, source, reason, enabled, update_time
+                    FROM signal_mapping_blocklist
+                    ORDER BY enabled DESC, target_type, match_type, term
+                    """
+                ).fetchall()
+            ]
+    finally:
+        conn.close()
+    return {
+        "rules": rules,
+        "blocklist": blocklist,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def save_signal_quality_rules(items: list[dict]):
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS signal_quality_rules (
+                rule_key TEXT PRIMARY KEY,
+                rule_value TEXT,
+                value_type TEXT DEFAULT 'number',
+                category TEXT,
+                description TEXT,
+                enabled INTEGER DEFAULT 1,
+                created_at TEXT,
+                update_time TEXT
+            )
+            """
+        )
+        affected = 0
+        for item in items:
+            rule_key = str(item.get("rule_key") or "").strip()
+            if not rule_key:
+                continue
+            rule_value = str(item.get("rule_value") if item.get("rule_value") is not None else "").strip()
+            value_type = str(item.get("value_type") or "number").strip()
+            category = str(item.get("category") or "").strip()
+            description = str(item.get("description") or "").strip()
+            enabled = 1 if str(item.get("enabled", 1)).strip().lower() not in {"0", "false", "no"} else 0
+            updated = conn.execute(
+                """
+                UPDATE signal_quality_rules
+                SET rule_value = ?, value_type = ?, category = ?, description = ?, enabled = ?, update_time = ?
+                WHERE rule_key = ?
+                """,
+                (rule_value, value_type, category, description, enabled, now, rule_key),
+            ).rowcount
+            if not updated:
+                conn.execute(
+                    """
+                    INSERT INTO signal_quality_rules (
+                        rule_key, rule_value, value_type, category, description, enabled, created_at, update_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (rule_key, rule_value, value_type, category, description, enabled, now, now),
+                )
+            affected += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "affected": affected, "updated_at": now}
+
+
+def save_signal_mapping_blocklist(items: list[dict]):
+    conn = sqlite3.connect(DB_PATH)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS signal_mapping_blocklist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                term TEXT NOT NULL,
+                target_type TEXT NOT NULL DEFAULT 'stock',
+                match_type TEXT NOT NULL DEFAULT 'exact',
+                source TEXT,
+                reason TEXT,
+                enabled INTEGER DEFAULT 1,
+                created_at TEXT,
+                update_time TEXT,
+                UNIQUE(term, target_type, match_type)
+            )
+            """
+        )
+        affected = 0
+        for item in items:
+            term = str(item.get("term") or "").strip()
+            if not term:
+                continue
+            target_type = str(item.get("target_type") or "stock").strip()
+            match_type = str(item.get("match_type") or "exact").strip()
+            source = str(item.get("source") or "signal_quality_admin").strip()
+            reason = str(item.get("reason") or "").strip()
+            enabled = 1 if str(item.get("enabled", 1)).strip().lower() not in {"0", "false", "no"} else 0
+            updated = conn.execute(
+                """
+                UPDATE signal_mapping_blocklist
+                SET source = ?, reason = ?, enabled = ?, update_time = ?
+                WHERE term = ? AND target_type = ? AND match_type = ?
+                """,
+                (source, reason, enabled, now, term, target_type, match_type),
+            ).rowcount
+            if not updated:
+                conn.execute(
+                    """
+                    INSERT INTO signal_mapping_blocklist (
+                        term, target_type, match_type, source, reason, enabled, created_at, update_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (term, target_type, match_type, source, reason, enabled, now, now),
+                )
+            affected += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "affected": affected, "updated_at": now}
 
 
 def query_news_daily_summaries(
@@ -2209,7 +3128,17 @@ def query_news_daily_summaries(
         """
         total = conn.execute(count_sql, params).fetchone()[0]
         rows = conn.execute(data_sql, [*params, page_size, offset]).fetchall()
-        data = [dict(r) for r in rows]
+        data = []
+        for r in rows:
+            item = dict(r)
+            item["logic_view"] = get_or_build_cached_logic_view(
+                conn,
+                entity_type="news_daily_summary",
+                entity_key=str(item.get("id") or ""),
+                source_payload=item.get("summary_markdown", ""),
+                builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
+            )
+            data.append(item)
     finally:
         conn.close()
 
@@ -2241,7 +3170,17 @@ def get_daily_summary_by_date(summary_date: str):
             """,
             (summary_date,),
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        item = dict(row)
+        item["logic_view"] = get_or_build_cached_logic_view(
+            conn,
+            entity_type="news_daily_summary",
+            entity_key=str(item.get("id") or ""),
+            source_payload=item.get("summary_markdown", ""),
+            builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
+        )
+        return item
     finally:
         conn.close()
 
@@ -2487,6 +3426,14 @@ def query_source_monitor():
             conn,
             "SELECT MAX(pub_date) FROM news_feed_items WHERE source NOT LIKE 'cn_%'",
         )
+        latest_marketscreener_news = _table_max(
+            conn,
+            "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'marketscreener_byd_news'",
+        )
+        latest_marketscreener_live_news = _table_max(
+            conn,
+            "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'marketscreener_live_news'",
+        )
         latest_sina_news = _table_max(
             conn,
             "SELECT MAX(pub_date) FROM news_feed_items WHERE source = 'cn_sina_7x24'",
@@ -2533,11 +3480,29 @@ def query_source_monitor():
     sources = [
         {
             "key": "intl_news_rss",
-            "name": "国际新闻 RSS",
+            "name": "国际新闻总链路",
             "category": "新闻",
             "status": _status_by_age(_age_seconds_from_dt(_parse_iso_datetime(latest_intl_news)), 1800, 7200),
             "last_update": latest_intl_news or "",
-            "detail": "国际新闻抓取与入库",
+            "detail": "国际新闻 RSS/HTML 抓取与入库",
+            "rows": None,
+        },
+        {
+            "key": "marketscreener_byd_news",
+            "name": "国际新闻-MarketScreener(BYD)",
+            "category": "新闻",
+            "status": _status_by_age(_age_seconds_from_dt(_parse_iso_datetime(latest_marketscreener_news)), 86400, 3 * 86400),
+            "last_update": latest_marketscreener_news or "",
+            "detail": "5分钟定时抓取 BYD Company Limited 新闻页",
+            "rows": None,
+        },
+        {
+            "key": "marketscreener_live_news",
+            "name": "国际新闻-MarketScreener Live",
+            "category": "新闻",
+            "status": _status_by_age(_age_seconds_from_dt(_parse_iso_datetime(latest_marketscreener_live_news)), 1800, 7200),
+            "last_update": latest_marketscreener_live_news or "",
+            "detail": "5分钟定时抓取 Live 区块",
             "rows": None,
         },
         {
@@ -2762,15 +3727,77 @@ def query_source_monitor():
     for item in processes:
         item["status_text"] = _status_text(item["status"])
 
+    orchestrator_runs = query_job_runs(limit=10).get("items", [])
+    orchestrator_summary = {
+        "definitions_total": query_job_definitions().get("total", 0),
+        "recent_total": len(orchestrator_runs),
+        "success": sum(1 for x in orchestrator_runs if x.get("status") == "success"),
+        "running": sum(1 for x in orchestrator_runs if x.get("status") == "running"),
+        "failed": sum(1 for x in orchestrator_runs if x.get("status") not in {"success", "running"}),
+    }
+
     payload = {
         "summary": summary,
         "sources": sources,
         "processes": processes,
+        "orchestrator": {
+            "summary": orchestrator_summary,
+            "recent_runs": orchestrator_runs,
+        },
         "row_counts": row_counts,
         "logs": logs,
     }
     cache_set_json("api:source-monitor:v1", payload, REDIS_CACHE_TTL_SOURCE_MONITOR)
     return payload
+
+
+def _parse_audit_summary(markdown_text: str) -> dict:
+    summary = {"正常": 0, "警告": 0, "提示": 0}
+    lines = (markdown_text or "").splitlines()
+    in_overview = False
+    for line in lines:
+        if line.strip() == "## 总览":
+            in_overview = True
+            continue
+        if in_overview and line.startswith("## "):
+            break
+        if not in_overview:
+            continue
+        if "| `" not in line:
+            continue
+        parts = [p.strip() for p in line.strip().strip("|").split("|")]
+        if len(parts) < 5:
+            continue
+        status = parts[4]
+        if status in summary:
+            summary[status] += 1
+    summary["total"] = sum(summary.values())
+    return summary
+
+
+def query_database_audit(refresh: bool = False):
+    if refresh:
+        subprocess.run(
+            [sys.executable, str(ROOT_DIR / "audit_database_report.py")],
+            cwd=str(ROOT_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=300,
+        )
+
+    if not AUDIT_REPORT_PATH.exists():
+        raise FileNotFoundError(f"审核报告不存在: {AUDIT_REPORT_PATH}")
+
+    markdown = AUDIT_REPORT_PATH.read_text(encoding="utf-8")
+    stat = AUDIT_REPORT_PATH.stat()
+    generated_at = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "path": str(AUDIT_REPORT_PATH),
+        "generated_at": generated_at,
+        "markdown": markdown,
+        "summary": _parse_audit_summary(markdown),
+    }
 
 
 def _safe_float(v):
@@ -2946,6 +3973,7 @@ def query_dashboard():
             "daily_summary_running": sum(1 for x in daily_summary_jobs if x.get("status") == "running"),
             "daily_summary_error": sum(1 for x in daily_summary_jobs if x.get("status") == "error"),
         },
+        "orchestrator_jobs": query_job_runs(limit=8).get("items", []),
         "top_scores": top_scores,
         "candidate_pool_top": candidate_pool_top,
         "recent_daily_summaries": recent_daily_summaries,
@@ -3727,61 +4755,17 @@ def _build_stock_news_summary(conn: sqlite3.Connection, ts_code: str):
 
 
 def resolve_llm_endpoint(model: str):
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return DEFAULT_LLM_BASE_URL, DEFAULT_LLM_API_KEY
+    return resolve_provider(model)
 
 
 def _post_chat_completions(url: str, payload: dict, api_key: str, timeout_s: int = 120) -> str:
-    payload = _sanitize_json_value(payload)
-    body = json.dumps(payload, allow_nan=False).encode("utf-8")
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-        "Connection": "close",
-    }
-    transient_http_codes = {408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524}
-    max_retries = 3
-    last_error = None
-
-    for attempt in range(max_retries + 1):
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=max(timeout_s, 30)) as resp:
-                return resp.read().decode("utf-8", errors="ignore")
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            last_error = f"HTTP {e.code} {e.reason} | {detail}"
-            if e.code in transient_http_codes and attempt < max_retries:
-                time.sleep(1.5 * (2**attempt))
-                continue
-            raise RuntimeError(f"LLM接口错误: {last_error}") from e
-        except Exception as e:
-            last_error = str(e)
-            if attempt < max_retries:
-                time.sleep(1.5 * (2**attempt))
-                continue
-
-    # urllib 多次失败后，回退到 requests，规避部分 TLS EOF 场景
-    try:
-        import requests  # type: ignore
-
-        r = requests.post(
-            url,
-            json=payload,
-            headers={"Authorization": f"Bearer {api_key}", "Connection": "close"},
-            timeout=max(timeout_s, 30),
-        )
-        if r.status_code >= 400:
-            raise RuntimeError(f"HTTP {r.status_code} {r.reason} | {r.text}")
-        return r.text
-    except Exception as e:
-        if last_error:
-            raise RuntimeError(f"{last_error}; fallback requests error: {e}") from e
-        raise RuntimeError(f"{e}") from e
+    route = build_route(
+        model=str(payload.get("model") or DEFAULT_LLM_MODEL),
+        base_url=url.rsplit("/chat/completions", 1)[0],
+        api_key=api_key,
+        temperature=float(payload.get("temperature") or 0.2),
+    )
+    return post_chat_completions(route=route, payload=payload, timeout_s=timeout_s)
 
 
 def call_llm_trend(ts_code: str, features: dict, model: str, temperature: float = 0.2):
@@ -4006,6 +4990,373 @@ def _build_common_sections_markdown(text: str) -> str:
     return normalized[start:].strip()
 
 
+def ensure_logic_view_cache_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS logic_view_cache (
+            entity_type TEXT NOT NULL,
+            entity_key TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            logic_view_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            update_time TEXT NOT NULL,
+            PRIMARY KEY (entity_type, entity_key, content_hash)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_logic_view_cache_update_time ON logic_view_cache(update_time)"
+    )
+    conn.commit()
+
+
+def _logic_view_content_hash(source_payload) -> str:
+    if isinstance(source_payload, str):
+        raw = source_payload
+    else:
+        raw = json.dumps(
+            _sanitize_json_value(source_payload),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+        )
+    return hashlib.sha1(raw.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _load_cached_logic_view(conn, entity_type: str, entity_key: str, content_hash: str):
+    ensure_logic_view_cache_table(conn)
+    row = conn.execute(
+        """
+        SELECT logic_view_json
+        FROM logic_view_cache
+        WHERE entity_type = ? AND entity_key = ? AND content_hash = ?
+        LIMIT 1
+        """,
+        (entity_type, entity_key, content_hash),
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        obj = json.loads(row[0] if not isinstance(row, dict) else row.get("logic_view_json", "{}"))
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+def _save_cached_logic_view(conn, entity_type: str, entity_key: str, content_hash: str, logic_view: dict):
+    ensure_logic_view_cache_table(conn)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    payload = json.dumps(_sanitize_json_value(logic_view), ensure_ascii=False, allow_nan=False)
+    updated = conn.execute(
+        """
+        UPDATE logic_view_cache
+        SET logic_view_json = ?, update_time = ?
+        WHERE entity_type = ? AND entity_key = ? AND content_hash = ?
+        """,
+        (payload, now, entity_type, entity_key, content_hash),
+    ).rowcount
+    if not updated:
+        conn.execute(
+            """
+            INSERT INTO logic_view_cache (
+                entity_type, entity_key, content_hash, logic_view_json, created_at, update_time
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (entity_type, entity_key, content_hash, payload, now, now),
+        )
+    conn.commit()
+
+
+def get_or_build_cached_logic_view(conn, entity_type: str, entity_key: str, source_payload, builder):
+    content_hash = _logic_view_content_hash(source_payload)
+    cached = _load_cached_logic_view(conn, entity_type, entity_key, content_hash)
+    if cached is not None:
+        return cached
+    logic_view = builder()
+    _save_cached_logic_view(conn, entity_type, entity_key, content_hash, logic_view)
+    return logic_view
+
+
+def _clean_logic_line(line: str) -> str:
+    text = str(line or "")
+    text = re.sub(r"^\s*[-*]\s*", "", text)
+    text = re.sub(r"^\s*\d+\.\s*", "", text)
+    text = re.sub(r"^\s*>\s*", "", text)
+    return text.strip()
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    return str(text or "").replace("**", "").strip()
+
+
+def _normalize_logic_chain_text(text: str) -> str:
+    cleaned = _clean_logic_line(text)
+    cleaned = re.sub(r'[“”"]', "", cleaned)
+    cleaned = re.sub(r"\s*[-=]*>\s*", " -> ", cleaned)
+    cleaned = re.sub(r"\s*→\s*", " -> ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
+def _split_logic_nodes(text: str) -> list[str]:
+    return [
+        _strip_markdown_emphasis(x).replace("事件发生", "", 1).strip()
+        for x in re.split(r"\s*->\s*", _normalize_logic_chain_text(text))
+        if _strip_markdown_emphasis(x).strip()
+    ]
+
+
+def _parse_markdown_headline(line: str) -> str:
+    m = re.match(r"^\d+\.\s*\*\*(.+?)\*\*", str(line or "").strip())
+    return str(m.group(1)).strip() if m else ""
+
+
+def extract_logic_view_from_markdown(markdown: str) -> dict:
+    text = _normalize_markdown_lines(markdown).strip()
+    lines = text.splitlines()
+    summary = {"conclusion": "", "focus": "", "risk": ""}
+    chains: list[dict] = []
+    current_title = ""
+    capture_next_chain = False
+
+    for raw in lines:
+        line = str(raw or "").strip()
+        if not line:
+            if capture_next_chain:
+                capture_next_chain = False
+            continue
+
+        maybe_title = _parse_markdown_headline(line)
+        if maybe_title:
+            current_title = maybe_title
+
+        plain = _strip_markdown_emphasis(_clean_logic_line(line))
+        if re.match(r"^(核心结论|结论)[:：]", plain):
+            summary["conclusion"] = re.sub(r"^(核心结论|结论)[:：]\s*", "", plain).strip()
+        elif re.match(r"^(最值得关注的方向|关注方向)[:：]", plain):
+            summary["focus"] = re.sub(r"^(最值得关注的方向|关注方向)[:：]\s*", "", plain).strip()
+        elif re.match(r"^(当前最需要警惕的风险|风险提示)[:：]", plain):
+            summary["risk"] = re.sub(r"^(当前最需要警惕的风险|风险提示)[:：]\s*", "", plain).strip()
+
+        if re.search(r"(影响传导路径|传导路径|逻辑链条)[:：]", plain):
+            inline = re.sub(r"^(影响传导路径|传导路径|逻辑链条)[:：]\s*", "", plain).strip()
+            if inline:
+                chains.append(
+                    {
+                        "title": current_title or f"链路 {len(chains) + 1}",
+                        "raw": inline,
+                        "nodes": _split_logic_nodes(inline),
+                    }
+                )
+                capture_next_chain = False
+            else:
+                capture_next_chain = True
+            continue
+
+        if capture_next_chain:
+            candidate = _clean_logic_line(line)
+            plain_candidate = _strip_markdown_emphasis(candidate)
+            if (
+                not candidate
+                or re.match(r"^(确定性判断|可能受影响的市场)[:：]", plain_candidate)
+            ):
+                capture_next_chain = False
+                continue
+            chains.append(
+                {
+                    "title": current_title or f"链路 {len(chains) + 1}",
+                    "raw": candidate,
+                    "nodes": _split_logic_nodes(candidate),
+                }
+            )
+            capture_next_chain = False
+
+    normalized_chains = [
+        {
+            "title": str(item.get("title") or f"链路 {idx + 1}").strip(),
+            "raw": str(item.get("raw") or "").strip(),
+            "nodes": [str(x).strip() for x in item.get("nodes", []) if str(x).strip()],
+        }
+        for idx, item in enumerate(chains)
+        if len(item.get("nodes", []) if isinstance(item, dict) else []) >= 2
+    ][:8]
+    return {
+        "summary": summary,
+        "chains": normalized_chains,
+        "has_logic": bool(
+            normalized_chains
+            or summary.get("conclusion")
+            or summary.get("focus")
+            or summary.get("risk")
+        ),
+    }
+
+
+def build_signal_logic_view(signal_row: dict | None) -> dict:
+    if not signal_row:
+        return {"summary": {}, "chains": [], "has_logic": False, "evidence_chain": []}
+    source_summary = {}
+    try:
+        obj = json.loads(signal_row.get("source_summary_json") or "{}")
+        source_summary = obj if isinstance(obj, dict) else {}
+    except Exception:
+        source_summary = {}
+    evidence_items = []
+    try:
+        obj = json.loads(signal_row.get("evidence_json") or "[]")
+        evidence_items = obj if isinstance(obj, list) else []
+    except Exception:
+        evidence_items = []
+
+    source_nodes = []
+    label_map = {
+        "intl_news": "国际新闻",
+        "domestic_news": "国内新闻",
+        "stock_news": "个股新闻",
+        "chatroom": "群聊",
+        "theme_mapping": "主题映射",
+    }
+    for key, label in label_map.items():
+        count = int(source_summary.get(key, 0) or 0)
+        if count > 0:
+            source_nodes.append(f"{label}({count})")
+
+    evidence_titles = []
+    evidence_chain = []
+    for item in evidence_items[:5]:
+        if not isinstance(item, dict):
+            continue
+        label = str(
+            item.get("title")
+            or item.get("theme_name")
+            or item.get("group")
+            or item.get("source")
+            or ""
+        ).strip()
+        if label:
+            evidence_titles.append(label)
+            evidence_chain.append(
+                {
+                    "label": label,
+                    "source": str(item.get("source") or item.get("driver_type") or "").strip(),
+                    "direction": str(item.get("direction") or "").strip(),
+                    "date": str(item.get("date") or item.get("pub_date") or "").strip(),
+                }
+            )
+
+    summary = {
+        "conclusion": f"{signal_row.get('subject_name') or ''} 当前方向为 {signal_row.get('direction') or '-'}，状态 {signal_row.get('signal_status') or '-'}",
+        "focus": f"强度 {signal_row.get('signal_strength') or 0} / 置信度 {signal_row.get('confidence') or 0}%",
+        "risk": "若证据源减少、方向反转或置信度显著回落，需要重新评估信号有效性",
+    }
+    chain_nodes = [
+        str(signal_row.get("subject_name") or signal_row.get("signal_key") or "").strip(),
+        *source_nodes[:3],
+        *(evidence_titles[:2] if evidence_titles else []),
+        f"{signal_row.get('direction') or '-'} / {signal_row.get('signal_status') or '-'}",
+    ]
+    chain_nodes = [x for x in chain_nodes if x]
+    chains = []
+    if len(chain_nodes) >= 2:
+        chains.append(
+            {
+                "title": "当前信号形成链路",
+                "raw": " -> ".join(chain_nodes),
+                "nodes": chain_nodes,
+            }
+        )
+    return {
+        "summary": summary,
+        "chains": chains,
+        "has_logic": bool(chains),
+        "evidence_chain": evidence_chain,
+    }
+
+
+def build_signal_event_logic_view(event_row: dict) -> dict:
+    event = dict(event_row or {})
+    try:
+        evidence_items = json.loads(event.get("evidence_json") or "[]")
+        if not isinstance(evidence_items, list):
+            evidence_items = []
+    except Exception:
+        evidence_items = []
+    driver_type_map = {
+        "intl_news": "国际新闻",
+        "domestic_news": "国内新闻",
+        "news": "新闻",
+        "stock_news": "个股新闻",
+        "chatroom": "群聊",
+        "price": "价格",
+        "mixed": "混合驱动",
+    }
+    driver_label = driver_type_map.get(str(event.get("driver_type") or "").strip(), str(event.get("driver_type") or "").strip() or "未知驱动")
+    evidence_chain = []
+    evidence_titles = []
+    for item in evidence_items[:5]:
+        if not isinstance(item, dict):
+            continue
+        label = str(
+            item.get("title")
+            or item.get("theme_name")
+            or item.get("group")
+            or item.get("source")
+            or ""
+        ).strip()
+        if label:
+            evidence_titles.append(label)
+            evidence_chain.append(
+                {
+                    "label": label,
+                    "source": str(item.get("source") or "").strip(),
+                    "direction": str(item.get("direction") or "").strip(),
+                    "date": str(item.get("date") or "").strip(),
+                }
+            )
+    summary = {
+        "conclusion": str(event.get("event_summary") or display_name_from_event_type(event.get("event_type"))).strip(),
+        "focus": f"{event.get('old_direction') or '-'} -> {event.get('new_direction') or '-'} | 强度 Δ {event.get('delta_strength') or 0}",
+        "risk": f"事件后状态 {event.get('status_after_event') or '-'}，需持续跟踪后续证据是否延续",
+    }
+    chain_nodes = [
+        driver_label,
+        str(event.get("driver_source") or "").strip(),
+        *(evidence_titles[:2] if evidence_titles else []),
+        str(event.get("event_summary") or "").strip(),
+        f"{event.get('new_direction') or '-'} / {event.get('status_after_event') or '-'}",
+    ]
+    chain_nodes = [x for x in chain_nodes if x]
+    chains = []
+    if len(chain_nodes) >= 2:
+        chains.append(
+            {
+                "title": "事件驱动链路",
+                "raw": " -> ".join(chain_nodes),
+                "nodes": chain_nodes,
+            }
+        )
+    return {
+        "summary": summary,
+        "chains": chains,
+        "has_logic": bool(chains),
+        "evidence_chain": evidence_chain,
+    }
+
+
+def display_name_from_event_type(event_type: str) -> str:
+    mapping = {
+        "new_signal": "新信号",
+        "strengthen": "信号增强",
+        "weaken": "信号减弱",
+        "flip": "方向反转",
+        "falsify": "原判断被证伪",
+        "revive": "信号恢复",
+        "expire": "信号失效",
+        "status_change": "状态变化",
+    }
+    return mapping.get(str(event_type or "").strip(), str(event_type or "").strip())
+
+
 def split_multi_role_analysis(markdown: str, roles: list[str]) -> dict:
     text = _normalize_markdown_lines(markdown).strip()
     normalized_roles = [str(role).strip() for role in (roles or []) if str(role).strip()]
@@ -4022,7 +5373,14 @@ def split_multi_role_analysis(markdown: str, roles: list[str]) -> dict:
                 if common_markdown
                 else f"## {role}\n\n未从大模型原始输出中稳定切分出该角色的独立段落，以下附上完整分析原文供参考。\n\n{text}"
             )
-            role_sections.append({"role": role, "content": fallback, "matched": False})
+            role_sections.append(
+                {
+                    "role": role,
+                    "content": fallback,
+                    "matched": False,
+                    "logic_view": extract_logic_view_from_markdown(fallback),
+                }
+            )
             continue
         end = len(text)
         for name in [x for x in normalized_roles if x != role] + common_names:
@@ -4034,10 +5392,18 @@ def split_multi_role_analysis(markdown: str, roles: list[str]) -> dict:
         compact_common = re.sub(r"\s+", "", common_markdown)
         if common_markdown and compact_common and compact_common not in compact_content:
             content = f"{content}\n\n{common_markdown}"
-        role_sections.append({"role": role, "content": content, "matched": True})
+        role_sections.append(
+            {
+                "role": role,
+                "content": content,
+                "matched": True,
+                "logic_view": extract_logic_view_from_markdown(content),
+            }
+        )
     return {
         "role_sections": role_sections,
         "common_sections_markdown": common_markdown,
+        "logic_view": extract_logic_view_from_markdown(text),
     }
 
 
@@ -4070,6 +5436,7 @@ def _serialize_async_job(job: dict):
         "roles": job.get("roles"),
         "context": job.get("context"),
         "analysis": job.get("analysis"),
+        "logic_view": job.get("logic_view"),
         "role_sections": job.get("role_sections"),
         "common_sections_markdown": job.get("common_sections_markdown"),
         "error": job.get("error"),
@@ -4097,6 +5464,7 @@ def _create_async_multi_role_job(ts_code: str, lookback: int, model: str, roles:
         "roles": roles,
         "context": context,
         "analysis": "",
+        "logic_view": {"summary": {}, "chains": [], "has_logic": False},
         "role_sections": [],
         "common_sections_markdown": "",
         "error": "",
@@ -4149,6 +5517,17 @@ def _run_async_multi_role_job(job_id: str):
     try:
         analysis = call_llm_multi_role(context, roles, model=model, temperature=0.2)
         split_payload = split_multi_role_analysis(analysis, roles)
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            logic_view = get_or_build_cached_logic_view(
+                conn,
+                entity_type="llm_multi_role",
+                entity_key=f"{ts_code}|{job.get('lookback', '')}|{model}|{','.join(roles)}",
+                source_payload=analysis,
+                builder=lambda text=analysis: split_payload.get("logic_view", extract_logic_view_from_markdown(text)),
+            )
+        finally:
+            conn.close()
         now = datetime.now(timezone.utc).isoformat()
         with ASYNC_MULTI_ROLE_LOCK:
             job = ASYNC_MULTI_ROLE_JOBS.get(job_id)
@@ -4159,6 +5538,7 @@ def _run_async_multi_role_job(job_id: str):
             job["stage"] = "done"
             job["message"] = "分析完成"
             job["analysis"] = analysis
+            job["logic_view"] = logic_view
             job["role_sections"] = split_payload.get("role_sections", [])
             job["common_sections_markdown"] = split_payload.get("common_sections_markdown", "")
             job["finished_at"] = now
@@ -4407,7 +5787,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(body)
@@ -4415,9 +5795,50 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8", errors="ignore") or "{}")
+        except Exception:
+            self._send_json({"error": "请求体必须是 JSON"}, status=400)
+            return
+
+        if parsed.path == "/api/signal-quality/rules/save":
+            items = payload.get("items", [])
+            if not isinstance(items, list):
+                self._send_json({"error": "items 必须是数组"}, status=400)
+                return
+            try:
+                result = save_signal_quality_rules(items)
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"规则保存失败: {exc}"}, status=500)
+                return
+            self._send_json(result)
+            return
+
+        if parsed.path == "/api/signal-quality/blocklist/save":
+            items = payload.get("items", [])
+            if not isinstance(items, list):
+                self._send_json({"error": "items 必须是数组"}, status=400)
+                return
+            try:
+                result = save_signal_mapping_blocklist(items)
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"黑名单保存失败: {exc}"}, status=500)
+                return
+            self._send_json(result)
+            return
+
+        self._send_json({"error": "Not Found"}, status=404)
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -4443,6 +5864,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "chatroom_fetch_now": "/api/chatrooms/fetch?room_id=<room_id>&mode=today|yesterday_and_today",
                         "chatroom_investment_analysis": "/api/chatrooms/investment?keyword=&final_bias=&target_keyword=&page=1&page_size=20",
                         "chatroom_candidate_pool": "/api/chatrooms/candidate-pool?keyword=&dominant_bias=&candidate_type=&page=1&page_size=20",
+                        "investment_signals": "/api/investment-signals?keyword=&signal_type=&signal_group=all|stock|non_stock&direction=&signal_status=&page=1&page_size=20",
+                        "investment_signal_timeline": "/api/investment-signals/timeline?signal_key=<signal_key>&page=1&page_size=20",
                         "stock_news_fetch": "/api/stock-news/fetch?ts_code=601100.SH&company_name=&page_size=20&score=1&model=GPT-5.4",
                         "news": "/api/news?source=&exclude_sources=cn_sina_7x24&exclude_source_prefixes=cn_sina_&keyword=&date_from=&date_to=&finance_levels=高,极高&page=1&page_size=20",
                         "news_sources": "/api/news/sources",
@@ -4467,6 +5890,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "macro_indicators": "/api/macro/indicators",
                         "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
                         "source_monitor": "/api/source-monitor",
+                        "database_audit": "/api/database-audit?refresh=0|1",
+                        "signal_audit": "/api/signal-audit?scope=7d|1d",
+                        "signal_quality_config": "/api/signal-quality/config",
+                        "signal_quality_rules_save": "/api/signal-quality/rules/save",
+                        "signal_quality_blocklist_save": "/api/signal-quality/blocklist/save",
                     },
                 }
             )
@@ -4474,6 +5902,46 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/health":
             self._send_json({"ok": True, "db": db_label()})
+            return
+
+        if parsed.path == "/api/jobs":
+            try:
+                payload = query_job_definitions()
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"任务定义查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/job-runs":
+            params = parse_qs(parsed.query)
+            job_key = params.get("job_key", [""])[0]
+            status = params.get("status", [""])[0]
+            try:
+                limit = int(params.get("limit", ["50"])[0])
+            except ValueError:
+                self._send_json({"error": "limit 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_job_runs(job_key=job_key, status=status, limit=limit)
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"任务运行记录查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/jobs/trigger":
+            params = parse_qs(parsed.query)
+            job_key = params.get("job_key", [""])[0].strip()
+            if not job_key:
+                self._send_json({"error": "缺少 job_key"}, status=400)
+                return
+            try:
+                payload = run_job(job_key, trigger_mode="api")
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"任务触发失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
             return
 
         if parsed.path == "/api/dashboard":
@@ -4490,6 +5958,38 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload = query_source_monitor()
             except Exception as exc:  # pragma: no cover
                 self._send_json({"error": f"监控查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/database-audit":
+            params = parse_qs(parsed.query)
+            refresh_raw = params.get("refresh", ["0"])[0].strip().lower()
+            refresh = refresh_raw in {"1", "true", "yes", "y", "on"}
+            try:
+                payload = query_database_audit(refresh=refresh)
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"审核报告查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/signal-audit":
+            params = parse_qs(parsed.query)
+            scope = params.get("scope", ["7d"])[0]
+            try:
+                payload = query_signal_audit(scope=scope)
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"信号审计查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/signal-quality/config":
+            try:
+                payload = query_signal_quality_config()
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"信号质量配置查询失败: {exc}"}, status=500)
                 return
             self._send_json(payload)
             return
@@ -4734,6 +6234,137 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(payload)
             return
 
+        if parsed.path == "/api/investment-signals":
+            params = parse_qs(parsed.query)
+            keyword = params.get("keyword", [""])[0]
+            signal_type = params.get("signal_type", [""])[0]
+            signal_group = params.get("signal_group", [""])[0]
+            scope = params.get("scope", ["7d"])[0]
+            source_filter = params.get("source_filter", [""])[0]
+            direction = params.get("direction", [""])[0]
+            signal_status = params.get("signal_status", [""])[0]
+            try:
+                page = int(params.get("page", ["1"])[0])
+                page_size = int(params.get("page_size", ["20"])[0])
+            except ValueError:
+                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_investment_signals(
+                    keyword=keyword,
+                    signal_type=signal_type,
+                    signal_group=signal_group,
+                    scope=scope,
+                    source_filter=source_filter,
+                    direction=direction,
+                    signal_status=signal_status,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/theme-hotspots":
+            params = parse_qs(parsed.query)
+            keyword = params.get("keyword", [""])[0]
+            theme_group = params.get("theme_group", [""])[0]
+            direction = params.get("direction", [""])[0]
+            heat_level = params.get("heat_level", [""])[0]
+            state_filter = params.get("state", [""])[0]
+            try:
+                page = int(params.get("page", ["1"])[0])
+                page_size = int(params.get("page_size", ["20"])[0])
+            except ValueError:
+                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_theme_hotspots(
+                    keyword=keyword,
+                    theme_group=theme_group,
+                    direction=direction,
+                    heat_level=heat_level,
+                    state_filter=state_filter,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/signal-state/timeline":
+            params = parse_qs(parsed.query)
+            signal_scope = params.get("signal_scope", [""])[0]
+            signal_key = params.get("signal_key", [""])[0]
+            try:
+                page = int(params.get("page", ["1"])[0])
+                page_size = int(params.get("page_size", ["20"])[0])
+            except ValueError:
+                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_signal_state_timeline(
+                    signal_scope=signal_scope,
+                    signal_key=signal_key,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"时间线查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/research-reports":
+            params = parse_qs(parsed.query)
+            report_type = params.get("report_type", [""])[0]
+            keyword = params.get("keyword", [""])[0]
+            report_date = params.get("report_date", [""])[0]
+            try:
+                page = int(params.get("page", ["1"])[0])
+                page_size = int(params.get("page_size", ["20"])[0])
+            except ValueError:
+                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_research_reports(
+                    report_type=report_type,
+                    keyword=keyword,
+                    report_date=report_date,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
+        if parsed.path == "/api/investment-signals/timeline":
+            params = parse_qs(parsed.query)
+            signal_key = params.get("signal_key", [""])[0]
+            try:
+                page = int(params.get("page", ["1"])[0])
+                page_size = int(params.get("page_size", ["20"])[0])
+            except ValueError:
+                self._send_json({"error": "page/page_size 必须是整数"}, status=400)
+                return
+            try:
+                payload = query_investment_signal_timeline(
+                    signal_key=signal_key,
+                    page=page,
+                    page_size=page_size,
+                )
+            except Exception as exc:  # pragma: no cover
+                self._send_json({"error": f"时间线查询失败: {exc}"}, status=500)
+                return
+            self._send_json(payload)
+            return
+
         if parsed.path == "/api/stock-news/fetch":
             params = parse_qs(parsed.query)
             ts_code = params.get("ts_code", [""])[0].strip().upper()
@@ -4933,6 +6564,17 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 features = build_trend_features(ts_code, lookback)
                 analysis = call_llm_trend(ts_code, features, model=model, temperature=0.2)
+                conn = sqlite3.connect(DB_PATH)
+                try:
+                    logic_view = get_or_build_cached_logic_view(
+                        conn,
+                        entity_type="llm_trend",
+                        entity_key=f"{ts_code}|{lookback}|{model}",
+                        source_payload=analysis,
+                        builder=lambda text=analysis: extract_logic_view_from_markdown(text),
+                    )
+                finally:
+                    conn.close()
             except Exception as exc:  # pragma: no cover
                 self._send_json({"error": f"分析失败: {exc}"}, status=500)
                 return
@@ -4944,6 +6586,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "model": model,
                     "features": features,
                     "analysis": analysis,
+                    "logic_view": logic_view,
                 }
             )
             return
@@ -4966,6 +6609,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 context = build_multi_role_context(ts_code, lookback)
                 analysis = call_llm_multi_role(context, roles, model=model, temperature=0.2)
                 split_payload = split_multi_role_analysis(analysis, roles)
+                conn = sqlite3.connect(DB_PATH)
+                try:
+                    logic_view = get_or_build_cached_logic_view(
+                        conn,
+                        entity_type="llm_multi_role",
+                        entity_key=f"{ts_code}|{lookback}|{model}|{','.join(roles)}",
+                        source_payload=analysis,
+                        builder=lambda text=analysis: split_payload.get("logic_view", extract_logic_view_from_markdown(text)),
+                    )
+                finally:
+                    conn.close()
             except Exception as exc:  # pragma: no cover
                 self._send_json({"error": f"分析失败: {exc}"}, status=500)
                 return
@@ -4978,6 +6632,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "roles": roles,
                     "context": context,
                     "analysis": analysis,
+                    "logic_view": logic_view,
                     "role_sections": split_payload.get("role_sections", []),
                     "common_sections_markdown": split_payload.get("common_sections_markdown", ""),
                 }

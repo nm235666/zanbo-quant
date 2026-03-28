@@ -50,7 +50,7 @@
       .summary-grid {
         margin-top: 14px;
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 10px;
       }
       .stat-card {
@@ -115,6 +115,7 @@
         border-radius: 12px;
         font-size: 14px;
       }
+      .job-list { display: grid; gap: 10px; }
       .logs { display: grid; gap: 10px; }
       .log-card {
         border: 1px solid var(--border);
@@ -144,7 +145,7 @@
         font-size: 12px;
       }
       @media (max-width: 1024px) {
-        .summary-grid { grid-template-columns: 1fr 1fr; }
+        .summary-grid { grid-template-columns: 1fr 1fr 1fr; }
         .sections { grid-template-columns: 1fr; }
       }
       @media (max-width: 640px) {
@@ -183,6 +184,14 @@
             <div class="stat-label">最近刷新时间</div>
             <div class="stat-value" id="stat_now" style="font-size:20px;">-</div>
           </div>
+          <div class="stat-card">
+            <div class="stat-label">编排成功</div>
+            <div class="stat-value" id="stat_job_success">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">编排失败/运行中</div>
+            <div class="stat-value" id="stat_job_bad">-</div>
+          </div>
         </div>
 
         <div class="sections">
@@ -193,6 +202,8 @@
           <div class="box">
             <h3>运行概况</h3>
             <div id="processes" class="card-list"></div>
+            <h3 style="margin-top:16px;">编排任务</h3>
+            <div id="jobs" class="job-list"></div>
             <h3 style="margin-top:16px;">数据量概况</h3>
             <div id="row_counts" class="kv-list"></div>
           </div>
@@ -217,8 +228,11 @@
         stat_source_bad: document.getElementById('stat_source_bad'),
         stat_process_ok: document.getElementById('stat_process_ok'),
         stat_now: document.getElementById('stat_now'),
+        stat_job_success: document.getElementById('stat_job_success'),
+        stat_job_bad: document.getElementById('stat_job_bad'),
         sources: document.getElementById('sources'),
         processes: document.getElementById('processes'),
+        jobs: document.getElementById('jobs'),
         row_counts: document.getElementById('row_counts'),
         logs: document.getElementById('logs'),
       };
@@ -272,6 +286,26 @@
         `).join('') || '<div class="item-card">暂无数据</div>';
       }
 
+      function renderJobs(items) {
+        els.jobs.innerHTML = (items || []).map((it) => {
+          const badge = it.status === 'success' ? 'ok' : (it.status === 'running' ? 'warn' : 'error');
+          return `
+          <article class="item-card">
+            <div class="item-head">
+              <div class="item-title">${escapeHtml(it.job_key || '-')}</div>
+              <span class="${badgeClass(badge)}">${escapeHtml(it.status || '-')}</span>
+            </div>
+            <div class="item-meta">
+              触发方式: ${escapeHtml(it.trigger_mode || '-')}<br />
+              开始时间: ${escapeHtml(it.started_at || '-')}<br />
+              结束时间: ${escapeHtml(it.finished_at || '-')}<br />
+              耗时: ${escapeHtml(it.duration_seconds ?? '-')} 秒
+            </div>
+          </article>
+        `;
+        }).join('') || '<div class="item-card">暂无数据</div>';
+      }
+
       function renderCounts(rowCounts) {
         const entries = Object.entries(rowCounts || {});
         els.row_counts.innerHTML = entries.map(([k, v]) => `
@@ -300,12 +334,16 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || '请求失败');
           const s = data.summary || {};
+          const orchestratorSummary = (data.orchestrator || {}).summary || {};
           els.stat_source_ok.textContent = String(s.source_ok ?? '-');
           els.stat_source_bad.textContent = String((s.source_warn || 0) + (s.source_error || 0));
           els.stat_process_ok.textContent = `${s.process_ok ?? '-'} / ${((s.process_ok || 0) + (s.process_warn || 0) + (s.process_error || 0)) || '-'}`;
           els.stat_now.textContent = (s.now || '-').replace('T', ' ').replace('Z', ' UTC');
+          els.stat_job_success.textContent = String(orchestratorSummary.success ?? '-');
+          els.stat_job_bad.textContent = String((orchestratorSummary.failed || 0) + (orchestratorSummary.running || 0));
           renderSources(data.sources);
           renderProcesses(data.processes);
+          renderJobs((data.orchestrator || {}).recent_runs || []);
           renderCounts(data.row_counts);
           renderLogs(data.logs);
           els.meta.textContent = `监控正常，已刷新 ${els.stat_now.textContent}`;
@@ -313,6 +351,7 @@
           els.meta.textContent = `请求失败: ${err.message}`;
           els.sources.innerHTML = '';
           els.processes.innerHTML = '';
+          els.jobs.innerHTML = '';
           els.row_counts.innerHTML = '';
           els.logs.innerHTML = '';
         }

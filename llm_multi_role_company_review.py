@@ -5,16 +5,9 @@ import argparse
 import json
 import db_compat as sqlite3
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
+from llm_gateway import chat_completion_text, resolve_provider
 
 DEFAULT_ROLES = [
     "宏观经济分析师",
@@ -90,15 +83,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--temperature", type=float, default=0.2, help="采样温度")
     return parser.parse_args()
-
-
-def resolve_provider(model: str) -> tuple[str, str]:
-    m = (model or "").strip().lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return DEEPSEEK_BASE_URL, DEEPSEEK_API_KEY
 
 def resolve_company(conn: sqlite3.Connection, company: str, ts_code: str) -> tuple[str, str]:
     if ts_code:
@@ -177,36 +161,21 @@ def load_role_profiles(roles_config_path: str) -> dict:
 
 
 def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=180,
+        max_retries=3,
+        messages=[
             {
                 "role": "system",
                 "content": "你是专业投研团队的总协调人，擅长多角色观点整合，表达清晰、客观、可执行。",
             },
             {"role": "user", "content": prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
-            text = resp.read().decode("utf-8", errors="ignore")
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"LLM接口错误: HTTP {e.code} {e.reason} | {detail}") from e
-    obj = json.loads(text)
-    return obj["choices"][0]["message"]["content"]
 
 
 def build_prompt(context: dict, roles: list[str], role_profiles: dict) -> str:

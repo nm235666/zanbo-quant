@@ -6,34 +6,14 @@ import json
 import re
 import db_compat as sqlite3
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 
 IMPORTANCE_LEVELS = {"极高", "高", "中", "低", "极低"}
-
-
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or "GPT-5.4"
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,14 +38,6 @@ def parse_args() -> argparse.Namespace:
 def now_utc_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-
-def resolve_provider(model: str, base_url: str, api_key: str) -> tuple[str, str]:
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return base_url, api_key
 
 
 def ensure_columns(conn: sqlite3.Connection) -> None:
@@ -163,26 +135,18 @@ def build_prompt(news: dict) -> str:
 
 
 def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=120,
+        max_retries=3,
+        messages=[
             {"role": "system", "content": "你是严谨、克制、结构化的个股新闻评分引擎。"},
             {"role": "user", "content": prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            text = resp.read().decode("utf-8", errors="ignore")
-        obj = json.loads(text)
-        return obj["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"调用LLM失败: HTTP {e.code} {e.reason} | {detail}") from e
+    )
 
 
 def to_score(v) -> int:

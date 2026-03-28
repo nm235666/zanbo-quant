@@ -6,18 +6,13 @@ import json
 import re
 import db_compat as sqlite3
 import time
-import urllib.error
-import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
 DEFAULT_TABLE_NAME = "chatroom_investment_analysis"
@@ -55,30 +50,6 @@ def now_utc_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or "GPT-5.4"
-
-
-def resolve_provider(model: str, base_url: str, api_key: str) -> tuple[str, str]:
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return base_url, api_key
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
-
-
 def ensure_table(conn: sqlite3.Connection, table_name: str) -> None:
     conn.execute(
         f"""
@@ -94,6 +65,12 @@ def ensure_table(conn: sqlite3.Connection, table_name: str) -> None:
             room_summary TEXT,
             targets_json TEXT,
             final_bias TEXT,
+            llm_sentiment_score REAL,
+            llm_sentiment_label TEXT,
+            llm_sentiment_reason TEXT,
+            llm_sentiment_confidence REAL,
+            llm_sentiment_model TEXT,
+            llm_sentiment_scored_at TEXT,
             model TEXT,
             prompt_version TEXT,
             raw_output TEXT,
@@ -315,39 +292,18 @@ def build_prompt(payload: dict) -> str:
 
 
 def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=180,
+        max_retries=3,
+        messages=[
             {"role": "system", "content": "你是严谨、克制、结构化的投资群聊分析引擎。"},
             {"role": "user", "content": prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-    header_candidates = [
-        {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        {"Content-Type": "application/json", "Authorization": api_key},
-        {"Content-Type": "application/json", "api-key": api_key},
-        {"Content-Type": "application/json", "x-api-key": api_key},
-    ]
-
-    last_error = None
-    for headers in header_candidates:
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                text = resp.read().decode("utf-8", errors="ignore")
-            obj = json.loads(text)
-            return obj["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            last_error = f"HTTP {e.code} {e.reason} | {detail}"
-            if e.code not in (401, 403):
-                break
-        except Exception as e:
-            last_error = str(e)
-    raise RuntimeError(f"调用LLM失败: {last_error}")
+    )
 
 
 def extract_json_text(raw: str) -> str:
@@ -412,44 +368,69 @@ def upsert_analysis(
     raw_output: str,
 ) -> None:
     now = now_utc_str()
-    conn.execute(
-        f"""
-        INSERT INTO {table_name} (
-            room_id, talker, analysis_date, analysis_window_days, message_count, sender_count,
-            latest_message_date, room_summary, targets_json, final_bias, model, prompt_version,
-            raw_output, created_at, update_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(room_id, analysis_date, analysis_window_days) DO UPDATE SET
-            talker=excluded.talker,
-            message_count=excluded.message_count,
-            sender_count=excluded.sender_count,
-            latest_message_date=excluded.latest_message_date,
-            room_summary=excluded.room_summary,
-            targets_json=excluded.targets_json,
-            final_bias=excluded.final_bias,
-            model=excluded.model,
-            prompt_version=excluded.prompt_version,
-            raw_output=excluded.raw_output,
-            update_time=excluded.update_time
-        """,
-        (
-            room_id,
-            talker,
-            analysis_date,
-            analysis_window_days,
-            message_count,
-            sender_count,
-            latest_message_date,
-            room_summary,
-            targets_json,
-            final_bias,
-            model,
-            PROMPT_VERSION,
-            raw_output,
-            now,
-            now,
-        ),
+    params = (
+        talker,
+        message_count,
+        sender_count,
+        latest_message_date,
+        room_summary,
+        targets_json,
+        final_bias,
+        model,
+        PROMPT_VERSION,
+        raw_output,
+        now,
+        room_id,
+        analysis_date,
+        analysis_window_days,
     )
+    cur = conn.execute(
+        f"""
+        UPDATE {table_name}
+        SET talker = ?,
+            message_count = ?,
+            sender_count = ?,
+            latest_message_date = ?,
+            room_summary = ?,
+            targets_json = ?,
+            final_bias = ?,
+            model = ?,
+            prompt_version = ?,
+            raw_output = ?,
+            update_time = ?
+        WHERE room_id = ?
+          AND analysis_date = ?
+          AND analysis_window_days = ?
+        """,
+        params,
+    )
+    if int(getattr(cur, "rowcount", 0) or 0) <= 0:
+        conn.execute(
+            f"""
+            INSERT INTO {table_name} (
+                room_id, talker, analysis_date, analysis_window_days, message_count, sender_count,
+                latest_message_date, room_summary, targets_json, final_bias, model, prompt_version,
+                raw_output, created_at, update_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                room_id,
+                talker,
+                analysis_date,
+                analysis_window_days,
+                message_count,
+                sender_count,
+                latest_message_date,
+                room_summary,
+                targets_json,
+                final_bias,
+                model,
+                PROMPT_VERSION,
+                raw_output,
+                now,
+                now,
+            ),
+        )
     conn.commit()
 
 

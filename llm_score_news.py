@@ -6,34 +6,20 @@ import json
 import re
 import db_compat as sqlite3
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
-DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
+from llm_gateway import (
+    DEFAULT_LLM_API_KEY,
+    DEFAULT_LLM_BASE_URL,
+    chat_completion_text,
+    normalize_model_name,
+    normalize_temperature_for_model,
+    resolve_provider,
+)
+from map_news_items_to_stocks import find_related_stocks, load_stock_aliases
 
 IMPORTANCE_LEVELS = {"极高", "高", "中", "低", "极低"}
-
-
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or "GPT-5.4"
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,8 +30,8 @@ def parse_args() -> argparse.Namespace:
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
     parser.add_argument("--model", default="GPT-5.4", help="模型名，如 deepseek-chat / GPT-5.4")
-    parser.add_argument("--base-url", default=DEEPSEEK_BASE_URL, help="LLM Base URL")
-    parser.add_argument("--api-key", default=DEEPSEEK_API_KEY, help="LLM API Key")
+    parser.add_argument("--base-url", default=DEFAULT_LLM_BASE_URL, help="LLM Base URL")
+    parser.add_argument("--api-key", default=DEFAULT_LLM_API_KEY, help="LLM API Key")
     parser.add_argument("--temperature", type=float, default=0.1, help="采样温度")
     parser.add_argument("--limit", type=int, default=30, help="本次最多评分条数")
     parser.add_argument("--source", default="", help="仅评分指定来源，如 mw_topstories")
@@ -59,15 +45,6 @@ def now_utc_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def resolve_provider(model: str, base_url: str, api_key: str) -> tuple[str, str]:
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return base_url, api_key
-
-
 def ensure_columns(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(news_feed_items)").fetchall()}
     need = [
@@ -79,6 +56,8 @@ def ensure_columns(conn: sqlite3.Connection) -> None:
         ("llm_scored_at", "TEXT"),
         ("llm_prompt_version", "TEXT"),
         ("llm_raw_output", "TEXT"),
+        ("llm_direct_related_ts_codes_json", "TEXT"),
+        ("llm_direct_related_stock_names_json", "TEXT"),
     ]
     for name, typ in need:
         if name not in cols:
@@ -106,7 +85,7 @@ def fetch_news_rows(conn: sqlite3.Connection, limit: int, source: str, force: bo
     return conn.execute(sql, params).fetchall()
 
 
-def build_prompt(news: dict) -> str:
+def build_prompt(news: dict, candidate_stocks: list[dict]) -> str:
     # 输出 JSON，便于程序稳定解析；规则与用户要求一致
     return (
         "你是一个专业的财经新闻事件分析系统。请对输入新闻进行结构化评分。\n\n"
@@ -138,48 +117,34 @@ def build_prompt(news: dict) -> str:
         '    "macro": [{"item":"风险偏好","direction":"利空"}],\n'
         '    "markets": [{"item":"美股","direction":"利空"}],\n'
         '    "sectors": [{"item":"科技","direction":"利空"}]\n'
+        '  },\n'
+        '  "a_share_mentions": [\n'
+        '    {"name":"比亚迪","ts_code":"002594.SZ"}\n'
+        '  ]\n'
         "  }\n"
         "}\n\n"
+        "A股识别要求：\n"
+        "- 只识别新闻标题/摘要中被直接提到的 A 股上市公司，不做行业联想，不做港股/美股映射。\n"
+        "- 必须直接输出 ts_code，格式如 002594.SZ / 600519.SH。\n"
+        "- 如果候选列表里有匹配公司，优先从候选列表中选择。\n"
+        "- 若无法确认，不要猜，返回空数组。\n\n"
+        f"候选A股公司（供校对）:\n{json.dumps(candidate_stocks[:12], ensure_ascii=False)}\n\n"
         f"输入新闻：\n{json.dumps(news, ensure_ascii=False)}"
     )
 
 
 def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=120,
+        messages=[
             {"role": "system", "content": "你是严谨、克制、结构化的财经新闻评分引擎。"},
             {"role": "user", "content": prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-
-    header_candidates = [
-        {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        {"Content-Type": "application/json", "Authorization": api_key},
-        {"Content-Type": "application/json", "api-key": api_key},
-        {"Content-Type": "application/json", "x-api-key": api_key},
-    ]
-
-    last_error = None
-    for headers in header_candidates:
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                text = resp.read().decode("utf-8", errors="ignore")
-            obj = json.loads(text)
-            return obj["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            last_error = f"HTTP {e.code} {e.reason} | {detail}"
-            if e.code not in (401, 403):
-                break
-        except Exception as e:  # pragma: no cover
-            last_error = str(e)
-
-    raise RuntimeError(f"调用LLM失败: {last_error}")
+    )
 
 
 def to_score(v) -> int:
@@ -216,11 +181,31 @@ def parse_llm_output(raw: str) -> dict:
         impacts = obj.get("impacts", {})
         if not isinstance(impacts, dict):
             impacts = {}
+        mentions = obj.get("a_share_mentions", [])
+        if not isinstance(mentions, list):
+            mentions = []
+        clean_mentions = []
+        clean_codes = []
+        seen_codes = set()
+        for item in mentions:
+            if not isinstance(item, dict):
+                continue
+            ts_code = str(item.get("ts_code") or "").strip().upper()
+            name = str(item.get("name") or "").strip()
+            if not re.fullmatch(r"\d{6}\.(SZ|SH|BJ)", ts_code):
+                continue
+            if ts_code in seen_codes:
+                continue
+            seen_codes.add(ts_code)
+            clean_codes.append(ts_code)
+            clean_mentions.append({"name": name, "ts_code": ts_code})
         return {
             "system_score": ss,
             "finance_impact_score": fi,
             "finance_importance": imp,
             "impacts_json": json.dumps(impacts, ensure_ascii=False),
+            "llm_direct_related_ts_codes_json": json.dumps(clean_codes, ensure_ascii=False),
+            "llm_direct_related_stock_names_json": json.dumps(clean_mentions, ensure_ascii=False),
         }
     except Exception:
         pass
@@ -241,6 +226,8 @@ def parse_llm_output(raw: str) -> dict:
         "finance_impact_score": fi,
         "finance_importance": imp,
         "impacts_json": json.dumps({}, ensure_ascii=False),
+        "llm_direct_related_ts_codes_json": json.dumps([], ensure_ascii=False),
+        "llm_direct_related_stock_names_json": json.dumps([], ensure_ascii=False),
     }
 
 
@@ -260,6 +247,8 @@ def update_row(
             llm_finance_impact_score = ?,
             llm_finance_importance = ?,
             llm_impacts_json = ?,
+            llm_direct_related_ts_codes_json = ?,
+            llm_direct_related_stock_names_json = ?,
             llm_model = ?,
             llm_scored_at = ?,
             llm_prompt_version = ?,
@@ -271,6 +260,8 @@ def update_row(
             parsed["finance_impact_score"],
             parsed["finance_importance"],
             parsed["impacts_json"],
+            parsed["llm_direct_related_ts_codes_json"],
+            parsed["llm_direct_related_stock_names_json"],
             model,
             now_utc_str(),
             prompt_version,
@@ -296,6 +287,7 @@ def main() -> int:
     conn.row_factory = sqlite3.Row
     try:
         ensure_columns(conn)
+        _, stock_aliases_by_first = load_stock_aliases(conn)
         rows = fetch_news_rows(conn, limit=args.limit, source=args.source, force=args.force)
         if not rows:
             print("没有待评分新闻。")
@@ -315,7 +307,8 @@ def main() -> int:
                 "link": r["link"] or "",
             }
             print(f"[{i}/{len(rows)}] scoring id={r['id']} source={r['source']}")
-            prompt = build_prompt(news)
+            candidate_stocks = find_related_stocks(f"{news['title']}\n{news['summary']}", stock_aliases_by_first)
+            prompt = build_prompt(news, candidate_stocks)
 
             last_err = None
             for attempt in range(args.retry + 1):

@@ -6,20 +6,16 @@ import json
 import re
 import db_compat as sqlite3
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from llm_gateway import chat_completion_text, normalize_model_name, normalize_temperature_for_model, resolve_provider
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_API_KEY = "sk-374806b2f1744b1aa84a6b27758b0bb6"
-GPT54_BASE_URL = "https://ai.td.ee/v1"
-GPT54_API_KEY = "sk-1dbff3b041575534c99ee9f95711c2c9e9977c94db51ba679b9bcf04aa329343"
-KIMI_BASE_URL = "https://api.moonshot.cn/v1"
-KIMI_API_KEY = "sk-trh5tumfscY5vi5VBSFInnwU3pr906bFJC4Nvf53xdMr2z72"
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
 PROMPT_VERSION = "chatroom_tag_v1"
+TAG_HISTORY_TABLE = "chatroom_tag_history"
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--only-room", default="", help="只处理指定群聊（remark/nick_name/room_id/talker）")
     parser.add_argument("--include-skipped", action="store_true", help="是否包含已停监控群")
     parser.add_argument("--force", action="store_true", help="强制重跑，默认只处理未打标或标签过旧的群")
+    parser.add_argument("--monitored-only", action="store_true", help="仅处理仍在监控中的群")
+    parser.add_argument("--retag-days", type=int, default=7, help="距离上次打标签超过多少天才允许自动重跑；0=不限制")
+    parser.add_argument("--min-confidence", type=int, default=78, help="低于该置信度的结果只入历史，不覆盖当前标签")
+    parser.add_argument("--history-window", type=int, default=7, help="用于稳定标签的最近历史样本数")
+    parser.add_argument("--majority-threshold", type=float, default=0.62, help="新标签想覆盖当前标签时所需多数占比")
+    parser.add_argument("--min-majority-count", type=int, default=3, help="新标签想覆盖当前标签时所需最少支持样本数")
     parser.add_argument("--max-messages", type=int, default=120, help="每个群最多送入模型的消息条数")
     parser.add_argument("--max-chars", type=int, default=12000, help="每个群送入模型的最大字符数")
     parser.add_argument("--sleep", type=float, default=0.3, help="每个群之间暂停秒数")
@@ -44,30 +46,6 @@ def parse_args() -> argparse.Namespace:
 
 def now_utc_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def normalize_model_name(model: str) -> str:
-    raw = (model or "").strip()
-    m = raw.lower().replace("_", "-")
-    if m in {"kimi2.5", "kimi-2.5", "kimi k2.5", "kimi-k2", "kimi2", "kimi"}:
-        return "kimi-k2.5"
-    return raw or "GPT-5.4"
-
-
-def resolve_provider(model: str, base_url: str, api_key: str) -> tuple[str, str]:
-    m = normalize_model_name(model).lower()
-    if m.startswith("gpt-5.4"):
-        return GPT54_BASE_URL, GPT54_API_KEY
-    if m.startswith("kimi-k2.5") or m.startswith("kimi"):
-        return KIMI_BASE_URL, KIMI_API_KEY
-    return base_url, api_key
-
-
-def normalize_temperature_for_model(model: str, temperature: float) -> float:
-    m = normalize_model_name(model).lower()
-    if m.startswith("kimi-k2.5") or m.startswith("kimi-k2"):
-        return 1.0
-    return temperature
 
 
 def ensure_columns(conn: sqlite3.Connection) -> None:
@@ -90,32 +68,73 @@ def ensure_columns(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_chatroom_list_items_llm_tagged_at ON chatroom_list_items(llm_chatroom_tagged_at)"
     )
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TAG_HISTORY_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id TEXT NOT NULL,
+            talker TEXT,
+            sample_start_date TEXT,
+            sample_end_date TEXT,
+            sample_message_count INTEGER,
+            proposed_primary_category TEXT,
+            proposed_activity_level TEXT,
+            proposed_risk_level TEXT,
+            proposed_confidence INTEGER,
+            proposed_summary TEXT,
+            proposed_tags_json TEXT,
+            all_tags_text TEXT,
+            model TEXT,
+            prompt_version TEXT,
+            raw_output TEXT,
+            is_applied INTEGER DEFAULT 0,
+            apply_reason TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{TAG_HISTORY_TABLE}_room_created ON {TAG_HISTORY_TABLE}(room_id, created_at DESC)"
+    )
     conn.commit()
 
 
-def build_room_filter_sql(only_room: str, include_skipped: bool, force: bool) -> tuple[str, list[object]]:
+def build_room_filter_sql(args: argparse.Namespace) -> tuple[str, list[object]]:
     where = []
     params: list[object] = []
-    if only_room.strip():
-        value = only_room.strip()
+    if args.only_room.strip():
+        value = args.only_room.strip()
         where.append("(c.remark = ? OR c.nick_name = ? OR c.room_id = ? OR l.talker = ?)")
         params.extend([value, value, value, value])
-    if not include_skipped:
+    if args.monitored_only or not args.include_skipped:
         where.append("COALESCE(c.skip_realtime_monitor, 0) = 0")
-    if not force:
-        where.append(
-            "("
-            "c.llm_chatroom_tagged_at IS NULL "
-            "OR c.llm_chatroom_prompt_version IS NULL "
-            "OR c.llm_chatroom_prompt_version <> ?"
-            ")"
-        )
-        params.append(PROMPT_VERSION)
+    if not args.force:
+        if args.retag_days > 0:
+            where.append(
+                "("
+                "c.llm_chatroom_tagged_at IS NULL "
+                "OR c.llm_chatroom_prompt_version IS NULL "
+                "OR c.llm_chatroom_prompt_version <> ? "
+                "OR COALESCE(c.llm_chatroom_tagged_at, '') < ?"
+                ")"
+            )
+            params.append(PROMPT_VERSION)
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=max(args.retag_days, 1))).strftime("%Y-%m-%dT%H:%M:%SZ")
+            params.append(cutoff)
+        else:
+            where.append(
+                "("
+                "c.llm_chatroom_tagged_at IS NULL "
+                "OR c.llm_chatroom_prompt_version IS NULL "
+                "OR c.llm_chatroom_prompt_version <> ?"
+                ")"
+            )
+            params.append(PROMPT_VERSION)
     return (" WHERE " + " AND ".join(where) if where else ""), params
 
 
 def fetch_candidate_rooms(conn: sqlite3.Connection, args: argparse.Namespace) -> list[sqlite3.Row]:
-    where_sql, params = build_room_filter_sql(args.only_room, args.include_skipped, args.force)
+    where_sql, params = build_room_filter_sql(args)
     sql = f"""
     SELECT
         c.room_id,
@@ -225,40 +244,18 @@ def build_prompt(room: dict) -> str:
 
 
 def call_llm(base_url: str, api_key: str, model: str, temperature: float, prompt: str) -> str:
-    url = base_url.rstrip("/") + "/chat/completions"
-    payload = {
-        "model": model,
-        "temperature": temperature,
-        "messages": [
+    return chat_completion_text(
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        timeout_s=180,
+        max_retries=3,
+        messages=[
             {"role": "system", "content": "你是严谨、克制、结构化的信息标签引擎。"},
             {"role": "user", "content": prompt},
         ],
-    }
-    body = json.dumps(payload).encode("utf-8")
-
-    header_candidates = [
-        {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        {"Content-Type": "application/json", "Authorization": api_key},
-        {"Content-Type": "application/json", "api-key": api_key},
-        {"Content-Type": "application/json", "x-api-key": api_key},
-    ]
-
-    last_error = None
-    for headers in header_candidates:
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-        try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
-                text = resp.read().decode("utf-8", errors="ignore")
-            obj = json.loads(text)
-            return obj["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="ignore")
-            last_error = f"HTTP {e.code} {e.reason} | {detail}"
-            if e.code not in (401, 403):
-                break
-        except Exception as e:
-            last_error = str(e)
-    raise RuntimeError(f"调用LLM失败: {last_error}")
+    )
 
 
 def extract_json_text(raw: str) -> str:
@@ -325,6 +322,195 @@ def parse_llm_output(raw: str) -> dict:
     }
 
 
+def parse_tags_json_text(raw: object) -> dict:
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    try:
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        return {}
+
+
+def fetch_recent_tag_history(conn: sqlite3.Connection, room_id: str, limit: int) -> list[sqlite3.Row]:
+    sql = f"""
+    SELECT id, room_id, proposed_primary_category, proposed_activity_level, proposed_risk_level,
+           proposed_confidence, proposed_summary, proposed_tags_json, is_applied, created_at
+    FROM {TAG_HISTORY_TABLE}
+    WHERE room_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+    """
+    return conn.execute(sql, (room_id, max(limit, 1))).fetchall()
+
+
+def aggregate_tags(rows: list[sqlite3.Row], category: str, fallback_tags_json: str) -> str:
+    scores: dict[str, float] = {}
+    topic_scores: dict[str, float] = {}
+    style_scores: dict[str, float] = {}
+    matched = 0
+    for row in rows:
+        if str(row["proposed_primary_category"] or "").strip() != category:
+            continue
+        matched += 1
+        weight = max(0.3, float(row["proposed_confidence"] or 0) / 100.0)
+        tags_obj = parse_tags_json_text(row["proposed_tags_json"])
+        for tag in tags_obj.get("all_tags") or []:
+            tag_text = str(tag or "").strip()
+            if tag_text:
+                scores[tag_text] = scores.get(tag_text, 0.0) + weight
+        for tag in tags_obj.get("topic_tags") or []:
+            tag_text = str(tag or "").strip()
+            if tag_text:
+                topic_scores[tag_text] = topic_scores.get(tag_text, 0.0) + weight
+        for tag in tags_obj.get("style_tags") or []:
+            tag_text = str(tag or "").strip()
+            if tag_text:
+                style_scores[tag_text] = style_scores.get(tag_text, 0.0) + weight
+    if matched <= 0:
+        return fallback_tags_json
+    topic_tags = [k for k, _ in sorted(topic_scores.items(), key=lambda item: (-item[1], item[0]))[:8]]
+    style_tags = [k for k, _ in sorted(style_scores.items(), key=lambda item: (-item[1], item[0]))[:5]]
+    all_tags = [k for k, _ in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:10]]
+    return json.dumps(
+        {"topic_tags": topic_tags, "style_tags": style_tags, "all_tags": all_tags},
+        ensure_ascii=False,
+    )
+
+
+def choose_stable_tagging(
+    current_row: sqlite3.Row,
+    candidate: dict,
+    history_rows: list[sqlite3.Row],
+    args: argparse.Namespace,
+) -> tuple[dict, bool, str]:
+    current_category = str(current_row["llm_chatroom_primary_category"] or "").strip()
+    current_confidence = int(current_row["llm_chatroom_confidence"] or 0)
+    all_rows = [
+        {
+            "proposed_primary_category": candidate["primary_category"],
+            "proposed_activity_level": candidate["activity_level"],
+            "proposed_risk_level": candidate["risk_level"],
+            "proposed_confidence": candidate["confidence"],
+            "proposed_summary": candidate["summary"],
+            "proposed_tags_json": candidate["tags_json"],
+        }
+    ]
+    all_rows.extend([dict(r) for r in history_rows[: max(args.history_window - 1, 0)]])
+
+    category_stats: dict[str, dict[str, float]] = {}
+    for row in all_rows:
+        category = str(row.get("proposed_primary_category") or "").strip()
+        if not category:
+            continue
+        conf = max(1, int(row.get("proposed_confidence") or 0))
+        stat = category_stats.setdefault(category, {"count": 0.0, "weight": 0.0})
+        stat["count"] += 1
+        stat["weight"] += conf / 100.0
+
+    candidate_category = candidate["primary_category"]
+    candidate_count = int(category_stats.get(candidate_category, {}).get("count", 0))
+    total_count = max(sum(int(v["count"]) for v in category_stats.values()), 1)
+    candidate_ratio = candidate_count / total_count
+
+    if candidate["confidence"] < args.min_confidence:
+        return current_snapshot_from_row(current_row), False, f"confidence<{args.min_confidence}"
+
+    if not current_category:
+        stable = dict(candidate)
+        stable["tags_json"] = aggregate_tags(history_rows + [row_to_history_row(candidate)], candidate_category, candidate["tags_json"])
+        return stable, True, "initial_apply"
+
+    if candidate_category == current_category:
+        stable = dict(candidate)
+        stable["primary_category"] = current_category
+        stable["confidence"] = max(candidate["confidence"], current_confidence)
+        stable["tags_json"] = aggregate_tags(history_rows + [row_to_history_row(candidate)], current_category, candidate["tags_json"])
+        return stable, True, "same_category_refresh"
+
+    if candidate_count >= args.min_majority_count and candidate_ratio >= args.majority_threshold:
+        stable = dict(candidate)
+        stable["tags_json"] = aggregate_tags(history_rows + [row_to_history_row(candidate)], candidate_category, candidate["tags_json"])
+        return stable, True, f"switch_by_majority:{candidate_count}/{total_count}"
+
+    return current_snapshot_from_row(current_row), False, f"keep_current:{current_category}:{candidate_count}/{total_count}"
+
+
+def row_to_history_row(parsed: dict) -> sqlite3.Row | dict:
+    return {
+        "proposed_primary_category": parsed["primary_category"],
+        "proposed_activity_level": parsed["activity_level"],
+        "proposed_risk_level": parsed["risk_level"],
+        "proposed_confidence": parsed["confidence"],
+        "proposed_summary": parsed["summary"],
+        "proposed_tags_json": parsed["tags_json"],
+    }
+
+
+def current_snapshot_from_row(row: sqlite3.Row) -> dict:
+    tags_json = str(row["llm_chatroom_tags_json"] or "").strip() or json.dumps(
+        {"topic_tags": [], "style_tags": [], "all_tags": []},
+        ensure_ascii=False,
+    )
+    return {
+        "primary_category": str(row["llm_chatroom_primary_category"] or "其他").strip() or "其他",
+        "activity_level": str(row["llm_chatroom_activity_level"] or "中").strip() or "中",
+        "risk_level": str(row["llm_chatroom_risk_level"] or "中").strip() or "中",
+        "confidence": int(row["llm_chatroom_confidence"] or 0),
+        "summary": str(row["llm_chatroom_summary"] or "").strip()[:200],
+        "tags_json": tags_json,
+    }
+
+
+def insert_tag_history(
+    conn: sqlite3.Connection,
+    room_id: str,
+    talker: str,
+    sample_start_date: str,
+    sample_end_date: str,
+    sample_message_count: int,
+    parsed: dict,
+    model: str,
+    raw_output: str,
+    is_applied: bool,
+    apply_reason: str,
+) -> None:
+    tags_obj = parse_tags_json_text(parsed["tags_json"])
+    all_tags_text = ",".join([str(x or "").strip() for x in tags_obj.get("all_tags") or [] if str(x or "").strip()])
+    conn.execute(
+        f"""
+        INSERT INTO {TAG_HISTORY_TABLE} (
+            room_id, talker, sample_start_date, sample_end_date, sample_message_count,
+            proposed_primary_category, proposed_activity_level, proposed_risk_level, proposed_confidence,
+            proposed_summary, proposed_tags_json, all_tags_text,
+            model, prompt_version, raw_output, is_applied, apply_reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            room_id,
+            talker,
+            sample_start_date,
+            sample_end_date,
+            sample_message_count,
+            parsed["primary_category"],
+            parsed["activity_level"],
+            parsed["risk_level"],
+            parsed["confidence"],
+            parsed["summary"],
+            parsed["tags_json"],
+            all_tags_text,
+            model,
+            PROMPT_VERSION,
+            raw_output,
+            1 if is_applied else 0,
+            apply_reason,
+            now_utc_str(),
+        ),
+    )
+    conn.commit()
+
+
 def update_room_tagging(
     conn: sqlite3.Connection,
     room_id: str,
@@ -363,6 +549,19 @@ def update_room_tagging(
         ),
     )
     conn.commit()
+
+
+def fetch_current_room_row(conn: sqlite3.Connection, room_id: str) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT room_id, llm_chatroom_summary, llm_chatroom_tags_json, llm_chatroom_primary_category,
+               llm_chatroom_activity_level, llm_chatroom_risk_level, llm_chatroom_confidence
+        FROM chatroom_list_items
+        WHERE room_id = ?
+        LIMIT 1
+        """,
+        (room_id,),
+    ).fetchone()
 
 
 def main() -> int:
@@ -420,11 +619,32 @@ def main() -> int:
                 print(f"  失败: {last_error}")
                 continue
 
-            update_room_tagging(conn, room_id, parsed, model, raw_output)
+            current_row = fetch_current_room_row(conn, room_id)
+            history_rows = fetch_recent_tag_history(conn, room_id, args.history_window)
+            stable_parsed, should_apply, apply_reason = choose_stable_tagging(current_row, parsed, history_rows, args) if current_row else (parsed, True, "initial_apply")
+            insert_tag_history(
+                conn,
+                room_id=room_id,
+                talker=talker,
+                sample_start_date=str(recent_messages[0]["message_date"] or ""),
+                sample_end_date=str(recent_messages[-1]["message_date"] or ""),
+                sample_message_count=len(recent_messages),
+                parsed=parsed,
+                model=model,
+                raw_output=raw_output,
+                is_applied=should_apply,
+                apply_reason=apply_reason,
+            )
+            if should_apply:
+                update_room_tagging(conn, room_id, stable_parsed, model, raw_output)
+            tags_obj = json.loads((stable_parsed if should_apply else parsed)["tags_json"])
             print(
-                f"  完成 category={parsed['primary_category']} "
-                f"activity={parsed['activity_level']} risk={parsed['risk_level']} "
-                f"tags={','.join(json.loads(parsed['tags_json'])['all_tags'][:5])}"
+                f"  {'应用' if should_apply else '保留'} "
+                f"category={(stable_parsed if should_apply else parsed)['primary_category']} "
+                f"activity={(stable_parsed if should_apply else parsed)['activity_level']} "
+                f"risk={(stable_parsed if should_apply else parsed)['risk_level']} "
+                f"reason={apply_reason} "
+                f"tags={','.join(tags_obj.get('all_tags', [])[:5])}"
             )
             if args.sleep > 0:
                 time.sleep(args.sleep)
