@@ -347,6 +347,12 @@ def get_provider_candidates(model: str) -> tuple[ProviderConfig, ...]:
     return tuple(deduped)
 
 
+def is_provider_declared_but_unavailable(model: str) -> bool:
+    _refresh_runtime()
+    key = _normalize_model_key(model)
+    return key in _LAST_EMPTY_OVERRIDE_KEYS
+
+
 def reload_provider_runtime() -> None:
     _refresh_runtime(force=True)
 

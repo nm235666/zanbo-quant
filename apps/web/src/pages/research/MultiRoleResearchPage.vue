@@ -115,14 +115,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
 import MarkdownIt from 'markdown-it'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
-import { decideMultiRoleTaskV2, fetchMultiRoleTaskV2, fetchStocks, retryMultiRoleAggregateV2, triggerMultiRoleTaskV2 } from '../../services/api/stocks'
+import { decideMultiRoleTaskV2, fetchMultiRoleTaskV2, fetchStocks, retryMultiRoleAggregateV2, streamMultiRoleTaskV2, triggerMultiRoleTaskV2 } from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
 
 function looksLikeTsCode(value: string) {
@@ -163,6 +163,7 @@ const taskStatus = ref('')
 const decisionPending = ref(false)
 const aggregateRetryPending = ref(false)
 let timer = 0
+let streamController: AbortController | null = null
 
 const selectedRoleSection = computed(() => roleSections.value.find((item) => item.role === activeRole.value) || null)
 const selectedRoleContent = computed(() => selectedRoleSection.value?.content || fullMarkdown.value)
@@ -233,6 +234,117 @@ const quotaHint = computed(() => {
   return `${q.used ?? 0} / ${q.limit}，剩余 ${q.remaining ?? 0}`
 })
 
+function clearTimer() {
+  window.clearTimeout(timer)
+  timer = 0
+}
+
+function stopLiveStream() {
+  if (streamController) {
+    streamController.abort()
+    streamController = null
+  }
+}
+
+function resetResultViews() {
+  roleSections.value = []
+  activeRole.value = ''
+  usedModel.value = ''
+  attempts.value = []
+  decisionConfidence.value = {}
+  riskReview.value = {}
+  portfolioView.value = {}
+  usedContextDims.value = []
+  preTradeCheck.value = {}
+  notification.value = {}
+}
+
+function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: string; name: string }) {
+  taskStatus.value = String(task.status || '')
+  roleRuns.value = Array.isArray(task.role_runs) ? task.role_runs : []
+  aggregatorRun.value = (task.aggregator_run || {}) as Record<string, any>
+  attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
+
+  if (task.status === 'done' || task.status === 'done_with_warnings') {
+    usedModel.value = String(task.used_model || task.model || usedModel.value || '')
+    fullMarkdown.value = task.analysis_markdown || task.analysis || task.result || fullMarkdown.value || '分析完成，但未返回正文。'
+    roleSections.value = Array.isArray(task.role_outputs) ? task.role_outputs : (Array.isArray(task.role_sections) ? task.role_sections : roleSections.value)
+    activeRole.value = roleSections.value[0]?.role || activeRole.value
+    decisionConfidence.value = (task.decision_confidence || {}) as Record<string, any>
+    riskReview.value = (task.risk_review || {}) as Record<string, any>
+    portfolioView.value = (task.portfolio_view || {}) as Record<string, any>
+    usedContextDims.value = Array.isArray(task.used_context_dims) ? task.used_context_dims : []
+    preTradeCheck.value = (task.pre_trade_check || {}) as Record<string, any>
+    notification.value = (task.notification || {}) as Record<string, any>
+    actionMessage.value = `分析完成：${task.name || resolved?.name || resolved?.ts_code || resolvedStock.value.name || resolvedStock.value.ts_code}${task.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
+    return true
+  }
+  if (task.status === 'pending_user_decision') {
+    actionMessage.value = '有角色任务失败，等待你的决策（重试/降级/终止）。'
+    return true
+  }
+  if (task.status === 'error') {
+    actionMessage.value = `分析失败：${task.error || task.message || '未知错误'}`
+    fullMarkdown.value = `分析失败：${task.error || task.message || '未知错误'}`
+    resetResultViews()
+    return true
+  }
+  actionMessage.value = `任务运行中：${task.progress || 0}% · ${task.message || task.status || '运行中'}`
+  return false
+}
+
+function startPolling(jobId: string, resolved?: { ts_code: string; name: string }) {
+  clearTimer()
+  const poll = async (): Promise<void> => {
+    try {
+      const task = await fetchMultiRoleTaskV2({ job_id: jobId })
+      const terminal = applyTaskSnapshot(task as Record<string, any>, resolved)
+      if (!terminal) timer = window.setTimeout(poll, 3000)
+    } catch (error: any) {
+      actionMessage.value = `轮询失败：${error?.message || String(error)}`
+    }
+  }
+  poll()
+}
+
+function startLiveStream(jobId: string, resolved?: { ts_code: string; name: string }) {
+  clearTimer()
+  stopLiveStream()
+  const controller = new AbortController()
+  streamController = controller
+  streamMultiRoleTaskV2(
+    { job_id: jobId, interval_ms: 1000, timeout_seconds: 180 },
+    {
+      signal: controller.signal,
+      onMessage: (packet: Record<string, any>) => {
+        const event = String(packet?.event || '')
+        if (event === 'update' && packet?.job) {
+          const terminal = applyTaskSnapshot(packet.job as Record<string, any>, resolved)
+          if (terminal) controller.abort()
+          return
+        }
+        if (event === 'timeout') {
+          actionMessage.value = '流式连接超时，切换轮询继续跟踪...'
+          controller.abort()
+          startPolling(jobId, resolved)
+          return
+        }
+        if (event === 'error') {
+          actionMessage.value = `流式更新失败：${packet?.error || 'unknown error'}，切换轮询继续跟踪...`
+          controller.abort()
+          startPolling(jobId, resolved)
+        }
+      },
+    },
+  ).catch((error: any) => {
+    if (controller.signal.aborted) return
+    actionMessage.value = `流式更新中断：${error?.message || String(error)}，切换轮询继续跟踪...`
+    startPolling(jobId, resolved)
+  }).finally(() => {
+    if (streamController === controller) streamController = null
+  })
+}
+
 const mutation = useMutation({
   mutationFn: async () => {
     const raw = form.keyword.trim()
@@ -246,9 +358,10 @@ const mutation = useMutation({
     return { ts_code: String(first.ts_code), name: String(first.name || '') }
   },
   onSuccess: async (resolved) => {
+    stopLiveStream()
+    clearTimer()
     resolvedStock.value = resolved
-    usedModel.value = ''
-    attempts.value = []
+    resetResultViews()
     roleRuns.value = []
     aggregatorRun.value = {}
     taskStatus.value = ''
@@ -259,69 +372,19 @@ const mutation = useMutation({
       lookback: form.lookback,
       accept_auto_degrade: acceptAutoDegrade.value,
     })
-    const jobId = payload.job_id
-    currentJobId.value = String(jobId || '')
+    const jobId = String(payload.job_id || '')
+    currentJobId.value = jobId
     fullMarkdown.value = '任务已创建，正在后台生成分析...'
-    if (!jobId) return
-    window.clearTimeout(timer)
-    const poll = async (): Promise<void> => {
-      const res = await fetchMultiRoleTaskV2({ job_id: jobId })
-      taskStatus.value = String(res.status || '')
-      roleRuns.value = Array.isArray(res.role_runs) ? res.role_runs : []
-      aggregatorRun.value = (res.aggregator_run || {}) as Record<string, any>
-      if (res.status === 'done' || res.status === 'done_with_warnings') {
-        usedModel.value = String(res.used_model || res.model || '')
-        attempts.value = Array.isArray(res.attempts) ? res.attempts : []
-        actionMessage.value = `分析完成：${res.name || resolved.name || resolved.ts_code}${res.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
-        fullMarkdown.value = res.analysis_markdown || res.analysis || res.result || '分析完成，但未返回正文。'
-        roleSections.value = Array.isArray(res.role_outputs) ? res.role_outputs : (Array.isArray(res.role_sections) ? res.role_sections : [])
-        activeRole.value = roleSections.value[0]?.role || ''
-        decisionConfidence.value = (res.decision_confidence || {}) as Record<string, any>
-        riskReview.value = (res.risk_review || {}) as Record<string, any>
-        portfolioView.value = (res.portfolio_view || {}) as Record<string, any>
-        usedContextDims.value = Array.isArray(res.used_context_dims) ? res.used_context_dims : []
-        preTradeCheck.value = (res.pre_trade_check || {}) as Record<string, any>
-        notification.value = (res.notification || {}) as Record<string, any>
-        return
-      }
-      if (res.status === 'pending_user_decision') {
-        attempts.value = Array.isArray(res.attempts) ? res.attempts : []
-        actionMessage.value = '有角色任务失败，等待你的决策（重试/降级/终止）。'
-        return
-      }
-      if (res.status === 'error') {
-        attempts.value = Array.isArray(res.attempts) ? res.attempts : []
-        actionMessage.value = `分析失败：${res.error || res.message || '未知错误'}`
-        fullMarkdown.value = `分析失败：${res.error || res.message || '未知错误'}`
-        roleSections.value = []
-        activeRole.value = ''
-        decisionConfidence.value = {}
-        riskReview.value = {}
-        portfolioView.value = {}
-        usedContextDims.value = []
-        preTradeCheck.value = {}
-        notification.value = {}
-        return
-      }
-      actionMessage.value = `任务运行中：${res.progress || 0}% · ${res.message || res.status || '运行中'}`
-      timer = window.setTimeout(poll, 3000)
-    }
-    poll()
+    const terminal = applyTaskSnapshot(payload as Record<string, any>, resolved)
+    if (!terminal && jobId) startLiveStream(jobId, resolved)
     refetchAuthStatus()
   },
   onError: (error: Error) => {
+    stopLiveStream()
+    clearTimer()
     actionMessage.value = `分析失败：${error.message}`
     fullMarkdown.value = `分析失败：${error.message}`
-    roleSections.value = []
-    activeRole.value = ''
-    usedModel.value = ''
-    attempts.value = []
-    decisionConfidence.value = {}
-    riskReview.value = {}
-    portfolioView.value = {}
-    usedContextDims.value = []
-    preTradeCheck.value = {}
-    notification.value = {}
+    resetResultViews()
     roleRuns.value = []
     aggregatorRun.value = {}
     taskStatus.value = ''
@@ -340,44 +403,14 @@ async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
   decisionPending.value = true
   try {
     const res = await decideMultiRoleTaskV2({ job_id: currentJobId.value, action })
-    taskStatus.value = String(res.status || '')
+    const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     if (action === 'abort' || res.status === 'error') {
       actionMessage.value = `任务已终止：${res.error || '用户终止'}`
       fullMarkdown.value = `任务已终止：${res.error || '用户终止'}`
       return
     }
     actionMessage.value = action === 'degrade' ? '正在按降级策略收口汇总...' : '正在执行补重试，请稍候...'
-    window.clearTimeout(timer)
-    const poll = async (): Promise<void> => {
-      const task = await fetchMultiRoleTaskV2({ job_id: currentJobId.value })
-      taskStatus.value = String(task.status || '')
-      roleRuns.value = Array.isArray(task.role_runs) ? task.role_runs : []
-      aggregatorRun.value = (task.aggregator_run || {}) as Record<string, any>
-      if (task.status === 'done' || task.status === 'done_with_warnings') {
-        usedModel.value = String(task.used_model || task.model || '')
-        attempts.value = Array.isArray(task.attempts) ? task.attempts : []
-        fullMarkdown.value = task.analysis_markdown || task.analysis || '分析完成，但未返回正文。'
-        roleSections.value = Array.isArray(task.role_outputs) ? task.role_outputs : (Array.isArray(task.role_sections) ? task.role_sections : [])
-        activeRole.value = roleSections.value[0]?.role || ''
-        decisionConfidence.value = (task.decision_confidence || {}) as Record<string, any>
-        riskReview.value = (task.risk_review || {}) as Record<string, any>
-        portfolioView.value = (task.portfolio_view || {}) as Record<string, any>
-        actionMessage.value = `分析完成：${task.name || resolvedStock.value.name || resolvedStock.value.ts_code}`
-        return
-      }
-      if (task.status === 'pending_user_decision') {
-        actionMessage.value = '重试后仍有角色失败，等待你的下一次决策。'
-        return
-      }
-      if (task.status === 'error') {
-        actionMessage.value = `分析失败：${task.error || task.message || '未知错误'}`
-        fullMarkdown.value = `分析失败：${task.error || task.message || '未知错误'}`
-        return
-      }
-      actionMessage.value = `任务运行中：${task.progress || 0}% · ${task.message || task.status || '运行中'}`
-      timer = window.setTimeout(poll, 3000)
-    }
-    await poll()
+    if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `决策提交失败：${error?.message || String(error)}`
   } finally {
@@ -391,19 +424,10 @@ async function retryAggregate() {
   actionMessage.value = '正在重试聚合汇总，请稍候...'
   try {
     const res = await retryMultiRoleAggregateV2({ job_id: currentJobId.value })
-    taskStatus.value = String(res.status || taskStatus.value)
-    roleRuns.value = Array.isArray(res.role_runs) ? res.role_runs : roleRuns.value
-    aggregatorRun.value = (res.aggregator_run || {}) as Record<string, any>
-    usedModel.value = String(res.used_model || usedModel.value || '')
-    attempts.value = Array.isArray(res.attempts) ? res.attempts : attempts.value
-    fullMarkdown.value = res.analysis_markdown || res.analysis || fullMarkdown.value
-    roleSections.value = Array.isArray(res.role_outputs) ? res.role_outputs : (Array.isArray(res.role_sections) ? res.role_sections : roleSections.value)
-    activeRole.value = roleSections.value[0]?.role || activeRole.value
-    decisionConfidence.value = (res.decision_confidence || decisionConfidence.value) as Record<string, any>
-    riskReview.value = (res.risk_review || riskReview.value) as Record<string, any>
-    portfolioView.value = (res.portfolio_view || portfolioView.value) as Record<string, any>
+    const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     const aggStatus = String((res.aggregator_run || {}).status || '')
     actionMessage.value = aggStatus === 'done' ? '汇总重试成功。' : '汇总重试失败，已保留角色原文。'
+    if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `重试汇总失败：${error?.message || String(error)}`
   } finally {
@@ -421,6 +445,11 @@ function downloadFullMarkdown() {
   const stock = resolvedStock.value.ts_code || 'UNKNOWN'
   downloadText(fullMarkdown.value || '', `${stock}_LLM多角色公司分析.md`)
 }
+
+onBeforeUnmount(() => {
+  stopLiveStream()
+  clearTimer()
+})
 </script>
 
 <style scoped>

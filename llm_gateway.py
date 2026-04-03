@@ -17,6 +17,7 @@ from llm_provider_config import (
     get_default_request_model,
     get_provider_config,
     get_provider_candidates,
+    is_provider_declared_but_unavailable,
 )
 
 
@@ -498,6 +499,8 @@ def resolve_provider(model: str, base_url: str = "", api_key: str = "") -> tuple
     config = get_provider_config(m)
     if config:
         return ensure_provider_ready(model, config.base_url, config.api_key)
+    if is_provider_declared_but_unavailable(m):
+        raise RuntimeError(f"LLM 提供商当前无可用节点：{normalize_model_name(model)}（已在外部配置中声明，但无可用节点）")
     return ensure_provider_ready(model, base_url or DEFAULT_LLM_BASE_URL, api_key or DEFAULT_LLM_API_KEY)
 
 

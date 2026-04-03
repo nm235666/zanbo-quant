@@ -10,43 +10,50 @@
     "__aggregator__": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "宏观经济分析师": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "股票分析师": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "国际资本分析师": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "汇率分析师": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "风险控制官": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     },
     "行业分析师": {
       "primary_model": "gpt-5.4-multi-role",
       "fallback_models": [
-        "kimi-k2.5"
+        "kimi-k2.5",
+        "deepseek-chat"
       ]
     }
   },

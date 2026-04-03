@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import time
 from urllib.parse import parse_qs
 
 MULTI_ROLE_DEDICATED_GPT_CHANNEL = "gpt-5.4-multi-role"
@@ -327,6 +329,74 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             return True
         handler._send_json({"ok": True, **job})
         return True
+
+    if parsed.path == "/api/llm/multi-role/v2/stream":
+        params = parse_qs(parsed.query)
+        job_id = params.get("job_id", [""])[0].strip()
+        if not job_id:
+            handler._send_json({"error": "缺少 job_id"}, status=400)
+            return True
+        try:
+            interval_ms = int(params.get("interval_ms", ["1000"])[0] or 1000)
+        except ValueError:
+            handler._send_json({"error": "interval_ms 必须是整数"}, status=400)
+            return True
+        try:
+            timeout_seconds = int(params.get("timeout_seconds", ["180"])[0] or 180)
+        except ValueError:
+            handler._send_json({"error": "timeout_seconds 必须是整数"}, status=400)
+            return True
+        interval_ms = max(300, min(5000, interval_ms))
+        timeout_seconds = max(10, min(600, timeout_seconds))
+
+        first_job = deps["get_async_multi_role_v2_job"](job_id)
+        if not first_job:
+            handler._send_json({"error": f"任务不存在或已过期: {job_id}"}, status=404)
+            return True
+
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        handler.send_header("Cache-Control", "no-cache, no-transform")
+        handler.send_header("Connection", "keep-alive")
+        handler.end_headers()
+
+        def _stream_write(payload: dict) -> bool:
+            try:
+                handler.wfile.write((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
+                handler.wfile.flush()
+                return True
+            except Exception:
+                return False
+
+        started = time.time()
+        last_signature = ""
+        while True:
+            job = deps["get_async_multi_role_v2_job"](job_id)
+            if not job:
+                _stream_write({"ok": False, "event": "error", "job_id": job_id, "error": f"任务不存在或已过期: {job_id}", "terminal": True})
+                return True
+            status = str(job.get("status") or "")
+            signature = "|".join(
+                [
+                    str(job.get("status") or ""),
+                    str(job.get("stage") or ""),
+                    str(job.get("progress") or 0),
+                    str(job.get("updated_at") or ""),
+                    str((job.get("aggregator_run") or {}).get("status") or ""),
+                    str(len(list(job.get("role_runs") or []))),
+                ]
+            )
+            if signature != last_signature:
+                if not _stream_write({"ok": True, "event": "update", "job_id": job_id, "job": job}):
+                    return True
+                last_signature = signature
+            if status in {"done", "done_with_warnings", "error"}:
+                _stream_write({"ok": True, "event": "end", "job_id": job_id, "terminal": True, "status": status})
+                return True
+            if (time.time() - started) >= timeout_seconds:
+                _stream_write({"ok": True, "event": "timeout", "job_id": job_id, "terminal": False})
+                return True
+            time.sleep(interval_ms / 1000.0)
 
     if parsed.path == "/api/llm/multi-role/v2/history":
         params = parse_qs(parsed.query)

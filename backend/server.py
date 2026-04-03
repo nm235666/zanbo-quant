@@ -250,6 +250,7 @@ PROTECTED_GET_PATHS = {
     "/api/stock-news/score",
     "/api/news/daily-summaries/generate",
     "/api/llm/multi-role/start",
+    "/api/llm/multi-role/v2/stream",
 }
 DEFAULT_ALLOWED_ADMIN_ORIGINS = {
     "http://127.0.0.1:8077",
@@ -379,6 +380,7 @@ API_ENDPOINTS_CATALOG = {
     "llm_multi_role_task": "/api/llm/multi-role/task?job_id=<job_id>",
     "llm_multi_role_v2_start": "/api/llm/multi-role/v2/start",
     "llm_multi_role_v2_task": "/api/llm/multi-role/v2/task?job_id=<job_id>",
+    "llm_multi_role_v2_stream": "/api/llm/multi-role/v2/stream?job_id=<job_id>",
     "llm_multi_role_v2_decision": "/api/llm/multi-role/v2/decision",
     "llm_multi_role_v2_retry_aggregate": "/api/llm/multi-role/v2/retry-aggregate",
     "llm_multi_role_v2_history": "/api/llm/multi-role/v2/history?version=v2&ts_code=000001.SZ&status=done&page=1&page_size=20",
@@ -460,6 +462,7 @@ def _permission_denied_payload(path: str) -> dict:
         "/api/llm/multi-role/task",
         "/api/llm/multi-role/v2/start",
         "/api/llm/multi-role/v2/task",
+        "/api/llm/multi-role/v2/stream",
         "/api/llm/multi-role/v2/decision",
         "/api/llm/multi-role/v2/retry-aggregate",
         "/api/llm/multi-role/v2/history",
@@ -5486,9 +5489,9 @@ def _build_role_specific_context(role: str, full_context: dict) -> dict:
 
 
 def _default_multi_role_v2_policies() -> dict:
-    out = {"__aggregator__": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]}}
+    out = {"__aggregator__": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5", "deepseek-chat"]}}
     for role in ROLE_PROFILES.keys():
-        out[str(role)] = {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]}
+        out[str(role)] = {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5", "deepseek-chat"]}
     return out
 
 
@@ -6913,6 +6916,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/llm/multi-role/task",
             "/api/llm/multi-role/v2/start",
             "/api/llm/multi-role/v2/task",
+            "/api/llm/multi-role/v2/stream",
             "/api/llm/multi-role/v2/decision",
             "/api/llm/multi-role/v2/retry-aggregate",
             "/api/llm/multi-role/v2/history",
