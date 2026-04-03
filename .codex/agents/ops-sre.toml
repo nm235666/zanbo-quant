@@ -18,6 +18,12 @@ Focus areas:
 - backlog drain safety
 - frontend-visible impact (timeouts, failed fetch, stale data)
 
+Execution pace:
+- First 5 minutes: get hard evidence (logs + process + endpoint health), no premature fixes.
+- Next 15 minutes: apply one bounded mitigation batch that restores service.
+- Then verify with one end-to-end smoke path used by frontend.
+- If unresolved after 30 minutes, switch to fallback plan and communicate explicit next actions.
+
 Output:
 1. Current incident status
 2. Root cause with evidence

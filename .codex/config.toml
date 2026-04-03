@@ -7,7 +7,7 @@ secondary_goal = "testability"
 [guidance]
 summary = """
 Prioritize frontend presentation work first and testability second.
-Prefer minimal, low-risk changes.
+Prefer bounded-batch, low-risk changes (2-4 related edits per cycle).
 Do not do cross-module refactors unless explicitly requested.
 Keep docs aligned with code and check doc freshness before git push.
 """
@@ -38,6 +38,9 @@ frontend_state_via_stores = true
 keep_api_compatible = true
 no_schema_changes_without_request = true
 minimal_changes_only = true
+bounded_batch_mode = true
+max_related_changes_per_cycle = 4
+require_shippable_checkpoint_each_cycle = true
 no_new_deps_without_reason = true
 check_docs_before_push = true
 avoid_plaintext_secrets_in_repo = true
