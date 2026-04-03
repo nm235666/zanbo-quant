@@ -1,4 +1,4 @@
-# Zanbo Quant NextGen Frontend
+# Zanbo Quant Vue Frontend
 
 ## Run dev
 

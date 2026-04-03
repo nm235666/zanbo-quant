@@ -104,7 +104,10 @@ class MinimalRegressionTest(unittest.TestCase):
         self.assertTrue(body.get("ok"))
 
     def test_core_query_stocks(self):
-        status, body = self._get_json("/api/stocks?page=1&page_size=1")
+        status, body = self._get_json(
+            "/api/stocks?page=1&page_size=1",
+            headers={"X-Admin-Token": self.admin_token},
+        )
         self.assertEqual(status, 200, body)
         self.assertIn("items", body)
 
@@ -116,6 +119,30 @@ class MinimalRegressionTest(unittest.TestCase):
         self.assertEqual(status, 200, body)
         self.assertTrue(body.get("ok"))
         self.assertTrue(body.get("commands"))
+
+    def test_core_page_endpoints_smoke(self):
+        # 主页面关键依赖端点最小 smoke：要求路由存在、认证通过。
+        # 对最小测试库已知缺表/缺数据导致的 500，允许按白名单放行。
+        targets = (
+            "/api/investment-signals?page=1&page_size=1",
+            "/api/stock-detail?ts_code=000001.SZ",
+            "/api/chatrooms/candidate-pool?page=1&page_size=1",
+            "/api/news/daily-summaries?page=1&page_size=1",
+            "/api/research-reports?page=1&page_size=1",
+            "/api/dashboard",
+        )
+        headers = {"X-Admin-Token": self.admin_token}
+        for path in targets:
+            with self.subTest(path=path):
+                status, body = self._get_json(path, headers=headers)
+                self.assertNotIn(status, {401, 403, 404}, f"{path}: {body}")
+                if status == 500:
+                    message = str(body.get("error", ""))
+                    allow_known_fixture_error = (
+                        (path.startswith("/api/stock-detail") and "未找到股票" in message)
+                        or (path == "/api/dashboard" and "no such table: stock_daily_prices" in message)
+                    )
+                    self.assertTrue(allow_known_fixture_error, f"{path}: {body}")
 
 
 if __name__ == "__main__":

@@ -73,11 +73,19 @@
             状态：{{ currentPreview.status }} · 运行态：{{ currentPreview.runtime_status || 'ok' }} · 限速：{{ currentPreview.rate_limit_enabled ? `${currentPreview.count_current_minute || 0}/${currentPreview.rate_limit_per_minute}` : 'disabled' }}
           </div>
           <div class="mt-3 flex flex-wrap gap-2">
-            <button class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click="testOne(currentPreview)">单独测试</button>
             <button
+              type="button"
+              class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm disabled:opacity-60"
+              :disabled="!currentPreview || singleTestPending"
+              @click.stop="testOne(currentPreview)"
+            >
+              {{ singleTestPending && singleTestTargetKey === previewKey ? '测试中...' : '单独测试' }}
+            </button>
+            <button
+              type="button"
               class="rounded-xl px-3 py-2 text-sm"
               :class="currentPreview.status === 'active' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-emerald-200 bg-emerald-50 text-emerald-700'"
-              @click="toggleNodeStatus(currentPreview)"
+              @click.stop="toggleNodeStatus(currentPreview)"
             >
               {{ currentPreview.status === 'active' ? '关闭节点' : '开启节点' }}
             </button>
@@ -97,14 +105,22 @@
             </template>
             <template #default>
               <div class="mt-3 flex flex-wrap gap-2">
-                <button class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click="setCurrentPreview(item)">设为当前预览</button>
-                <button class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click="openEdit(item)">编辑</button>
-                <button class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" @click="removeNode(item)">删除</button>
-                <button class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700" @click="testOne(item)">单独测试</button>
+                <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click.stop="setCurrentPreview(item)">设为当前预览</button>
+                <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click.stop="openEdit(item)">编辑</button>
+                <button type="button" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" @click.stop="removeNode(item)">删除</button>
                 <button
+                  type="button"
+                  class="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 disabled:opacity-60"
+                  :disabled="singleTestPending"
+                  @click.stop="testOne(item)"
+                >
+                  {{ singleTestPending && singleTestTargetKey === `${item.provider_key}-${item.index}` ? '测试中...' : '单独测试' }}
+                </button>
+                <button
+                  type="button"
                   class="rounded-xl px-3 py-2 text-sm"
                   :class="item.status === 'active' ? 'border border-amber-200 bg-amber-50 text-amber-700' : 'border border-emerald-200 bg-emerald-50 text-emerald-700'"
-                  @click="toggleNodeStatus(item)"
+                  @click.stop="toggleNodeStatus(item)"
                 >
                   {{ item.status === 'active' ? '关闭节点' : '开启节点' }}
                 </button>
@@ -114,27 +130,43 @@
         </div>
       </PageSection>
 
-      <PageSection v-if="editModal.visible" title="编辑节点" subtitle="不填 api_key 将保留原值。">
-        <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-2">
-          <input v-model="editModal.form.model" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="model" />
-          <input v-model="editModal.form.base_url" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="base_url" />
-          <input v-model="editModal.form.api_key" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新 api_key（可留空）" />
-          <input v-model="editModal.form.api_key_env" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="api_key_env（可留空）" />
-          <select v-model="editModal.form.status" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="active">active</option>
-            <option value="disabled">disabled</option>
-          </select>
-          <div class="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <label class="text-sm">限速</label>
-            <input v-model="editModal.form.rate_limit_enabled" type="checkbox" />
-            <input v-model.number="editModal.form.rate_limit_per_minute" type="number" min="1" class="w-24 rounded-xl border border-[var(--line)] px-2 py-1" />
+      <div
+        v-if="editModal.visible"
+        class="fixed inset-0 z-[1200] flex items-center justify-center bg-[rgba(15,23,42,0.45)] p-4"
+        @click.self="closeEdit"
+      >
+        <div class="w-full max-w-5xl rounded-[28px] border border-[var(--line)] bg-[rgba(255,255,255,0.98)] p-5 shadow-2xl">
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div class="text-xl font-extrabold tracking-tight" style="font-family: var(--font-display)">编辑节点</div>
+              <div class="mt-1 text-sm text-[var(--muted)]">不填 api_key 将保留原值。</div>
+            </div>
+            <button type="button" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm" @click="closeEdit">关闭</button>
+          </div>
+          <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-2">
+            <input v-model="editModal.form.model" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="model" />
+            <input v-model="editModal.form.base_url" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="base_url" />
+            <input v-model="editModal.form.api_key" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新 api_key（留空=保持原值）" />
+            <input v-model="editModal.form.api_key_env" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="api_key_env（可留空）" />
+            <select v-model="editModal.form.status" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="active">active</option>
+              <option value="disabled">disabled</option>
+            </select>
+            <div class="flex items-center gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <label class="text-sm">限速</label>
+              <input v-model="editModal.form.rate_limit_enabled" type="checkbox" />
+              <input v-model.number="editModal.form.rate_limit_per_minute" type="number" min="1" class="w-24 rounded-xl border border-[var(--line)] px-2 py-1" />
+            </div>
+          </div>
+          <div class="mt-3 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            说明：`api_key` 留空时不会覆盖现有 key；只有填写了新值才会更新。
+          </div>
+          <div class="mt-4 flex gap-2">
+            <button type="button" class="rounded-2xl bg-stone-800 px-4 py-3 text-white" :disabled="editPending" @click="saveEdit">{{ editPending ? '保存中...' : '保存修改' }}</button>
+            <button type="button" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" @click="closeEdit">取消</button>
           </div>
         </div>
-        <div class="mt-3 flex gap-2">
-          <button class="rounded-2xl bg-stone-800 px-4 py-3 text-white" :disabled="editPending" @click="saveEdit">{{ editPending ? '保存中...' : '保存修改' }}</button>
-          <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" @click="closeEdit">取消</button>
-        </div>
-      </PageSection>
+      </div>
 
       <PageSection v-if="lastTestText" title="测试结果" subtitle="单节点或一键测试返回。">
         <pre class="overflow-x-auto rounded-2xl border border-[var(--line)] bg-[rgba(255,255,255,0.78)] p-4 text-xs">{{ lastTestText }}</pre>
@@ -205,8 +237,13 @@ const createPending = ref(false)
 const editPending = ref(false)
 const batchTestPending = ref(false)
 const saveDefaultLimitPending = ref(false)
+const singleTestPending = ref(false)
+const singleTestTargetKey = ref('')
 
 const modelKeys = computed(() => Array.from(new Set(rows.value.map((item) => String(item.model || '').trim()).filter(Boolean))).sort())
+const previewKey = computed(() =>
+  currentPreview.value ? `${currentPreview.value.provider_key}-${currentPreview.value.index}` : '',
+)
 
 function buildDescription(item: LlmProviderItem): string {
   const obs = item.observability_7d || {}
@@ -320,8 +357,32 @@ async function removeNode(item: LlmProviderItem) {
 }
 
 async function testOne(item: LlmProviderItem) {
-  const data = await testOneLlmProvider({ provider_key: item.provider_key, index: item.index })
-  lastTestText.value = JSON.stringify(data, null, 2)
+  if (!item) return
+  singleTestPending.value = true
+  singleTestTargetKey.value = `${item.provider_key}-${item.index}`
+  try {
+    const data = await testOneLlmProvider({ provider_key: item.provider_key, index: item.index })
+    lastTestText.value = JSON.stringify(data, null, 2)
+    await refreshAll()
+  } catch (error: any) {
+    const status = Number(error?.status || error?.response?.status || 0)
+    const detail = String(error?.response?.data?.error || error?.message || 'unknown')
+    lastTestText.value = JSON.stringify(
+      {
+        ok: false,
+        action: 'test_one_llm_provider',
+        provider_key: item.provider_key,
+        index: item.index,
+        status: status || null,
+        error: detail,
+      },
+      null,
+      2,
+    )
+  } finally {
+    singleTestPending.value = false
+    singleTestTargetKey.value = ''
+  }
 }
 
 async function runBatchTest() {

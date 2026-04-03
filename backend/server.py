@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import bisect
+import concurrent.futures
 import hashlib
 import ipaddress
 import json
@@ -17,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections import deque
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +37,7 @@ from llm_gateway import (
     normalize_model_name,
     normalize_temperature_for_model,
 )
+from llm_provider_config import get_provider_candidates
 from realtime_streams import publish_app_event
 from runtime_secrets import BACKEND_ADMIN_TOKEN, BACKEND_ALLOWED_ORIGINS
 from services.execution import pre_trade_check
@@ -76,6 +79,7 @@ from services.chatrooms_service import (
 )
 from services.signals_service import build_signals_runtime_deps
 from services.notifications import build_notification_payload, notify_with_wecom
+from services.agent_service.outputs.markdown_report import build_portfolio_view, build_risk_review, infer_decision_confidence
 from services.quantaalpha_service import build_quantaalpha_service_runtime_deps
 from services.stock_detail_service import (
     build_capital_flow_summary as stock_detail_build_capital_flow_summary,
@@ -99,9 +103,11 @@ from services.stock_news_service import (
 from services.system.llm_providers_admin import (
     create_llm_provider,
     delete_llm_provider,
+    get_multi_role_v2_policies,
     list_llm_providers,
     test_model_llm_providers,
     test_one_llm_provider,
+    update_multi_role_v2_policies,
     update_default_rate_limit,
     update_llm_provider,
 )
@@ -193,6 +199,14 @@ WECOM_WEBHOOK_URL = str(os.getenv("WECOM_BOT_WEBHOOK", "")).strip()
 ASYNC_JOB_TTL_SECONDS = 3600
 ASYNC_MULTI_ROLE_JOBS: dict[str, dict] = {}
 ASYNC_MULTI_ROLE_LOCK = threading.Lock()
+ASYNC_MULTI_ROLE_V2_JOBS: dict[str, dict] = {}
+ASYNC_MULTI_ROLE_V2_LOCK = threading.Lock()
+ASYNC_MULTI_ROLE_V2_ACTIVE: set[str] = set()
+ASYNC_MULTI_ROLE_V2_QUEUE = deque()
+MULTI_ROLE_V2_MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MULTI_ROLE_V2_MAX_CONCURRENT_JOBS", "2") or "2"))
+MULTI_ROLE_V2_CONTEXT_CACHE: dict[str, dict] = {}
+MULTI_ROLE_V2_CONTEXT_CACHE_LOCK = threading.Lock()
+LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR = ""
 ASYNC_DAILY_SUMMARY_JOBS: dict[str, dict] = {}
 ASYNC_DAILY_SUMMARY_LOCK = threading.Lock()
 TMP_DIR = Path("/tmp")
@@ -221,6 +235,9 @@ PROTECTED_POST_PATHS = {
     "/api/signal-quality/rules/save",
     "/api/signal-quality/blocklist/save",
     "/api/auth/quota/reset-batch",
+    "/api/llm/multi-role/v2/start",
+    "/api/llm/multi-role/v2/decision",
+    "/api/llm/multi-role/v2/retry-aggregate",
 }
 PROTECTED_GET_PATHS = {
     "/api/jobs",
@@ -360,6 +377,11 @@ API_ENDPOINTS_CATALOG = {
     "llm_multi_role": "/api/llm/multi-role?ts_code=000001.SZ&lookback=120&roles=宏观经济分析师,股票分析师,国际资本分析师,汇率分析师",
     "llm_multi_role_start": "/api/llm/multi-role/start?ts_code=000001.SZ&lookback=120&roles=宏观经济分析师,股票分析师",
     "llm_multi_role_task": "/api/llm/multi-role/task?job_id=<job_id>",
+    "llm_multi_role_v2_start": "/api/llm/multi-role/v2/start",
+    "llm_multi_role_v2_task": "/api/llm/multi-role/v2/task?job_id=<job_id>",
+    "llm_multi_role_v2_decision": "/api/llm/multi-role/v2/decision",
+    "llm_multi_role_v2_retry_aggregate": "/api/llm/multi-role/v2/retry-aggregate",
+    "llm_multi_role_v2_history": "/api/llm/multi-role/v2/history?version=v2&ts_code=000001.SZ&status=done&page=1&page_size=20",
     "macro_indicators": "/api/macro/indicators",
     "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
     "source_monitor": "/api/source-monitor",
@@ -376,6 +398,7 @@ API_ENDPOINTS_CATALOG = {
     "system_llm_providers_delete": "/api/system/llm-providers/delete",
     "system_llm_providers_test_one": "/api/system/llm-providers/test-one",
     "system_llm_providers_test_model": "/api/system/llm-providers/test-model",
+    "system_llm_multi_role_v2_policies": "/api/system/llm-providers/multi-role-v2-policies",
     "quant_factors_mine_start": "/api/quant-factors/mine/start",
     "quant_factors_backtest_start": "/api/quant-factors/backtest/start",
     "quant_factors_task": "/api/quant-factors/task?task_id=<task_id>",
@@ -431,7 +454,16 @@ def _permission_denied_payload(path: str) -> dict:
     if path in {"/api/stocks", "/api/stocks/filters"}:
         code = "AUTH_PERMISSION_DENIED_STOCK_SEARCH"
         hint = "该账号不可访问股票检索接口。可改用 ts_code 直接分析，或联系管理员开通检索权限。"
-    elif path in {"/api/llm/multi-role", "/api/llm/multi-role/start", "/api/llm/multi-role/task"}:
+    elif path in {
+        "/api/llm/multi-role",
+        "/api/llm/multi-role/start",
+        "/api/llm/multi-role/task",
+        "/api/llm/multi-role/v2/start",
+        "/api/llm/multi-role/v2/task",
+        "/api/llm/multi-role/v2/decision",
+        "/api/llm/multi-role/v2/retry-aggregate",
+        "/api/llm/multi-role/v2/history",
+    }:
         code = "AUTH_PERMISSION_DENIED_MULTI_ROLE"
         hint = "该账号不可访问多角色分析接口，请联系管理员开通。"
     elif path == "/api/llm/trend":
@@ -2037,6 +2069,89 @@ def query_news_daily_summaries(
         page=page,
         page_size=page_size,
     )
+
+
+def query_multi_role_analysis_history(
+    *,
+    version: str,
+    ts_code: str,
+    status: str,
+    page: int,
+    page_size: int,
+):
+    version = str(version or "").strip().lower() or "v2"
+    ts_code = str(ts_code or "").strip().upper()
+    status = str(status or "").strip().lower()
+    page = max(int(page or 1), 1)
+    page_size = min(max(int(page_size or 20), 1), 200)
+    offset = (page - 1) * page_size
+    where = []
+    values: list[object] = []
+    if version:
+        where.append("version = ?")
+        values.append(version)
+    if ts_code:
+        where.append("ts_code = ?")
+        values.append(ts_code)
+    if status:
+        where.append("status = ?")
+        values.append(status)
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_multi_role_analysis_history_table(conn)
+        total = int(
+            (
+                conn.execute(
+                    f"SELECT COUNT(*) FROM multi_role_analysis_history {where_sql}",
+                    tuple(values),
+                ).fetchone()[0]
+            )
+            or 0
+        )
+        rows = conn.execute(
+            f"""
+            SELECT
+              id, job_id, version, status, ts_code, name, lookback,
+              roles_json, accept_auto_degrade, used_model, requested_model,
+              warnings_json, error, created_at, updated_at, finished_at
+            FROM multi_role_analysis_history
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            tuple([*values, page_size, offset]),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["roles"] = json.loads(item.get("roles_json") or "[]")
+            if not isinstance(item["roles"], list):
+                item["roles"] = []
+        except Exception:
+            item["roles"] = []
+        try:
+            item["warnings"] = json.loads(item.get("warnings_json") or "[]")
+            if not isinstance(item["warnings"], list):
+                item["warnings"] = []
+        except Exception:
+            item["warnings"] = []
+        item["accept_auto_degrade"] = bool(item.get("accept_auto_degrade"))
+        items.append(item)
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": (total + page_size - 1) // page_size,
+        "items": items,
+    }
 
 
 def get_daily_summary_by_date(summary_date: str):
@@ -4336,6 +4451,7 @@ def _ensure_stock_news_fresh(
     score_model: str = DEFAULT_LLM_MODEL,
     score_limit: int = 3,
     score_timeout_s: int = 90,
+    non_blocking: bool = False,
 ):
     conn = sqlite3.connect(DB_PATH)
     try:
@@ -4344,6 +4460,15 @@ def _ensure_stock_news_fresh(
         conn.close()
     if fresh:
         return {"fetched": False, "scored": False, "latest_pub": latest_pub}
+    if non_blocking:
+        # 页面主链路优先：非阻塞模式下不在请求链路同步做采集/评分，避免多角色分析长时间卡住。
+        return {
+            "fetched": False,
+            "scored": False,
+            "latest_pub": latest_pub,
+            "skipped": True,
+            "reason": "non_blocking_mode",
+        }
     out = {"fetched": False, "scored": False, "latest_pub": latest_pub, "fetch_error": "", "score_error": ""}
     fetch_info = {"stdout": "", "stderr": ""}
     score_info = {"stdout": "", "stderr": ""}
@@ -4525,6 +4650,257 @@ def ensure_logic_view_cache_table(conn):
         "CREATE INDEX IF NOT EXISTS idx_logic_view_cache_update_time ON logic_view_cache(update_time)"
     )
     conn.commit()
+
+
+def ensure_multi_role_analysis_history_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS multi_role_analysis_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            name TEXT,
+            lookback INTEGER NOT NULL DEFAULT 120,
+            roles_json TEXT NOT NULL DEFAULT '[]',
+            accept_auto_degrade INTEGER NOT NULL DEFAULT 1,
+            requested_model TEXT,
+            used_model TEXT,
+            attempts_json TEXT NOT NULL DEFAULT '[]',
+            role_runs_json TEXT NOT NULL DEFAULT '[]',
+            aggregator_run_json TEXT NOT NULL DEFAULT '{}',
+            decision_state_json TEXT NOT NULL DEFAULT '{}',
+            warnings_json TEXT NOT NULL DEFAULT '[]',
+            error TEXT,
+            analysis_markdown TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finished_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_multi_role_analysis_history_job_id ON multi_role_analysis_history(job_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_multi_role_analysis_history_ts_code ON multi_role_analysis_history(ts_code, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_multi_role_analysis_history_status ON multi_role_analysis_history(status, created_at)"
+    )
+    conn.commit()
+
+
+def _persist_multi_role_analysis_v2_job(job: dict):
+    if not isinstance(job, dict):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        ensure_multi_role_analysis_history_table(conn)
+        conn.execute(
+            """
+            INSERT INTO multi_role_analysis_history (
+                job_id, version, status, ts_code, name, lookback, roles_json, accept_auto_degrade,
+                requested_model, used_model, attempts_json, role_runs_json, aggregator_run_json,
+                decision_state_json, warnings_json, error, analysis_markdown, created_at, updated_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                status = excluded.status,
+                name = excluded.name,
+                lookback = excluded.lookback,
+                roles_json = excluded.roles_json,
+                accept_auto_degrade = excluded.accept_auto_degrade,
+                requested_model = excluded.requested_model,
+                used_model = excluded.used_model,
+                attempts_json = excluded.attempts_json,
+                role_runs_json = excluded.role_runs_json,
+                aggregator_run_json = excluded.aggregator_run_json,
+                decision_state_json = excluded.decision_state_json,
+                warnings_json = excluded.warnings_json,
+                error = excluded.error,
+                analysis_markdown = excluded.analysis_markdown,
+                updated_at = excluded.updated_at,
+                finished_at = excluded.finished_at
+            """,
+            (
+                str(job.get("job_id") or ""),
+                "v2",
+                str(job.get("status") or ""),
+                str(job.get("ts_code") or ""),
+                str(job.get("name") or ""),
+                int(job.get("lookback") or 120),
+                json.dumps(_sanitize_json_value(job.get("roles") or []), ensure_ascii=False, allow_nan=False),
+                1 if bool(job.get("accept_auto_degrade", True)) else 0,
+                str(job.get("requested_model") or ""),
+                str(job.get("used_model") or ""),
+                json.dumps(_sanitize_json_value(job.get("attempts") or []), ensure_ascii=False, allow_nan=False),
+                json.dumps(_sanitize_json_value(job.get("role_runs") or []), ensure_ascii=False, allow_nan=False),
+                json.dumps(_sanitize_json_value(job.get("aggregator_run") or {}), ensure_ascii=False, allow_nan=False),
+                json.dumps(_sanitize_json_value(job.get("decision_state") or {}), ensure_ascii=False, allow_nan=False),
+                json.dumps(_sanitize_json_value(job.get("warnings") or []), ensure_ascii=False, allow_nan=False),
+                str(job.get("error") or ""),
+                str(job.get("analysis_markdown") or ""),
+                str(job.get("created_at") or datetime.now(timezone.utc).isoformat()),
+                str(job.get("updated_at") or datetime.now(timezone.utc).isoformat()),
+                str(job.get("finished_at") or ""),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _parse_iso_dt(value: str):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _cn_day_utc_range(now_utc: datetime | None = None) -> tuple[datetime, datetime]:
+    now_utc = now_utc or datetime.now(timezone.utc)
+    cn_tz = timezone(timedelta(hours=8))
+    cn_now = now_utc.astimezone(cn_tz)
+    start_cn = cn_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_cn = start_cn + timedelta(days=1)
+    return start_cn.astimezone(timezone.utc), end_cn.astimezone(timezone.utc)
+
+
+def _hydrate_persisted_multi_role_v2_row(row: dict) -> dict:
+    def _loads(value, default):
+        try:
+            parsed = json.loads(value or "")
+            return parsed if isinstance(parsed, type(default)) else default
+        except Exception:
+            return default
+
+    return {
+        "job_id": str(row.get("job_id") or ""),
+        "status": str(row.get("status") or ""),
+        "progress": 100 if str(row.get("status") or "") in {"done", "done_with_warnings", "error"} else 0,
+        "stage": "done" if str(row.get("status") or "") in {"done", "done_with_warnings"} else str(row.get("status") or ""),
+        "message": "复用当日已完成分析结果" if str(row.get("status") or "") in {"done", "done_with_warnings"} else str(row.get("status") or ""),
+        "created_at": str(row.get("created_at") or ""),
+        "updated_at": str(row.get("updated_at") or ""),
+        "finished_at": str(row.get("finished_at") or ""),
+        "ts_code": str(row.get("ts_code") or ""),
+        "name": str(row.get("name") or ""),
+        "lookback": int(row.get("lookback") or 120),
+        "roles": _loads(row.get("roles_json"), []),
+        "accept_auto_degrade": bool(row.get("accept_auto_degrade")),
+        "requested_model": str(row.get("requested_model") or ""),
+        "used_model": str(row.get("used_model") or ""),
+        "attempts": _loads(row.get("attempts_json"), []),
+        "role_runs": _loads(row.get("role_runs_json"), []),
+        "aggregator_run": _loads(row.get("aggregator_run_json"), {}),
+        "decision_state": _loads(row.get("decision_state_json"), {}),
+        "warnings": _loads(row.get("warnings_json"), []),
+        "error": str(row.get("error") or ""),
+        "analysis": str(row.get("analysis_markdown") or ""),
+        "analysis_markdown": str(row.get("analysis_markdown") or ""),
+        "role_outputs": [],
+        "role_sections": [],
+        "common_sections_markdown": "",
+        "decision_confidence": infer_decision_confidence(str(row.get("analysis_markdown") or "")).to_dict(),
+        "risk_review": build_risk_review(str(row.get("analysis_markdown") or "")).to_dict(),
+        "portfolio_view": build_portfolio_view(str(row.get("analysis_markdown") or "")).to_dict(),
+        "used_context_dims": [],
+        "context_build_ms": 0,
+        "role_parallel_ms": 0,
+        "total_ms": 0,
+        "queue_position": 0,
+        "queue_total": 0,
+        "max_concurrent_jobs": MULTI_ROLE_V2_MAX_CONCURRENT_JOBS,
+        "current_concurrent_jobs": 0,
+        "queue_length": 0,
+        "context": {},
+    }
+
+
+def _load_persisted_multi_role_v2_job(job_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_multi_role_analysis_history_table(conn)
+        row = conn.execute(
+            """
+            SELECT
+              job_id, status, ts_code, name, lookback, roles_json, accept_auto_degrade,
+              requested_model, used_model, attempts_json, role_runs_json, aggregator_run_json,
+              decision_state_json, warnings_json, error, analysis_markdown, created_at, updated_at, finished_at
+            FROM multi_role_analysis_history
+            WHERE job_id = ? AND version = 'v2'
+            LIMIT 1
+            """,
+            (str(job_id or "").strip(),),
+        ).fetchone()
+        if not row:
+            return None
+        return _hydrate_persisted_multi_role_v2_row(dict(row))
+    finally:
+        conn.close()
+
+
+def find_today_reusable_multi_role_v2_job(*, ts_code: str, lookback: int, roles: list[str]):
+    ts_code = str(ts_code or "").strip().upper()
+    target_roles = [str(x).strip() for x in list(roles or []) if str(x).strip()]
+    target_roles_sorted = sorted(target_roles)
+    start_utc, end_utc = _cn_day_utc_range()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_multi_role_analysis_history_table(conn)
+        rows = conn.execute(
+            """
+            SELECT
+              job_id, status, ts_code, name, lookback, roles_json, accept_auto_degrade,
+              requested_model, used_model, attempts_json, role_runs_json, aggregator_run_json,
+              decision_state_json, warnings_json, error, analysis_markdown, created_at, updated_at, finished_at
+            FROM multi_role_analysis_history
+            WHERE version = 'v2'
+              AND ts_code = ?
+              AND lookback = ?
+              AND status IN ('done', 'done_with_warnings')
+            ORDER BY id DESC
+            LIMIT 100
+            """,
+            (ts_code, int(lookback or 120)),
+        ).fetchall()
+        for row_obj in rows:
+            row = dict(row_obj)
+            # 复用口径优先使用完成时间，避免“前一日创建、当日完成”的任务漏命中。
+            anchor_dt = (
+                _parse_iso_dt(str(row.get("finished_at") or ""))
+                or _parse_iso_dt(str(row.get("updated_at") or ""))
+                or _parse_iso_dt(str(row.get("created_at") or ""))
+            )
+            if not anchor_dt:
+                continue
+            if anchor_dt.tzinfo is None:
+                anchor_dt = anchor_dt.replace(tzinfo=timezone.utc)
+            anchor_utc = anchor_dt.astimezone(timezone.utc)
+            if anchor_utc < start_utc or anchor_utc >= end_utc:
+                continue
+            try:
+                row_roles = json.loads(row.get("roles_json") or "[]")
+                if not isinstance(row_roles, list):
+                    row_roles = []
+            except Exception:
+                row_roles = []
+            row_roles_sorted = sorted([str(x).strip() for x in row_roles if str(x).strip()])
+            if row_roles_sorted != target_roles_sorted:
+                continue
+            analysis_markdown = str(row.get("analysis_markdown") or "").strip()
+            if not analysis_markdown:
+                continue
+            return _hydrate_persisted_multi_role_v2_row(row)
+        return None
+    finally:
+        conn.close()
 
 
 def _logic_view_content_hash(source_payload) -> str:
@@ -4945,6 +5321,1365 @@ def get_async_multi_role_job(job_id: str):
     )
 
 
+def _cleanup_async_multi_role_v2_jobs():
+    agent_cleanup_async_jobs(
+        jobs=ASYNC_MULTI_ROLE_V2_JOBS,
+        lock=ASYNC_MULTI_ROLE_V2_LOCK,
+        ttl_seconds=ASYNC_JOB_TTL_SECONDS,
+    )
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        live_ids = set(ASYNC_MULTI_ROLE_V2_JOBS.keys())
+        ASYNC_MULTI_ROLE_V2_ACTIVE.intersection_update(live_ids)
+        old_queue = list(ASYNC_MULTI_ROLE_V2_QUEUE)
+        rebuilt_queue = [jid for jid in old_queue if jid in live_ids]
+        if rebuilt_queue != old_queue:
+            ASYNC_MULTI_ROLE_V2_QUEUE.clear()
+            for jid in rebuilt_queue:
+                ASYNC_MULTI_ROLE_V2_QUEUE.append(jid)
+        _refresh_multi_role_v2_runtime_meta_locked()
+
+
+def _queue_position_locked(job_id: str) -> int:
+    for idx, queued_job_id in enumerate(list(ASYNC_MULTI_ROLE_V2_QUEUE), start=1):
+        if queued_job_id == job_id:
+            return idx
+    return 0
+
+
+def _refresh_multi_role_v2_runtime_meta_locked() -> None:
+    active_count = len(ASYNC_MULTI_ROLE_V2_ACTIVE)
+    queue_length = len(ASYNC_MULTI_ROLE_V2_QUEUE)
+    queue_pos_map = {jid: idx for idx, jid in enumerate(list(ASYNC_MULTI_ROLE_V2_QUEUE), start=1)}
+    for jid, job in ASYNC_MULTI_ROLE_V2_JOBS.items():
+        status = str((job or {}).get("status") or "")
+        job["current_concurrent_jobs"] = active_count
+        job["queue_length"] = queue_length
+        job["queue_total"] = queue_length
+        job["max_concurrent_jobs"] = MULTI_ROLE_V2_MAX_CONCURRENT_JOBS
+        job["queue_position"] = int(queue_pos_map.get(jid, 0)) if status == "queued" else 0
+
+
+def _dispatch_multi_role_v2_queue():
+    launch_ids: list[str] = []
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        while ASYNC_MULTI_ROLE_V2_QUEUE and len(ASYNC_MULTI_ROLE_V2_ACTIVE) < MULTI_ROLE_V2_MAX_CONCURRENT_JOBS:
+            job_id = str(ASYNC_MULTI_ROLE_V2_QUEUE.popleft() or "")
+            if not job_id:
+                continue
+            job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+            if not job:
+                continue
+            if str(job.get("status") or "") != "queued":
+                continue
+            if job_id in ASYNC_MULTI_ROLE_V2_ACTIVE:
+                continue
+            ASYNC_MULTI_ROLE_V2_ACTIVE.add(job_id)
+            now = datetime.now(timezone.utc).isoformat()
+            job["message"] = "排队结束，任务开始执行"
+            job["queue_position"] = 0
+            job["updated_at"] = now
+            job["updated_at_ts"] = time.time()
+            launch_ids.append(job_id)
+            try:
+                _persist_multi_role_analysis_v2_job(job)
+            except Exception:
+                pass
+        _refresh_multi_role_v2_runtime_meta_locked()
+    for job_id in launch_ids:
+        worker = threading.Thread(
+            target=_run_async_multi_role_v2_job,
+            args=(job_id,),
+            daemon=True,
+            name=f"multi_role_v2_{job_id[:8]}",
+        )
+        worker.start()
+
+
+def _release_multi_role_v2_slot(job_id: str):
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        ASYNC_MULTI_ROLE_V2_ACTIVE.discard(str(job_id or ""))
+        _refresh_multi_role_v2_runtime_meta_locked()
+    _dispatch_multi_role_v2_queue()
+
+
+def _context_cache_cn_date() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
+
+
+def _context_cache_key(ts_code: str, lookback: int, cn_date: str) -> str:
+    return f"{str(ts_code or '').strip().upper()}|{int(lookback or 120)}|{str(cn_date or '')}"
+
+
+def _get_cached_multi_role_v2_context(ts_code: str, lookback: int):
+    key = _context_cache_key(ts_code, lookback, _context_cache_cn_date())
+    with MULTI_ROLE_V2_CONTEXT_CACHE_LOCK:
+        cached = MULTI_ROLE_V2_CONTEXT_CACHE.get(key)
+        if not isinstance(cached, dict):
+            return None
+        context = cached.get("context")
+        if not isinstance(context, dict):
+            return None
+        # Context is treated as read-only in the v2 pipeline; return directly to
+        # avoid deep-copy overhead on hot path.
+        return context
+
+
+def _set_cached_multi_role_v2_context(ts_code: str, lookback: int, context: dict):
+    if not isinstance(context, dict):
+        return
+    today = _context_cache_cn_date()
+    key = _context_cache_key(ts_code, lookback, today)
+    now = datetime.now(timezone.utc).isoformat()
+    with MULTI_ROLE_V2_CONTEXT_CACHE_LOCK:
+        # 跨天自动清理旧 key，避免常驻进程内存膨胀。
+        stale = [k for k in MULTI_ROLE_V2_CONTEXT_CACHE.keys() if str(k).split("|")[-1] != today]
+        for stale_key in stale:
+            MULTI_ROLE_V2_CONTEXT_CACHE.pop(stale_key, None)
+        MULTI_ROLE_V2_CONTEXT_CACHE[key] = {"context": context, "updated_at": now}
+
+
+def _build_role_specific_context(role: str, full_context: dict) -> dict:
+    source = dict(full_context or {})
+    price = source.get("price_summary") or {}
+    stock_news = source.get("stock_news_summary") or {}
+    cap_flow = source.get("capital_flow_summary") or {}
+
+    scoped = {
+        "company_profile": source.get("company_profile") or {},
+        "price_summary": {
+            "latest": (price.get("latest") or {}),
+            "metrics": (price.get("metrics") or {}),
+        },
+        "stock_news_summary": {
+            "latest_pub_time": stock_news.get("latest_pub_time"),
+            "high_importance_count_recent_8": stock_news.get("high_importance_count_recent_8"),
+        },
+    }
+
+    role_name = str(role or "").strip()
+    if role_name == "宏观经济分析师":
+        scoped["macro_context"] = source.get("macro_context") or {}
+        scoped["rate_spread_context"] = source.get("rate_spread_context") or {}
+    elif role_name == "股票分析师":
+        scoped["price_summary"]["recent_20_bars"] = price.get("recent_20_bars") or []
+        scoped["valuation_summary"] = source.get("valuation_summary") or {}
+        scoped["capital_flow_summary"] = {"stock_flow": (cap_flow.get("stock_flow") or {})}
+    elif role_name == "国际资本分析师":
+        scoped["capital_flow_summary"] = {"market_flow": (cap_flow.get("market_flow") or {})}
+        scoped["macro_context"] = source.get("macro_context") or {}
+        scoped["fx_context"] = source.get("fx_context") or {}
+    elif role_name == "汇率分析师":
+        scoped["fx_context"] = source.get("fx_context") or {}
+        scoped["rate_spread_context"] = source.get("rate_spread_context") or {}
+    elif role_name == "风险控制官":
+        scoped["risk_summary"] = source.get("risk_summary") or {}
+    elif role_name == "行业分析师":
+        scoped["event_summary"] = source.get("event_summary") or {}
+        news_items = list((stock_news.get("recent_items") or []))[:3]
+        scoped["stock_news_summary"]["recent_items"] = news_items
+    else:
+        # 默认给一个轻量可用集合，避免未知角色直接空数据。
+        scoped["macro_context"] = source.get("macro_context") or {}
+        scoped["valuation_summary"] = source.get("valuation_summary") or {}
+
+    return _sanitize_json_value(scoped)
+
+
+def _default_multi_role_v2_policies() -> dict:
+    out = {"__aggregator__": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]}}
+    for role in ROLE_PROFILES.keys():
+        out[str(role)] = {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]}
+    return out
+
+
+def _load_multi_role_v2_policies() -> dict:
+    global LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR
+    defaults = _default_multi_role_v2_policies()
+    try:
+        payload = get_multi_role_v2_policies()
+        raw = payload.get("multi_role_v2_policies") or {}
+        if isinstance(raw, dict):
+            for key, cfg in raw.items():
+                role = str(key or "").strip()
+                if not role or not isinstance(cfg, dict):
+                    continue
+                primary = str(cfg.get("primary_model") or "").strip() or defaults.get(role, {}).get("primary_model", DEFAULT_LLM_MODEL)
+                fallback_raw = cfg.get("fallback_models") or []
+                if isinstance(fallback_raw, str):
+                    fallback = [x.strip() for x in fallback_raw.split(",") if x.strip()]
+                elif isinstance(fallback_raw, list):
+                    fallback = [str(x).strip() for x in fallback_raw if str(x).strip()]
+                else:
+                    fallback = []
+                defaults[role] = {"primary_model": primary, "fallback_models": fallback}
+        LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR = ""
+    except Exception as exc:
+        LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR = f"{type(exc).__name__}: {exc}"
+        print(
+            f"[multi-role-v2] policy load failed; fallback to defaults. error={LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR}",
+            flush=True,
+        )
+    return defaults
+
+
+def _policy_model_chain(policy_map: dict, role: str) -> list[str]:
+    cfg = policy_map.get(role) or {}
+    primary = normalize_model_name(str(cfg.get("primary_model") or DEFAULT_LLM_MODEL))
+    fallback = [normalize_model_name(str(x or "")) for x in list(cfg.get("fallback_models") or []) if str(x or "").strip()]
+    chain: list[str] = []
+    for item in [primary, *fallback]:
+        if item and item not in chain:
+            chain.append(item)
+    return chain or [normalize_model_name(DEFAULT_LLM_MODEL)]
+
+
+def _is_kimi_model(model: str) -> bool:
+    return "kimi-k2.5" in normalize_model_name(str(model or "")).lower()
+
+
+def _is_gpt54_model(model: str) -> bool:
+    return normalize_model_name(str(model or "")).lower() == "gpt-5.4"
+
+
+def _candidate_route_chain(model_chain: list[str], *, per_model_limit: int) -> list[dict]:
+    routes: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for model in model_chain:
+        normalized = normalize_model_name(str(model or ""))
+        if not normalized:
+            continue
+        candidates = list(get_provider_candidates(normalized))
+        if not candidates:
+            key = (normalized, "")
+            if key in seen:
+                continue
+            seen.add(key)
+            routes.append({"model": normalized, "base_url": "", "api_key": ""})
+            continue
+        for item in candidates[: max(1, int(per_model_limit or 1))]:
+            route_model = normalize_model_name(str(item.model or normalized))
+            route_base = str(item.base_url or "").strip()
+            route_key = str(item.api_key or "").strip()
+            key = (route_model, route_base.rstrip("/"))
+            if key in seen:
+                continue
+            seen.add(key)
+            routes.append({"model": route_model, "base_url": route_base, "api_key": route_key})
+    return routes
+
+
+def _build_multi_role_v2_single_prompt(context: dict, role: str) -> str:
+    profile = ROLE_PROFILES.get(role, {})
+    role_spec = {
+        "role": role,
+        "focus": profile.get("focus", "围绕该角色职责进行分析"),
+        "framework": profile.get("framework", "使用该角色常用框架"),
+        "indicators": profile.get("indicators", []),
+        "risk_bias": profile.get("risk_bias", "识别该角色关注的核心风险"),
+    }
+    return (
+        "你将以单一角色完成独立研究任务。\n"
+        f"你的角色是：{role}\n"
+        "请使用该角色视角给出结构化结论，避免泛泛而谈。\n"
+        "输出要求（必须严格使用 Markdown 二级标题）：\n"
+        f"## {role}\n"
+        "内容必须包含：\n"
+        "1) 核心观点（结论先行）\n"
+        "2) 关键依据（3-5条，尽量引用给定数据中的最近日期/数值）\n"
+        "3) 主要风险（2-4条）\n"
+        "4) 后续跟踪指标（3-5条，尽量量化）\n\n"
+        f"角色设定(JSON)：\n{json.dumps(_sanitize_json_value(role_spec), ensure_ascii=False, allow_nan=False)}\n\n"
+        f"输入数据(JSON)：\n{json.dumps(_sanitize_json_value(context), ensure_ascii=False, allow_nan=False)}"
+    )
+
+
+def _run_multi_role_v2_single_role(*, role: str, context: dict, policy_map: dict, attempt_budget: int) -> dict:
+    model_chain = _policy_model_chain(policy_map, role)
+    route_chain = _candidate_route_chain(model_chain, per_model_limit=2)
+    attempts: list[dict] = []
+    started = time.time()
+    prompt = _build_multi_role_v2_single_prompt(context, role)
+    system_prompt = f"你是{role}，请保持角色口径稳定、可执行、可审计。"
+    for idx in range(max(1, int(attempt_budget))):
+        route = route_chain[idx % len(route_chain)] if route_chain else {"model": model_chain[idx % len(model_chain)], "base_url": "", "api_key": ""}
+        request_model = str(route.get("model") or model_chain[idx % len(model_chain)])
+        request_base_url = str(route.get("base_url") or "")
+        request_api_key = str(route.get("api_key") or "")
+        try:
+            result = chat_completion_with_fallback(
+                model=request_model,
+                base_url=request_base_url,
+                api_key=request_api_key,
+                temperature=0.2,
+                timeout_s=60,
+                max_retries=0,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            for item in result.attempts:
+                attempts.append({"model": item.model, "base_url": item.base_url, "error": item.error})
+            return {
+                "ok": True,
+                "role": role,
+                "output": str(result.text or ""),
+                "used_model": str(result.used_model or request_model),
+                "requested_model": str(result.requested_model or request_model),
+                "attempts": attempts,
+                "error": "",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+        except Exception as exc:
+            attempts.append({"model": request_model, "base_url": "", "error": str(exc)})
+    return {
+        "ok": False,
+        "role": role,
+        "output": "",
+        "used_model": "",
+        "requested_model": "",
+        "attempts": attempts,
+        "error": str(attempts[-1].get("error") if attempts else "unknown error"),
+        "duration_ms": int((time.time() - started) * 1000),
+    }
+
+
+def _trim_role_output_for_aggregate(role: str, content: str, per_role_limit: int = 1800) -> str:
+    text = str(content or "").strip()
+    if not text:
+        return ""
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if lines and lines[0].lstrip().startswith("##"):
+        heading = lines[0].replace(" ", "")
+        if role and role.replace(" ", "") in heading:
+            lines = lines[1:]
+    text = "\n".join(lines).strip()
+    if len(text) <= per_role_limit:
+        return text
+    keep = max(500, per_role_limit)
+    return text[:keep]
+
+
+def _trim_aggregator_inputs(inputs: list[str], max_total_chars: int = 12000) -> list[str]:
+    if not inputs:
+        return []
+    total = sum(len(x) for x in inputs)
+    if total <= max_total_chars:
+        return inputs
+    scale = float(max_total_chars) / float(max(total, 1))
+    trimmed: list[str] = []
+    for item in inputs:
+        limit = max(400, int(len(item) * scale))
+        trimmed.append(item[:limit])
+    return trimmed
+
+
+def _run_multi_role_v2_aggregator(*, role_runs: list[dict], ts_code: str, lookback: int, policy_map: dict) -> dict:
+    started = time.time()
+    inputs = []
+    role_order = []
+    for item in role_runs:
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("output") or "").strip()
+        if not role or not content:
+            continue
+        compact_content = _trim_role_output_for_aggregate(role, content)
+        if not compact_content:
+            continue
+        role_order.append(role)
+        inputs.append(f"## {role}\n{compact_content}")
+    if not inputs:
+        raise RuntimeError("没有可用的角色输出，无法汇总")
+    inputs = _trim_aggregator_inputs(inputs)
+
+    chain = _policy_model_chain(policy_map, "__aggregator__")
+    route_chain = _candidate_route_chain(chain, per_model_limit=2)
+    prompt = (
+        "你是投研委员会秘书，请将多个角色的独立结论串行汇总，输出最终会议纪要。\n"
+        "输出要求：\n"
+        "1) 保留所有角色的独立观点，不得混合改写为单一口径。\n"
+        "2) 必须包含公共段落：综合结论、行动清单、关键分歧、非投资建议免责声明。\n"
+        "3) 结构必须使用 Markdown 二级标题，角色标题必须与输入角色名一致。\n"
+        "4) 若角色间冲突，务必在“关键分歧”明确记录。\n"
+        "5) 行动清单优先给出可执行和可验证项。\n\n"
+        "请严格按如下标题骨架输出：\n"
+        + "".join([f"## {role}\n" for role in role_order])
+        + "## 综合结论\n## 行动清单\n## 关键分歧\n## 非投资建议免责声明\n\n"
+        f"股票：{ts_code}，观察窗口：{lookback}日\n\n"
+        "角色输入如下：\n\n"
+        + "\n\n".join(inputs)
+    )
+    attempts: list[dict] = []
+    agg_attempt_budget = max(2, len(route_chain) if route_chain else len(chain))
+    for idx in range(agg_attempt_budget):
+        route = route_chain[idx % len(route_chain)] if route_chain else {"model": chain[idx % len(chain)], "base_url": "", "api_key": ""}
+        request_model = str(route.get("model") or chain[idx % len(chain)])
+        request_base_url = str(route.get("base_url") or "")
+        request_api_key = str(route.get("api_key") or "")
+        try:
+            result = chat_completion_with_fallback(
+                model=request_model,
+                base_url=request_base_url,
+                api_key=request_api_key,
+                temperature=0.2,
+                timeout_s=75,
+                max_retries=0,
+                messages=[
+                    {"role": "system", "content": "你是严谨的投研纪要整合器，只输出结构化 Markdown。"},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            for item in result.attempts:
+                attempts.append({"model": item.model, "base_url": item.base_url, "error": item.error})
+            return {
+                "ok": True,
+                "analysis_markdown": str(result.text or ""),
+                "used_model": str(result.used_model or request_model),
+                "requested_model": str(result.requested_model or request_model),
+                "attempts": attempts,
+                "error": "",
+                "duration_ms": int((time.time() - started) * 1000),
+            }
+        except Exception as exc:
+            attempts.append({"model": request_model, "base_url": "", "error": str(exc)})
+
+    fallback = "\n\n".join(inputs)
+    fallback += (
+        "\n\n## 综合结论\n聚合模型暂不可用，本次先保留角色原文，请结合各角色观点自行判读。\n"
+        "\n## 行动清单\n1. 等待聚合模型恢复后重试汇总。\n2. 对冲突观点优先做数据复核。\n"
+        "\n## 关键分歧\n角色间存在潜在冲突，需人工复核。\n"
+        "\n## 非投资建议免责声明\n以上内容仅供研究参考，不构成任何投资建议。\n"
+    )
+    return {
+        "ok": False,
+        "analysis_markdown": fallback,
+        "used_model": "",
+        "requested_model": "",
+        "attempts": attempts,
+        "error": str(attempts[-1].get("error") if attempts else "aggregator failed"),
+        "duration_ms": int((time.time() - started) * 1000),
+    }
+
+
+def _serialize_async_multi_role_v2_job(job: dict) -> dict:
+    aggregate_ms = int(((job.get("aggregator_run") or {}).get("duration_ms") or 0))
+    debug = {}
+    if str(LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR or "").strip():
+        debug["policy_warning"] = LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR
+    return {
+        "job_id": job.get("job_id"),
+        "status": job.get("status"),
+        "progress": job.get("progress"),
+        "stage": job.get("stage"),
+        "message": job.get("message"),
+        "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at"),
+        "finished_at": job.get("finished_at"),
+        "ts_code": job.get("ts_code"),
+        "name": job.get("name"),
+        "lookback": job.get("lookback"),
+        "roles": job.get("roles"),
+        "accept_auto_degrade": bool(job.get("accept_auto_degrade", True)),
+        "decision_timeout_seconds": int(job.get("decision_timeout_seconds") or 0),
+        "decision_state": job.get("decision_state") or {},
+        "role_runs": list(job.get("role_runs") or []),
+        "aggregator_run": job.get("aggregator_run") or {},
+        "analysis": job.get("analysis") or "",
+        "analysis_markdown": job.get("analysis_markdown") or "",
+        "role_outputs": job.get("role_outputs") or [],
+        "role_sections": job.get("role_sections") or [],
+        "common_sections_markdown": job.get("common_sections_markdown") or "",
+        "used_model": job.get("used_model") or "",
+        "requested_model": job.get("requested_model") or "",
+        "attempts": job.get("attempts") or [],
+        "decision_confidence": job.get("decision_confidence") or {},
+        "risk_review": job.get("risk_review") or {},
+        "portfolio_view": job.get("portfolio_view") or {},
+        "used_context_dims": job.get("used_context_dims") or [],
+        "context": job.get("context") or {},
+        "context_build_ms": int(job.get("context_build_ms") or 0),
+        "role_parallel_ms": int(job.get("role_parallel_ms") or 0),
+        "aggregate_ms": aggregate_ms,
+        "total_ms": int(job.get("total_ms") or 0),
+        "warnings": list(job.get("warnings") or []),
+        "error": job.get("error") or "",
+        "queue_position": int(job.get("queue_position") or 0),
+        "queue_total": int(job.get("queue_total") or 0),
+        "max_concurrent_jobs": int(job.get("max_concurrent_jobs") or MULTI_ROLE_V2_MAX_CONCURRENT_JOBS),
+        "current_concurrent_jobs": int(job.get("current_concurrent_jobs") or 0),
+        "queue_length": int(job.get("queue_length") or 0),
+        "debug": debug,
+    }
+
+
+def _create_async_multi_role_v2_job(
+    *,
+    ts_code: str,
+    lookback: int,
+    roles: list[str],
+    accept_auto_degrade: bool,
+    decision_timeout_seconds: int,
+) -> dict:
+    _cleanup_async_multi_role_v2_jobs()
+    now = datetime.now(timezone.utc).isoformat()
+    job_id = uuid.uuid4().hex
+    policy_map = _load_multi_role_v2_policies()
+    role_runs = []
+    for role in roles:
+        role_policy = policy_map.get(role, {})
+        role_runs.append(
+            {
+                "role": role,
+                "status": "queued",
+                "requested_model": str(role_policy.get("primary_model") or DEFAULT_LLM_MODEL),
+                "used_model": "",
+                "attempts": [],
+                "retry_count": 0,
+                "duration_ms": 0,
+                "error": "",
+                "output": "",
+            }
+        )
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 5,
+        "stage": "queued",
+        "message": "V2 任务已创建，等待后台执行",
+        "created_at": now,
+        "updated_at": now,
+        "finished_at": "",
+        "updated_at_ts": time.time(),
+        "ts_code": ts_code,
+        "name": "",
+        "lookback": lookback,
+        "roles": roles,
+        "requested_model": DEFAULT_LLM_MODEL,
+        "used_model": "",
+        "accept_auto_degrade": bool(accept_auto_degrade),
+        "decision_timeout_seconds": max(60, int(decision_timeout_seconds or 600)),
+        "decision_state": {"pending_user_decision": False, "round": 0, "last_action": "", "pending_roles": []},
+        "role_runs": role_runs,
+        "aggregator_run": {"status": "queued", "used_model": "", "attempts": [], "error": "", "duration_ms": 0},
+        "context": {},
+        "analysis": "",
+        "analysis_markdown": "",
+        "role_outputs": [],
+        "role_sections": [],
+        "common_sections_markdown": "",
+        "decision_confidence": {},
+        "risk_review": {},
+        "portfolio_view": {},
+        "used_context_dims": [],
+        "context_build_ms": 0,
+        "role_parallel_ms": 0,
+        "total_ms": 0,
+        "attempts": [],
+        "warnings": [],
+        "error": "",
+        "queue_position": 0,
+        "queue_total": 0,
+        "max_concurrent_jobs": MULTI_ROLE_V2_MAX_CONCURRENT_JOBS,
+        "current_concurrent_jobs": 0,
+        "queue_length": 0,
+    }
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        ASYNC_MULTI_ROLE_V2_JOBS[job_id] = job
+    try:
+        _persist_multi_role_analysis_v2_job(job)
+    except Exception:
+        pass
+    publish_app_event(
+        event="multi_role_job_update",
+        payload={"job_id": job_id, "status": "queued", "progress": 5, "stage": "queued", "ts_code": ts_code, "mode": "v2"},
+        producer="backend.server",
+    )
+    return job
+
+
+def _run_multi_role_v2_role_batch(job_id: str, role_names: list[str], attempt_budget: int, stage: str):
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return []
+        context = dict(job.get("context") or {})
+        ts_code = str(job.get("ts_code") or "")
+        for item in job.get("role_runs", []):
+            if item.get("role") in role_names:
+                item["status"] = "retrying" if stage == "role_retry" else "running"
+                item["error"] = ""
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        job["updated_at_ts"] = time.time()
+        job["stage"] = stage
+        job["message"] = "角色任务并行执行中"
+    policy_map = _load_multi_role_v2_policies()
+    results: list[dict] = []
+    workers = max(1, min(len(role_names), 6))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="multi_role_v2_role") as pool:
+        futures = [
+            pool.submit(
+                _run_multi_role_v2_single_role,
+                role=role,
+                context=_build_role_specific_context(role, context),
+                policy_map=policy_map,
+                attempt_budget=attempt_budget,
+            )
+            for role in role_names
+        ]
+        for fut in concurrent.futures.as_completed(futures):
+            try:
+                results.append(fut.result())
+            except Exception as exc:
+                results.append({"ok": False, "role": "", "attempts": [], "output": "", "used_model": "", "error": str(exc), "duration_ms": 0})
+
+    by_role = {str(x.get("role") or ""): x for x in results}
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return results
+        for item in job.get("role_runs", []):
+            role = str(item.get("role") or "")
+            if role not in by_role:
+                continue
+            result = by_role[role]
+            item_attempts = list(item.get("attempts") or [])
+            item_attempts.extend(list(result.get("attempts") or []))
+            item["attempts"] = item_attempts
+            item["retry_count"] = max(0, len(item_attempts) - 1)
+            item["duration_ms"] = int((item.get("duration_ms") or 0) + int(result.get("duration_ms") or 0))
+            item["used_model"] = str(result.get("used_model") or item.get("used_model") or "")
+            item["requested_model"] = str(result.get("requested_model") or item.get("requested_model") or "")
+            item["output"] = str(result.get("output") or item.get("output") or "")
+            item["error"] = str(result.get("error") or "")
+            item["status"] = "done" if result.get("ok") else "error"
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        job["updated_at_ts"] = time.time()
+        current_role_runs = [
+            item
+            for item in list(job.get("role_runs") or [])
+            if str(item.get("role") or "") in set(role_names)
+        ]
+    role_done = [x for x in current_role_runs if str(x.get("status") or "") == "done"]
+    kimi_hits = sum(1 for x in role_done if _is_kimi_model(str(x.get("used_model") or "")))
+    gpt_fallback_hits = sum(
+        1
+        for x in role_done
+        if _is_gpt54_model(str(x.get("used_model") or "")) and _is_kimi_model(str(x.get("requested_model") or ""))
+    )
+    print(
+        f"[multi-role-v2] role_model_usage stage={stage} ts_code={ts_code} "
+        f"done={len(role_done)} kimi_hits={kimi_hits} gpt_fallback_hits={gpt_fallback_hits}",
+        flush=True,
+    )
+    return results
+
+
+def _finalize_multi_role_v2_job(job_id: str, *, final_status: str):
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return
+        done_roles = [x for x in list(job.get("role_runs") or []) if x.get("status") == "done" and str(x.get("output") or "").strip()]
+        failed_roles = [x for x in list(job.get("role_runs") or []) if x.get("status") != "done"]
+        if failed_roles:
+            job["warnings"] = [f"{x.get('role')}: {x.get('error') or 'failed'}" for x in failed_roles]
+        ts_code = str(job.get("ts_code") or "")
+        lookback = int(job.get("lookback") or 120)
+        roles = [str(x.get("role") or "") for x in list(job.get("role_runs") or []) if str(x.get("role") or "").strip()]
+        job["stage"] = "aggregating"
+        job["progress"] = 85
+        job["message"] = "角色阶段完成，正在汇总"
+        job["aggregator_run"] = {"status": "running", "used_model": "", "attempts": [], "error": "", "duration_ms": 0}
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        job["updated_at_ts"] = time.time()
+
+    publish_app_event(
+        event="multi_role_job_update",
+        payload={"job_id": job_id, "status": "running", "progress": 85, "stage": "aggregating", "ts_code": ts_code, "mode": "v2"},
+        producer="backend.server",
+    )
+
+    aggregator = _run_multi_role_v2_aggregator(
+        role_runs=done_roles,
+        ts_code=ts_code,
+        lookback=lookback,
+        policy_map=_load_multi_role_v2_policies(),
+    )
+    agg_attempts = list(aggregator.get("attempts") or [])
+    agg_kimi_hits = sum(1 for x in agg_attempts if _is_kimi_model(str(x.get("model") or "")) and not str(x.get("error") or "").strip())
+    agg_gpt_fallback_hits = sum(1 for x in agg_attempts if _is_gpt54_model(str(x.get("model") or "")) and not str(x.get("error") or "").strip())
+    agg_used_model = str(aggregator.get("used_model") or "")
+
+    analysis_markdown = str(aggregator.get("analysis_markdown") or "")
+    split_payload = split_multi_role_analysis(analysis_markdown, roles)
+    role_outputs = split_payload.get("role_sections") or [
+        {"role": x.get("role"), "content": x.get("output"), "matched": True, "logic_view": {}}
+        for x in done_roles
+    ]
+    confidence = infer_decision_confidence(analysis_markdown).to_dict()
+    risk_review = build_risk_review(analysis_markdown).to_dict()
+    portfolio = build_portfolio_view(analysis_markdown).to_dict()
+
+    now = datetime.now(timezone.utc).isoformat()
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return
+        context_build_ms = int(job.get("context_build_ms") or 0)
+        role_parallel_ms = int(job.get("role_parallel_ms") or 0)
+        aggregate_ms = int(aggregator.get("duration_ms") or 0)
+        total_ms = context_build_ms + role_parallel_ms + aggregate_ms
+        if total_ms <= 0:
+            created_dt = _parse_iso_dt(str(job.get("created_at") or ""))
+            if created_dt is not None:
+                if created_dt.tzinfo is None:
+                    created_dt = created_dt.replace(tzinfo=timezone.utc)
+                total_ms = int((datetime.now(timezone.utc) - created_dt.astimezone(timezone.utc)).total_seconds() * 1000)
+        total_ms = max(total_ms, 0)
+        job["aggregator_run"] = {
+            "status": "done" if aggregator.get("ok") else "error",
+            "used_model": aggregator.get("used_model") or "",
+            "requested_model": aggregator.get("requested_model") or "",
+            "attempts": aggregator.get("attempts") or [],
+            "error": aggregator.get("error") or "",
+            "duration_ms": aggregate_ms,
+        }
+        job["analysis_markdown"] = analysis_markdown
+        job["analysis"] = analysis_markdown
+        job["used_model"] = str(aggregator.get("used_model") or "")
+        job["attempts"] = aggregator.get("attempts") or []
+        job["role_outputs"] = role_outputs
+        job["role_sections"] = role_outputs
+        job["common_sections_markdown"] = split_payload.get("common_sections_markdown") or ""
+        job["decision_confidence"] = confidence
+        job["risk_review"] = risk_review
+        job["portfolio_view"] = portfolio
+        context = job.get("context") or {}
+        job["used_context_dims"] = [k for k, v in context.items() if v not in (None, "", [], {})]
+        job["status"] = final_status
+        job["stage"] = "done"
+        job["progress"] = 100
+        base_msg = "分析完成（含降级告警）" if final_status == "done_with_warnings" else "分析完成"
+        job["total_ms"] = total_ms
+        job["message"] = (
+            f"{base_msg} · total {total_ms}ms "
+            f"(context {context_build_ms}ms / roles {role_parallel_ms}ms / aggregate {aggregate_ms}ms)"
+        )
+        job["finished_at"] = now
+        job["updated_at"] = now
+        job["updated_at_ts"] = time.time()
+        job["decision_state"] = {
+            **(job.get("decision_state") or {}),
+            "pending_user_decision": False,
+            "pending_roles": [],
+            "updated_at": now,
+        }
+        ts_code = str(job.get("ts_code") or "")
+        try:
+            _persist_multi_role_analysis_v2_job(job)
+        except Exception:
+            pass
+    print(
+        f"[multi-role-v2] total_ms={total_ms} context_build_ms={context_build_ms} "
+        f"role_parallel_ms={role_parallel_ms} aggregate_ms={aggregate_ms} ts_code={ts_code} status={final_status} "
+        f"aggregator_used_model={agg_used_model or '-'} aggregator_kimi_hits={agg_kimi_hits} "
+        f"aggregator_gpt_fallback_hits={agg_gpt_fallback_hits}",
+        flush=True,
+    )
+    publish_app_event(
+        event="multi_role_job_update",
+        payload={"job_id": job_id, "status": final_status, "progress": 100, "stage": "done", "ts_code": ts_code, "mode": "v2"},
+        producer="backend.server",
+    )
+
+
+def _run_async_multi_role_v2_job(job_id: str):
+    try:
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+            if not job:
+                return
+            ts_code = str(job.get("ts_code") or "")
+            lookback = int(job.get("lookback") or 120)
+            roles = [str(x) for x in list(job.get("roles") or []) if str(x).strip()]
+            job["status"] = "running"
+            job["progress"] = 12
+            job["stage"] = "context"
+            job["message"] = "正在构建分析上下文"
+            job["updated_at"] = datetime.now(timezone.utc).isoformat()
+            job["updated_at_ts"] = time.time()
+        publish_app_event(
+            event="multi_role_job_update",
+            payload={"job_id": job_id, "status": "running", "progress": 12, "stage": "context", "ts_code": ts_code, "mode": "v2"},
+            producer="backend.server",
+        )
+        context_started = time.time()
+        cached_context = _get_cached_multi_role_v2_context(ts_code, lookback)
+        context_cache_hit = isinstance(cached_context, dict)
+        if context_cache_hit:
+            context = cached_context
+        else:
+            context = build_multi_role_context(ts_code, lookback)
+            _set_cached_multi_role_v2_context(ts_code, lookback, context)
+        context_build_ms = int((time.time() - context_started) * 1000)
+        print(
+            f"[multi-role-v2] context_build_ms={context_build_ms} ts_code={ts_code} lookback={lookback} cache_hit={context_cache_hit}",
+            flush=True,
+        )
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+            if not job:
+                return
+            job["context"] = context
+            job["context_build_ms"] = context_build_ms
+            job["name"] = context.get("company_profile", {}).get("name", "")
+            job["progress"] = 30
+            job["stage"] = "role_parallel"
+            job["message"] = "角色任务并行执行中"
+            job["updated_at"] = datetime.now(timezone.utc).isoformat()
+            job["updated_at_ts"] = time.time()
+            roles = [str(x) for x in list(job.get("roles") or []) if str(x).strip()]
+        publish_app_event(
+            event="multi_role_job_update",
+            payload={"job_id": job_id, "status": "running", "progress": 30, "stage": "role_parallel", "ts_code": ts_code, "mode": "v2"},
+            producer="backend.server",
+        )
+        role_started = time.time()
+        _run_multi_role_v2_role_batch(job_id, roles, 2, "role_parallel")
+        role_parallel_ms = int((time.time() - role_started) * 1000)
+        print(
+            f"[multi-role-v2] role_parallel_ms={role_parallel_ms} ts_code={ts_code} roles={len(roles)}",
+            flush=True,
+        )
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+            if not job:
+                return
+            job["role_parallel_ms"] = int(job.get("role_parallel_ms") or 0) + role_parallel_ms
+            failed_roles = [x.get("role") for x in list(job.get("role_runs") or []) if x.get("status") != "done"]
+            accept_auto_degrade = bool(job.get("accept_auto_degrade", True))
+            if failed_roles and not accept_auto_degrade:
+                now = datetime.now(timezone.utc).isoformat()
+                job["status"] = "pending_user_decision"
+                job["progress"] = 70
+                job["stage"] = "pending_user_decision"
+                job["message"] = (
+                    f"部分角色失败，等待用户决策（context {int(job.get('context_build_ms') or 0)}ms / "
+                    f"roles {int(job.get('role_parallel_ms') or 0)}ms）"
+                )
+                job["decision_state"] = {
+                    "pending_user_decision": True,
+                    "pending_roles": failed_roles,
+                    "round": int((job.get("decision_state") or {}).get("round") or 0) + 1,
+                    "last_action": "awaiting",
+                    "updated_at": now,
+                }
+                job["updated_at"] = now
+                job["updated_at_ts"] = time.time()
+                try:
+                    _persist_multi_role_analysis_v2_job(job)
+                except Exception:
+                    pass
+                publish_app_event(
+                    event="multi_role_job_update",
+                    payload={
+                        "job_id": job_id,
+                        "status": "pending_user_decision",
+                        "progress": 70,
+                        "stage": "pending_user_decision",
+                        "ts_code": ts_code,
+                        "mode": "v2",
+                    },
+                    producer="backend.server",
+                )
+                return
+            final_status = "done_with_warnings" if failed_roles else "done"
+        _finalize_multi_role_v2_job(job_id, final_status=final_status)
+    except Exception as exc:
+        now = datetime.now(timezone.utc).isoformat()
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+            if not job:
+                return
+            job["status"] = "error"
+            job["progress"] = 100
+            job["stage"] = "error"
+            job["message"] = "分析失败"
+            job["error"] = str(exc)
+            job["finished_at"] = now
+            job["updated_at"] = now
+            job["updated_at_ts"] = time.time()
+            ts_code = str(job.get("ts_code") or "")
+            try:
+                _persist_multi_role_analysis_v2_job(job)
+            except Exception:
+                pass
+        publish_app_event(
+            event="multi_role_job_update",
+            payload={"job_id": job_id, "status": "error", "progress": 100, "stage": "error", "ts_code": ts_code, "mode": "v2", "error": str(exc)},
+            producer="backend.server",
+        )
+    finally:
+        _release_multi_role_v2_slot(job_id)
+
+
+def _retry_async_multi_role_v2_job(job_id: str):
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return
+        if str(job.get("status")) != "running":
+            return
+        ts_code = str(job.get("ts_code") or "")
+        pending = list((job.get("decision_state") or {}).get("pending_roles") or [])
+        if not pending:
+            return
+        job["progress"] = 72
+        job["stage"] = "role_retry"
+        job["message"] = "按用户指令重试失败角色中"
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        job["updated_at_ts"] = time.time()
+    publish_app_event(
+        event="multi_role_job_update",
+        payload={"job_id": job_id, "status": "running", "progress": 72, "stage": "role_retry", "ts_code": ts_code, "mode": "v2"},
+        producer="backend.server",
+    )
+    role_started = time.time()
+    _run_multi_role_v2_role_batch(job_id, pending, 2, "role_retry")
+    role_retry_ms = int((time.time() - role_started) * 1000)
+    print(
+        f"[multi-role-v2] role_retry_ms={role_retry_ms} ts_code={ts_code} retry_roles={len(pending)}",
+        flush=True,
+    )
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            return
+        job["role_parallel_ms"] = int(job.get("role_parallel_ms") or 0) + role_retry_ms
+        failed_roles = [x.get("role") for x in list(job.get("role_runs") or []) if x.get("status") != "done"]
+        if failed_roles:
+            now = datetime.now(timezone.utc).isoformat()
+            job["status"] = "pending_user_decision"
+            job["progress"] = 78
+            job["stage"] = "pending_user_decision"
+            job["message"] = (
+                f"重试后仍有失败角色，等待用户决策（roles {int(job.get('role_parallel_ms') or 0)}ms）"
+            )
+            job["decision_state"] = {
+                "pending_user_decision": True,
+                "pending_roles": failed_roles,
+                "round": int((job.get("decision_state") or {}).get("round") or 0) + 1,
+                "last_action": "retry_failed",
+                "updated_at": now,
+            }
+            job["updated_at"] = now
+            job["updated_at_ts"] = time.time()
+            try:
+                _persist_multi_role_analysis_v2_job(job)
+            except Exception:
+                pass
+            publish_app_event(
+                event="multi_role_job_update",
+                payload={"job_id": job_id, "status": "pending_user_decision", "progress": 78, "stage": "pending_user_decision", "ts_code": ts_code, "mode": "v2"},
+                producer="backend.server",
+            )
+            return
+    _finalize_multi_role_v2_job(job_id, final_status="done")
+
+
+def start_async_multi_role_v2_job(*, ts_code: str, lookback: int, roles: list[str], accept_auto_degrade: bool, decision_timeout_seconds: int):
+    job = _create_async_multi_role_v2_job(
+        ts_code=ts_code,
+        lookback=lookback,
+        roles=roles,
+        accept_auto_degrade=accept_auto_degrade,
+        decision_timeout_seconds=decision_timeout_seconds,
+    )
+    should_start = False
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job_id = str(job.get("job_id") or "")
+        if len(ASYNC_MULTI_ROLE_V2_ACTIVE) < MULTI_ROLE_V2_MAX_CONCURRENT_JOBS:
+            ASYNC_MULTI_ROLE_V2_ACTIVE.add(job_id)
+            job["queue_position"] = 0
+            should_start = True
+        else:
+            if job_id not in ASYNC_MULTI_ROLE_V2_QUEUE:
+                ASYNC_MULTI_ROLE_V2_QUEUE.append(job_id)
+            queue_pos = _queue_position_locked(job_id)
+            now = datetime.now(timezone.utc).isoformat()
+            job["status"] = "queued"
+            job["stage"] = "queued"
+            job["progress"] = 5
+            job["message"] = (
+                f"任务排队中，前方 {max(0, queue_pos - 1)} 个任务，"
+                f"并发上限 {MULTI_ROLE_V2_MAX_CONCURRENT_JOBS}"
+            )
+            job["queue_position"] = int(queue_pos)
+            job["updated_at"] = now
+            job["updated_at_ts"] = time.time()
+            try:
+                _persist_multi_role_analysis_v2_job(job)
+            except Exception:
+                pass
+        _refresh_multi_role_v2_runtime_meta_locked()
+    if should_start:
+        worker = threading.Thread(
+            target=_run_async_multi_role_v2_job,
+            args=(job["job_id"],),
+            daemon=True,
+            name=f"multi_role_v2_{job['job_id'][:8]}",
+        )
+        worker.start()
+    return _serialize_async_multi_role_v2_job(job)
+
+
+def get_async_multi_role_v2_job(job_id: str):
+    _cleanup_async_multi_role_v2_jobs()
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        _refresh_multi_role_v2_runtime_meta_locked()
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            persisted = _load_persisted_multi_role_v2_job(job_id)
+            if not persisted:
+                return None
+            status = str(persisted.get("status") or "")
+            # 进程内任务字典不包含该 job，但持久化状态仍是 queued/running，
+            # 通常意味着服务重启后执行线程已丢失，避免前端长期“假运行”。
+            if status in {"queued", "running"}:
+                updated_dt = _parse_iso_dt(str(persisted.get("updated_at") or ""))
+                stale_seconds = None
+                if updated_dt:
+                    if updated_dt.tzinfo is None:
+                        updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                    stale_seconds = (datetime.now(timezone.utc) - updated_dt.astimezone(timezone.utc)).total_seconds()
+                if stale_seconds is None or stale_seconds >= 90:
+                    now = datetime.now(timezone.utc).isoformat()
+                    persisted["status"] = "error"
+                    persisted["stage"] = "error"
+                    persisted["progress"] = 100
+                    persisted["error"] = "任务执行上下文已丢失（可能服务重启），请重新发起分析"
+                    persisted["message"] = "任务未实际执行，已自动转为失败，请重试"
+                    persisted["updated_at"] = now
+                    persisted["finished_at"] = now
+                    persisted["updated_at_ts"] = time.time()
+                    try:
+                        _persist_multi_role_analysis_v2_job(persisted)
+                    except Exception:
+                        pass
+            persisted["current_concurrent_jobs"] = len(ASYNC_MULTI_ROLE_V2_ACTIVE)
+            persisted["queue_length"] = len(ASYNC_MULTI_ROLE_V2_QUEUE)
+            persisted["queue_total"] = len(ASYNC_MULTI_ROLE_V2_QUEUE)
+            persisted["queue_position"] = 0
+            persisted["max_concurrent_jobs"] = MULTI_ROLE_V2_MAX_CONCURRENT_JOBS
+            return persisted
+        if str(job.get("status") or "") == "queued":
+            queue_pos = _queue_position_locked(str(job_id or ""))
+            if queue_pos > 0:
+                job["message"] = (
+                    f"任务排队中，前方 {max(0, queue_pos - 1)} 个任务，"
+                    f"并发上限 {MULTI_ROLE_V2_MAX_CONCURRENT_JOBS}"
+                )
+            job["queue_position"] = int(queue_pos)
+        return _serialize_async_multi_role_v2_job(job)
+
+
+def decide_async_multi_role_v2_job(*, job_id: str, action: str):
+    action = str(action or "").strip().lower()
+    if action not in {"retry", "degrade", "abort"}:
+        raise ValueError("action 必须是 retry|degrade|abort")
+    _cleanup_async_multi_role_v2_jobs()
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        job = ASYNC_MULTI_ROLE_V2_JOBS.get(job_id)
+        if not job:
+            raise RuntimeError(f"任务不存在或已过期: {job_id}")
+        if str(job.get("status")) != "pending_user_decision":
+            raise RuntimeError(f"当前任务状态不允许决策: {job.get('status')}")
+        ts_code = str(job.get("ts_code") or "")
+        now = datetime.now(timezone.utc).isoformat()
+        state = dict(job.get("decision_state") or {})
+        state["last_action"] = action
+        state["updated_at"] = now
+        state["pending_user_decision"] = False
+        job["decision_state"] = state
+        job["updated_at"] = now
+        job["updated_at_ts"] = time.time()
+
+        if action == "abort":
+            job["status"] = "error"
+            job["progress"] = 100
+            job["stage"] = "error"
+            job["message"] = "用户终止任务"
+            job["error"] = "用户选择 abort"
+            job["finished_at"] = now
+            try:
+                _persist_multi_role_analysis_v2_job(job)
+            except Exception:
+                pass
+            publish_app_event(
+                event="multi_role_job_update",
+                payload={"job_id": job_id, "status": "error", "progress": 100, "stage": "error", "ts_code": ts_code, "mode": "v2"},
+                producer="backend.server",
+            )
+            return _serialize_async_multi_role_v2_job(job)
+
+        if action == "degrade":
+            job["status"] = "running"
+            job["progress"] = 82
+            job["stage"] = "aggregating"
+            job["message"] = "按用户决策执行降级汇总"
+        else:
+            job["status"] = "running"
+            job["progress"] = 72
+            job["stage"] = "role_retry"
+            job["message"] = "按用户决策执行补重试"
+        try:
+            _persist_multi_role_analysis_v2_job(job)
+        except Exception:
+            pass
+    if action == "degrade":
+        _finalize_multi_role_v2_job(job_id, final_status="done_with_warnings")
+    else:
+        worker = threading.Thread(
+            target=_retry_async_multi_role_v2_job,
+            args=(job_id,),
+            daemon=True,
+            name=f"multi_role_v2_retry_{job_id[:8]}",
+        )
+        worker.start()
+    return get_async_multi_role_v2_job(job_id) or {"job_id": job_id, "status": "error", "error": "任务不存在"}
+
+
+def _retry_async_multi_role_v2_aggregate_worker(job_id: str):
+    target_job_id = str(job_id or "").strip()
+    in_memory = False
+    ts_code = ""
+    try:
+        _cleanup_async_multi_role_v2_jobs()
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            live_job = ASYNC_MULTI_ROLE_V2_JOBS.get(target_job_id)
+        if live_job:
+            job = live_job
+            in_memory = True
+        else:
+            persisted = _load_persisted_multi_role_v2_job(target_job_id)
+            if not persisted:
+                return
+            job = persisted
+            in_memory = False
+
+        ts_code = str(job.get("ts_code") or "")
+        lookback = int(job.get("lookback") or 120)
+        role_runs = list(job.get("role_runs") or [])
+        done_roles = [x for x in role_runs if str(x.get("status") or "") == "done" and str(x.get("output") or "").strip()]
+        if not done_roles:
+            raise RuntimeError("没有可用的角色输出，无法重试汇总")
+
+        aggregator = _run_multi_role_v2_aggregator(
+            role_runs=done_roles,
+            ts_code=ts_code,
+            lookback=lookback,
+            policy_map=_load_multi_role_v2_policies(),
+        )
+        analysis_markdown = str(aggregator.get("analysis_markdown") or "")
+        split_payload = split_multi_role_analysis(analysis_markdown, list(job.get("roles") or []))
+        role_outputs = split_payload.get("role_sections") or [
+            {"role": x.get("role"), "content": x.get("output"), "matched": True, "logic_view": {}}
+            for x in done_roles
+        ]
+        confidence = infer_decision_confidence(analysis_markdown).to_dict()
+        risk_review = build_risk_review(analysis_markdown).to_dict()
+        portfolio = build_portfolio_view(analysis_markdown).to_dict()
+
+        final_status = "done" if aggregator.get("ok") else "done_with_warnings"
+        complete_now = datetime.now(timezone.utc).isoformat()
+
+        if in_memory:
+            with ASYNC_MULTI_ROLE_V2_LOCK:
+                live = ASYNC_MULTI_ROLE_V2_JOBS.get(target_job_id)
+                if not live:
+                    return
+                live["aggregator_run"] = {
+                    "status": "done" if aggregator.get("ok") else "error",
+                    "used_model": aggregator.get("used_model") or "",
+                    "requested_model": aggregator.get("requested_model") or "",
+                    "attempts": aggregator.get("attempts") or [],
+                    "error": aggregator.get("error") or "",
+                    "duration_ms": int(aggregator.get("duration_ms") or 0),
+                }
+                live["analysis_markdown"] = analysis_markdown
+                live["analysis"] = analysis_markdown
+                live["used_model"] = str(aggregator.get("used_model") or "")
+                live["attempts"] = aggregator.get("attempts") or []
+                live["role_outputs"] = role_outputs
+                live["role_sections"] = role_outputs
+                live["common_sections_markdown"] = split_payload.get("common_sections_markdown") or ""
+                live["decision_confidence"] = confidence
+                live["risk_review"] = risk_review
+                live["portfolio_view"] = portfolio
+                live["status"] = final_status
+                live["stage"] = "done"
+                live["progress"] = 100
+                live["message"] = "汇总重试完成" if aggregator.get("ok") else "汇总重试失败，已保留角色原文"
+                live["error"] = ""
+                live["finished_at"] = complete_now
+                live["updated_at"] = complete_now
+                live["updated_at_ts"] = time.time()
+                try:
+                    _persist_multi_role_analysis_v2_job(live)
+                except Exception:
+                    pass
+            publish_app_event(
+                event="multi_role_job_update",
+                payload={"job_id": target_job_id, "status": final_status, "progress": 100, "stage": "done", "ts_code": ts_code, "mode": "v2"},
+                producer="backend.server",
+            )
+            return
+
+        job["aggregator_run"] = {
+            "status": "done" if aggregator.get("ok") else "error",
+            "used_model": aggregator.get("used_model") or "",
+            "requested_model": aggregator.get("requested_model") or "",
+            "attempts": aggregator.get("attempts") or [],
+            "error": aggregator.get("error") or "",
+            "duration_ms": int(aggregator.get("duration_ms") or 0),
+        }
+        job["analysis_markdown"] = analysis_markdown
+        job["analysis"] = analysis_markdown
+        job["used_model"] = str(aggregator.get("used_model") or "")
+        job["attempts"] = aggregator.get("attempts") or []
+        job["role_outputs"] = role_outputs
+        job["role_sections"] = role_outputs
+        job["common_sections_markdown"] = split_payload.get("common_sections_markdown") or ""
+        job["decision_confidence"] = confidence
+        job["risk_review"] = risk_review
+        job["portfolio_view"] = portfolio
+        job["status"] = final_status
+        job["stage"] = "done"
+        job["progress"] = 100
+        job["message"] = "汇总重试完成" if aggregator.get("ok") else "汇总重试失败，已保留角色原文"
+        job["error"] = ""
+        job["finished_at"] = complete_now
+        job["updated_at"] = complete_now
+        job["updated_at_ts"] = time.time()
+        try:
+            _persist_multi_role_analysis_v2_job(job)
+        except Exception:
+            pass
+    except Exception as exc:
+        fail_now = datetime.now(timezone.utc).isoformat()
+        if in_memory:
+            with ASYNC_MULTI_ROLE_V2_LOCK:
+                live = ASYNC_MULTI_ROLE_V2_JOBS.get(target_job_id)
+                if live:
+                    live["status"] = "done_with_warnings"
+                    live["stage"] = "done"
+                    live["progress"] = 100
+                    live["message"] = f"汇总重试失败：{exc}"
+                    live["error"] = str(exc)
+                    live["finished_at"] = fail_now
+                    live["updated_at"] = fail_now
+                    live["updated_at_ts"] = time.time()
+                    try:
+                        _persist_multi_role_analysis_v2_job(live)
+                    except Exception:
+                        pass
+            if ts_code:
+                publish_app_event(
+                    event="multi_role_job_update",
+                    payload={"job_id": target_job_id, "status": "done_with_warnings", "progress": 100, "stage": "done", "ts_code": ts_code, "mode": "v2"},
+                    producer="backend.server",
+                )
+            return
+        persisted = _load_persisted_multi_role_v2_job(target_job_id)
+        if persisted:
+            persisted["status"] = "done_with_warnings"
+            persisted["stage"] = "done"
+            persisted["progress"] = 100
+            persisted["message"] = f"汇总重试失败：{exc}"
+            persisted["error"] = str(exc)
+            persisted["finished_at"] = fail_now
+            persisted["updated_at"] = fail_now
+            persisted["updated_at_ts"] = time.time()
+            try:
+                _persist_multi_role_analysis_v2_job(persisted)
+            except Exception:
+                pass
+
+
+def retry_async_multi_role_v2_aggregate(*, job_id: str):
+    target_job_id = str(job_id or "").strip()
+    if not target_job_id:
+        raise ValueError("job_id 不能为空")
+    _cleanup_async_multi_role_v2_jobs()
+    with ASYNC_MULTI_ROLE_V2_LOCK:
+        live_job = ASYNC_MULTI_ROLE_V2_JOBS.get(target_job_id)
+    if live_job:
+        job = live_job
+        in_memory = True
+    else:
+        persisted = _load_persisted_multi_role_v2_job(target_job_id)
+        if not persisted:
+            raise RuntimeError(f"任务不存在或已过期: {target_job_id}")
+        job = persisted
+        in_memory = False
+
+    status = str(job.get("status") or "")
+    if status in {"queued", "running"}:
+        raise RuntimeError(f"任务仍在执行中，当前状态={status}，暂不支持重试汇总")
+
+    role_runs = list(job.get("role_runs") or [])
+    done_roles = [x for x in role_runs if str(x.get("status") or "") == "done" and str(x.get("output") or "").strip()]
+    if not done_roles:
+        raise RuntimeError("没有可用的角色输出，无法重试汇总")
+
+    now = datetime.now(timezone.utc).isoformat()
+    ts_code = str(job.get("ts_code") or "")
+    if in_memory:
+        with ASYNC_MULTI_ROLE_V2_LOCK:
+            live = ASYNC_MULTI_ROLE_V2_JOBS.get(target_job_id)
+            if not live:
+                raise RuntimeError(f"任务不存在或已过期: {target_job_id}")
+            live["status"] = "running"
+            live["progress"] = 85
+            live["stage"] = "aggregating"
+            live["message"] = "正在重试汇总器（后台执行）"
+            live["updated_at"] = now
+            live["updated_at_ts"] = time.time()
+            try:
+                _persist_multi_role_analysis_v2_job(live)
+            except Exception:
+                pass
+            payload_job = _serialize_async_multi_role_v2_job(live)
+    else:
+        job["status"] = "running"
+        job["progress"] = 85
+        job["stage"] = "aggregating"
+        job["message"] = "正在重试汇总器（后台执行）"
+        job["updated_at"] = now
+        job["updated_at_ts"] = time.time()
+        try:
+            _persist_multi_role_analysis_v2_job(job)
+        except Exception:
+            pass
+        payload_job = _serialize_async_multi_role_v2_job(job)
+
+    publish_app_event(
+        event="multi_role_job_update",
+        payload={"job_id": target_job_id, "status": "running", "progress": 85, "stage": "aggregating", "ts_code": ts_code, "mode": "v2"},
+        producer="backend.server",
+    )
+    worker = threading.Thread(
+        target=_retry_async_multi_role_v2_aggregate_worker,
+        args=(target_job_id,),
+        daemon=True,
+        name=f"multi_role_v2_reagg_{target_job_id[:8]}",
+    )
+    worker.start()
+    return payload_job
+
+
 def build_agent_service_deps() -> dict:
     return build_backend_runtime_deps(
         sqlite3_module=sqlite3,
@@ -5172,7 +6907,16 @@ class ApiHandler(BaseHTTPRequestHandler):
             return True
         if path == "/api/llm/trend":
             return "trend_analyze" in perms
-        if path in {"/api/llm/multi-role", "/api/llm/multi-role/start", "/api/llm/multi-role/task"}:
+        if path in {
+            "/api/llm/multi-role",
+            "/api/llm/multi-role/start",
+            "/api/llm/multi-role/task",
+            "/api/llm/multi-role/v2/start",
+            "/api/llm/multi-role/v2/task",
+            "/api/llm/multi-role/v2/decision",
+            "/api/llm/multi-role/v2/retry-aggregate",
+            "/api/llm/multi-role/v2/history",
+        }:
             return "multi_role_analyze" in perms
         if path in {"/api/stocks", "/api/stocks/filters"}:
             return "multi_role_analyze" in perms
@@ -5296,9 +7040,15 @@ class ApiHandler(BaseHTTPRequestHandler):
             "query_stock_scores": query_stock_scores,
             "query_prices": query_prices,
             "query_minline": query_minline,
+            "query_multi_role_analysis_history": query_multi_role_analysis_history,
             **self._agent_service_deps(),
             "start_async_multi_role_job": start_async_multi_role_job,
             "get_async_multi_role_job": get_async_multi_role_job,
+            "start_async_multi_role_v2_job": start_async_multi_role_v2_job,
+            "get_async_multi_role_v2_job": get_async_multi_role_v2_job,
+            "decide_async_multi_role_v2_job": decide_async_multi_role_v2_job,
+            "retry_async_multi_role_v2_aggregate": retry_async_multi_role_v2_aggregate,
+            "find_today_reusable_multi_role_v2_job": find_today_reusable_multi_role_v2_job,
             **build_stock_news_service_runtime_deps(),
             "query_news_sources": query_news_sources,
             "query_news": query_news,
@@ -5317,6 +7067,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "test_one_llm_provider": test_one_llm_provider,
             "test_model_llm_providers": test_model_llm_providers,
             "update_default_rate_limit": update_default_rate_limit,
+            "get_multi_role_v2_policies": get_multi_role_v2_policies,
+            "update_multi_role_v2_policies": update_multi_role_v2_policies,
         }
 
     def do_POST(self):
@@ -5352,6 +7104,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         deps = self._route_deps()
         deps["auth_context"] = auth_ctx
         if system_routes.dispatch_post(self, parsed, payload, deps):
+            return
+        if stock_routes.dispatch_post(self, parsed, payload, deps):
             return
         if quant_factor_routes.dispatch_post(self, parsed, payload, deps):
             return

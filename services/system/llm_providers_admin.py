@@ -14,6 +14,21 @@ from llm_provider_config import DEFAULT_PROVIDER_FILE, get_default_rate_limit_pe
 _LOCK = threading.RLock()
 
 
+def _safe_bool(value: Any, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "enabled", "active"}:
+        return True
+    if text in {"0", "false", "no", "off", "disabled", "inactive"}:
+        return False
+    return default
+
+
 def _resolve_config_path() -> Path:
     configured = (os.getenv("LLM_PROVIDER_CONFIG_FILE", "") or "").strip()
     path = configured or DEFAULT_PROVIDER_FILE
@@ -25,6 +40,15 @@ def _default_payload() -> dict[str, Any]:
         "default_request_model": "GPT-5.4",
         "fallback_models": ["GPT-5.4", "kimi-k2.5", "deepseek-chat"],
         "default_rate_limit_per_minute": 10,
+        "multi_role_v2_policies": {
+            "__aggregator__": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "宏观经济分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "股票分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "国际资本分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "汇率分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "风险控制官": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+            "行业分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5"]},
+        },
         "providers": {},
     }
 
@@ -42,6 +66,8 @@ def _load_payload(path: Path) -> dict[str, Any]:
     merged.update(data)
     if not isinstance(merged.get("providers"), dict):
         merged["providers"] = {}
+    if not isinstance(merged.get("multi_role_v2_policies"), dict):
+        merged["multi_role_v2_policies"] = _default_payload().get("multi_role_v2_policies", {})
     merged["default_rate_limit_per_minute"] = max(
         1,
         int(merged.get("default_rate_limit_per_minute") or get_default_rate_limit_per_minute() or 10),
@@ -96,7 +122,7 @@ def _sanitize_node(
     status = str(node.get("status") or node.get("health_status") or "active").strip().lower()
     if status not in {"active", "disabled"}:
         status = "active"
-    rate_limit_enabled = bool(node.get("rate_limit_enabled", True))
+    rate_limit_enabled = _safe_bool(node.get("rate_limit_enabled", True), True)
     node_limit = node.get("rate_limit_per_minute", None)
     rate_limit_per_minute = max(1, int(node_limit or default_limit))
     model_name = str(node.get("model") or provider_key).strip() or provider_key
@@ -119,7 +145,7 @@ def _sanitize_node(
         "api_key_source": api_key_source,
         "api_key_env": str(node.get("api_key_env") or ""),
         "default_temperature": float(node.get("default_temperature", 0.2) or 0.2),
-        "enabled": bool(node.get("enabled", True)),
+        "enabled": _safe_bool(node.get("enabled", True), True),
         "status": status,
         "rate_limit_enabled": rate_limit_enabled,
         "rate_limit_per_minute": rate_limit_per_minute,
@@ -214,8 +240,54 @@ def list_llm_providers() -> dict[str, Any]:
         "default_request_model": str(payload.get("default_request_model") or ""),
         "fallback_models": list(payload.get("fallback_models") or []),
         "default_rate_limit_per_minute": default_limit,
+        "multi_role_v2_policies": payload.get("multi_role_v2_policies") or {},
         "items": provider_items,
     }
+
+
+def get_multi_role_v2_policies() -> dict[str, Any]:
+    path = _resolve_config_path()
+    with _LOCK:
+        payload = _load_payload(path)
+    return {
+        "ok": True,
+        "config_path": str(path),
+        "multi_role_v2_policies": payload.get("multi_role_v2_policies") or {},
+    }
+
+
+def update_multi_role_v2_policies(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = payload.get("multi_role_v2_policies")
+    if not isinstance(raw, dict):
+        raise ValueError("multi_role_v2_policies 必须是对象")
+    normalized: dict[str, Any] = {}
+    for role, cfg in raw.items():
+        role_name = str(role or "").strip()
+        if not role_name:
+            continue
+        if not isinstance(cfg, dict):
+            continue
+        primary = str(cfg.get("primary_model") or "").strip()
+        fallback_raw = cfg.get("fallback_models") or []
+        if isinstance(fallback_raw, str):
+            fallback = [x.strip() for x in fallback_raw.split(",") if x.strip()]
+        elif isinstance(fallback_raw, list):
+            fallback = [str(x).strip() for x in fallback_raw if str(x).strip()]
+        else:
+            fallback = []
+        normalized[role_name] = {
+            "primary_model": primary,
+            "fallback_models": fallback,
+        }
+    if not normalized:
+        raise ValueError("multi_role_v2_policies 不能为空")
+    path = _resolve_config_path()
+    with _LOCK:
+        cfg = _load_payload(path)
+        cfg["multi_role_v2_policies"] = normalized
+        _save_payload(path, cfg)
+    reload_provider_runtime()
+    return get_multi_role_v2_policies()
 
 
 def _parse_index(value: Any) -> int:
@@ -241,7 +313,7 @@ def create_llm_provider(payload: dict[str, Any]) -> dict[str, Any]:
     if status not in {"active", "disabled"}:
         status = "active"
     default_temperature = float(payload.get("default_temperature", 0.2) or 0.2)
-    rate_limit_enabled = bool(payload.get("rate_limit_enabled", True))
+    rate_limit_enabled = _safe_bool(payload.get("rate_limit_enabled", True), True)
     rate_limit_per_minute = payload.get("rate_limit_per_minute", None)
 
     path = _resolve_config_path()
@@ -300,7 +372,7 @@ def update_llm_provider(payload: dict[str, Any]) -> dict[str, Any]:
         if "default_temperature" in payload:
             node["default_temperature"] = float(payload.get("default_temperature") or 0.2)
         if "rate_limit_enabled" in payload:
-            node["rate_limit_enabled"] = bool(payload.get("rate_limit_enabled"))
+            node["rate_limit_enabled"] = _safe_bool(payload.get("rate_limit_enabled"), True)
         if "rate_limit_per_minute" in payload:
             value = payload.get("rate_limit_per_minute")
             node["rate_limit_per_minute"] = max(1, int(value)) if value is not None else default_limit

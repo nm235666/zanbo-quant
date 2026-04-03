@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
         default=str(Path(__file__).resolve().parent / "stock_codes.db"),
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
-    parser.add_argument("--model", default="GPT-5.4", help="模型名；批处理/并发默认只使用 GPT-5.4")
+    parser.add_argument("--model", default="auto", help="模型名；默认 auto 按当前路由策略自动选择并降级")
     parser.add_argument("--temperature", type=float, default=0.1, help="采样温度")
     parser.add_argument("--limit", type=int, default=20, help="本次最多评分条数")
     parser.add_argument("--row-id", type=int, default=0, help="仅评分指定新闻ID")

@@ -3,6 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
+NEWS_PREFERRED_MODEL = "zhipu-news"
+DAILY_SUMMARY_PREFERRED_MODEL = "gpt-5.4-daily-summary"
+MULTI_ROLE_DEDICATED_GPT_CHANNEL = "gpt-5.4-multi-role"
+TREND_DEDICATED_GPT_CHANNEL = "gpt-5.4-trend"
+
 
 def dispatch_get(handler, parsed, deps: dict) -> bool:
     if parsed.path == "/api/stock-news":
@@ -53,7 +58,13 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
         company_name = params.get("company_name", [""])[0].strip()
-        model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        requested_model = params.get("model", [""])[0].strip()
+        normalized = deps["normalize_model_name"](requested_model or "auto")
+        requested_key = str(normalized or "").strip().lower()
+        if requested_key == DAILY_SUMMARY_PREFERRED_MODEL:
+            handler._send_json({"error": "gpt-5.4-daily-summary 仅允许新闻日报生成链路使用"}, status=400)
+            return True
+        model = NEWS_PREFERRED_MODEL if normalized in {"", "auto", "default"} else normalized
         score = params.get("score", ["1"])[0].strip() not in {"0", "false", "False"}
         try:
             page_size = int(params.get("page_size", ["20"])[0])
@@ -81,7 +92,13 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
     if parsed.path == "/api/stock-news/score":
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
-        model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        requested_model = params.get("model", [""])[0].strip()
+        normalized = deps["normalize_model_name"](requested_model or "auto")
+        requested_key = str(normalized or "").strip().lower()
+        if requested_key == DAILY_SUMMARY_PREFERRED_MODEL:
+            handler._send_json({"error": "gpt-5.4-daily-summary 仅允许新闻日报生成链路使用"}, status=400)
+            return True
+        model = NEWS_PREFERRED_MODEL if normalized in {"", "auto", "default"} else normalized
         try:
             row_id = int(params.get("row_id", ["0"])[0])
             limit = int(params.get("limit", ["20"])[0])
@@ -179,7 +196,19 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
 
     if parsed.path == "/api/news/daily-summaries/generate":
         params = parse_qs(parsed.query)
-        model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        requested_model = params.get("model", [""])[0].strip()
+        normalized = deps["normalize_model_name"](requested_model or "auto")
+        requested_key = str(normalized or "").strip().lower()
+        if requested_key == MULTI_ROLE_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-multi-role 仅允许多角色公司分析链路使用"}, status=400)
+            return True
+        if requested_key == TREND_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-trend 仅允许股票走势分析链路使用"}, status=400)
+            return True
+        if requested_key and requested_key not in {"auto", "default", "gpt-5.4", DAILY_SUMMARY_PREFERRED_MODEL}:
+            handler._send_json({"error": "新闻日报生成仅允许使用 gpt-5.4-daily-summary 专用通道"}, status=400)
+            return True
+        model = DAILY_SUMMARY_PREFERRED_MODEL
         summary_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         try:
             job = deps["start_daily_summary_generation"](deps, model=model, summary_date=summary_date)

@@ -8,6 +8,8 @@
           <select v-model="draftFilters.model" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部模型</option>
             <option value="GPT-5.4">GPT-5.4</option>
+            <option value="gpt-5.4-daily-summary">gpt-5.4-daily-summary</option>
+            <option value="zhipu-news">zhipu-news</option>
             <option value="kimi-k2.5">kimi-k2.5</option>
             <option value="deepseek-chat">deepseek-chat</option>
           </select>
@@ -25,6 +27,17 @@
         </div>
         <div v-if="attemptChain" class="mt-2 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
         <div v-if="protocolMetaText" class="mt-2 text-sm text-[var(--muted)]">{{ protocolMetaText }}</div>
+        <StatePanel
+          v-if="queryError"
+          class="mt-3"
+          tone="danger"
+          title="日报列表加载失败"
+          :description="queryError"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="reloadList">重新加载</button>
+          </template>
+        </StatePanel>
       </PageSection>
 
       <PageSection title="任务闭环状态" subtitle="展示日报任务的通知发送状态，便于联调 webhook。">
@@ -33,6 +46,17 @@
 
       <div class="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <PageSection :title="`日报结果 (${result?.total || 0})`" subtitle="左侧列表切换，右侧查看正文。">
+          <StatePanel
+            v-if="!queryError && !isFetching && !(result?.items || []).length"
+            class="mb-4"
+            tone="warning"
+            title="当前筛选下没有日报结果"
+            description="可以先清空日期和来源关键字，或直接生成今日总结建立一条新的日报记录。"
+          >
+            <template #action>
+              <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" @click="resetFilters">恢复默认筛选</button>
+            </template>
+          </StatePanel>
           <div class="space-y-2">
             <InfoCard
               v-for="item in result?.items || []"
@@ -79,6 +103,7 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchDailySummaries, fetchDailySummaryTask, triggerDailySummaryGenerate } from '../../services/api/news'
 import { fetchAuthStatus } from '../../services/api/auth'
 import { formatDateTime } from '../../shared/utils/format'
@@ -100,7 +125,7 @@ const detailExportRef = ref<HTMLElement | null>(null)
 const latestTaskNotification = ref<Record<string, any>>({})
 let pollTimer = 0
 
-const { data: result, refetch, isFetching } = useQuery({
+const { data: result, refetch, isFetching, error } = useQuery({
   queryKey: ['daily-summaries', queryFilters],
   queryFn: () => fetchDailySummaries(queryFilters),
 })
@@ -108,7 +133,10 @@ const { data: result, refetch, isFetching } = useQuery({
 watch(
   () => result.value?.items,
   (items) => {
-    if (!items?.length) return
+    if (!items?.length) {
+      selectedItem.value = null
+      return
+    }
     if (!selectedItem.value) {
       selectedItem.value = items[0]
       return
@@ -125,6 +153,7 @@ const selectedContent = computed(() => {
   return selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。'
 })
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
+const queryError = computed(() => error.value?.message || '')
 const protocolMetaText = computed(() => {
   const protocol = result.value?.protocol || {}
   const version = String(protocol.version || '').trim()
@@ -148,11 +177,11 @@ const notificationMeta = computed(() => {
 })
 
 const generateMutation = useMutation({
-  mutationFn: () => triggerDailySummaryGenerate({}),
+  mutationFn: () => triggerDailySummaryGenerate({ model: 'auto' }),
   onSuccess: (payload: Record<string, any>) => {
     const jobId = String(payload.job_id || '')
     attempts.value = Array.isArray(payload.attempts) ? payload.attempts : []
-    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 自动路由中（默认 GPT-5.4）`
+    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 默认 GPT 优先（可按传参覆盖）`
     if (!jobId) return
     window.clearTimeout(pollTimer)
     const poll = async () => {
@@ -216,5 +245,14 @@ function generateTodaySummary() {
 
 function applyFilters() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+}
+
+function resetFilters() {
+  Object.assign(draftFilters, { summary_date: '', source_filter: '', model: '', page: 1, page_size: 10 })
+  applyFilters()
+}
+
+function reloadList() {
+  refetch()
 }
 </script>

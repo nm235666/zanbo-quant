@@ -2,6 +2,34 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs
 
+MULTI_ROLE_DEDICATED_GPT_CHANNEL = "gpt-5.4-multi-role"
+TREND_DEDICATED_GPT_CHANNEL = "gpt-5.4-trend"
+DAILY_SUMMARY_DEDICATED_GPT_CHANNEL = "gpt-5.4-daily-summary"
+
+
+def _safe_bool(value, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "enabled", "active"}:
+        return True
+    if text in {"0", "false", "no", "off", "disabled", "inactive"}:
+        return False
+    return default
+
+
+def _resolve_roles_from_payload(payload: dict, deps: dict) -> list[str]:
+    raw = payload.get("roles", "")
+    if isinstance(raw, list):
+        role_text = ",".join([str(x).strip() for x in raw if str(x).strip()])
+    else:
+        role_text = str(raw or "")
+    return deps["_resolve_roles"](role_text)
+
 
 def dispatch_get(handler, parsed, deps: dict) -> bool:
     if parsed.path == "/api/stock-detail":
@@ -141,7 +169,19 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
     if parsed.path == "/api/llm/trend":
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
-        model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        requested_model = deps["normalize_model_name"](params.get("model", [""])[0])
+        requested_key = str(requested_model or "").strip().lower()
+        if requested_key == MULTI_ROLE_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-multi-role 仅允许多角色公司分析链路使用"}, status=400)
+            return True
+        if requested_key == DAILY_SUMMARY_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-daily-summary 仅允许新闻日报生成链路使用"}, status=400)
+            return True
+        # 股票走势分析固定走专用 GPT 通道，不与通用模型池混用。
+        if requested_key and requested_key not in {"auto", "default", "gpt-5.4", TREND_DEDICATED_GPT_CHANNEL}:
+            handler._send_json({"error": "股票走势分析仅允许使用 gpt-5.4-trend 专用通道"}, status=400)
+            return True
+        model = TREND_DEDICATED_GPT_CHANNEL
         if not ts_code:
             handler._send_json({"error": "缺少 ts_code"}, status=400)
             return True
@@ -180,6 +220,12 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
         model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        if str(model or "").strip().lower() == TREND_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-trend 仅允许股票走势分析链路使用"}, status=400)
+            return True
+        if str(model or "").strip().lower() == DAILY_SUMMARY_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-daily-summary 仅允许新闻日报生成链路使用"}, status=400)
+            return True
         roles_raw = params.get("roles", [""])[0]
         if not ts_code:
             handler._send_json({"error": "缺少 ts_code"}, status=400)
@@ -221,6 +267,12 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
         model = deps["normalize_model_name"](params.get("model", [deps["DEFAULT_LLM_MODEL"]])[0])
+        if str(model or "").strip().lower() == TREND_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-trend 仅允许股票走势分析链路使用"}, status=400)
+            return True
+        if str(model or "").strip().lower() == DAILY_SUMMARY_DEDICATED_GPT_CHANNEL:
+            handler._send_json({"error": "gpt-5.4-daily-summary 仅允许新闻日报生成链路使用"}, status=400)
+            return True
         roles_raw = params.get("roles", [""])[0]
         if not ts_code:
             handler._send_json({"error": "缺少 ts_code"}, status=400)
@@ -261,6 +313,164 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             handler._send_json({"error": f"任务不存在或已过期: {job_id}"}, status=404)
             return True
         handler._send_json({"ok": True, **job})
+        return True
+
+    if parsed.path == "/api/llm/multi-role/v2/task":
+        params = parse_qs(parsed.query)
+        job_id = params.get("job_id", [""])[0].strip()
+        if not job_id:
+            handler._send_json({"error": "缺少 job_id"}, status=400)
+            return True
+        job = deps["get_async_multi_role_v2_job"](job_id)
+        if not job:
+            handler._send_json({"error": f"任务不存在或已过期: {job_id}"}, status=404)
+            return True
+        handler._send_json({"ok": True, **job})
+        return True
+
+    if parsed.path == "/api/llm/multi-role/v2/history":
+        params = parse_qs(parsed.query)
+        version = params.get("version", ["v2"])[0]
+        ts_code = params.get("ts_code", [""])[0]
+        status = params.get("status", [""])[0]
+        try:
+            page = int(params.get("page", ["1"])[0] or 1)
+            page_size = int(params.get("page_size", ["20"])[0] or 20)
+        except ValueError:
+            handler._send_json({"error": "page/page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_multi_role_analysis_history"](
+                version=version,
+                ts_code=ts_code,
+                status=status,
+                page=page,
+                page_size=page_size,
+            )
+        except Exception as exc:
+            handler._send_json({"error": f"查询历史失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
+    return False
+
+
+def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
+    if parsed.path == "/api/llm/multi-role/v2/start":
+        ts_code = str(payload.get("ts_code", "") or "").strip().upper()
+        if not ts_code:
+            handler._send_json({"error": "缺少 ts_code"}, status=400)
+            return True
+        try:
+            lookback = int(payload.get("lookback", 120) or 120)
+        except ValueError:
+            handler._send_json({"error": "lookback 必须是整数"}, status=400)
+            return True
+        try:
+            decision_timeout_seconds = int(payload.get("decision_timeout_seconds", 600) or 600)
+        except ValueError:
+            handler._send_json({"error": "decision_timeout_seconds 必须是整数"}, status=400)
+            return True
+        accept_auto_degrade = _safe_bool(payload.get("accept_auto_degrade", True), True)
+        roles = _resolve_roles_from_payload(payload, deps)
+        try:
+            reusable = deps["find_today_reusable_multi_role_v2_job"](
+                ts_code=ts_code,
+                lookback=lookback,
+                roles=roles,
+            )
+        except Exception as exc:
+            print(f"[multi-role-v2] reusable-check failed ts_code={ts_code} lookback={lookback} error={exc}", flush=True)
+            reusable = None
+        if reusable:
+            quota = deps["get_multi_role_daily_quota_status"]((deps.get("auth_context") or {}).get("user"))
+            handler._send_json(
+                {
+                    "ok": True,
+                    "reused_today": True,
+                    "message": "检测到当日已完成分析，直接复用历史结果",
+                    "quota": quota,
+                    **reusable,
+                }
+            )
+            return True
+        auth_ctx = deps.get("auth_context") or {}
+        quota = deps["consume_multi_role_daily_quota"](auth_ctx.get("user"))
+        if not quota.get("allowed", True):
+            handler._send_json(
+                {
+                    "error": f"LLM多角色分析今日次数已用完（{quota.get('limit')} 次/日），请明日再试或升级权限",
+                    "quota": quota,
+                },
+                status=429,
+            )
+            return True
+        try:
+            job = deps["start_async_multi_role_v2_job"](
+                ts_code=ts_code,
+                lookback=lookback,
+                roles=roles,
+                accept_auto_degrade=accept_auto_degrade,
+                decision_timeout_seconds=decision_timeout_seconds,
+            )
+        except Exception as exc:
+            handler._send_json({"error": f"启动 V2 分析失败: {exc}"}, status=500)
+            return True
+        handler._send_json(
+            {
+                "ok": True,
+                "quota": quota,
+                "failure_policy": {
+                    "initial_retry": 1,
+                    "pending_action_on_fail": not accept_auto_degrade,
+                    "retry_on_decision": 2,
+                },
+                **job,
+            }
+        )
+        return True
+
+    if parsed.path == "/api/llm/multi-role/v2/decision":
+        job_id = str(payload.get("job_id", "") or "").strip()
+        action = str(payload.get("action", "") or "").strip().lower()
+        if not job_id:
+            handler._send_json({"error": "缺少 job_id"}, status=400)
+            return True
+        if action not in {"retry", "degrade", "abort"}:
+            handler._send_json({"error": "action 必须是 retry|degrade|abort"}, status=400)
+            return True
+        try:
+            result = deps["decide_async_multi_role_v2_job"](job_id=job_id, action=action)
+        except ValueError as exc:
+            handler._send_json({"error": str(exc)}, status=400)
+            return True
+        except RuntimeError as exc:
+            handler._send_json({"error": str(exc)}, status=409)
+            return True
+        except Exception as exc:
+            handler._send_json({"error": f"处理决策失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **result})
+        return True
+
+    if parsed.path == "/api/llm/multi-role/v2/retry-aggregate":
+        job_id = str(payload.get("job_id", "") or "").strip()
+        if not job_id:
+            handler._send_json({"error": "缺少 job_id"}, status=400)
+            return True
+        try:
+            result = deps["retry_async_multi_role_v2_aggregate"](job_id=job_id)
+        except ValueError as exc:
+            handler._send_json({"error": str(exc)}, status=400)
+            return True
+        except RuntimeError as exc:
+            handler._send_json({"error": str(exc)}, status=409)
+            return True
+        except Exception as exc:
+            handler._send_json({"error": f"重试汇总失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **result})
         return True
 
     return False

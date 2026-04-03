@@ -34,7 +34,7 @@
         <header class="mb-4 rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.72)_100%)] px-4 py-4 shadow-[var(--shadow)] backdrop-blur-xl">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div class="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Zanbo Quant NextGen Frontend</div>
+              <div class="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Zanbo Quant Vue Frontend</div>
               <div class="mt-1 text-[30px] font-extrabold tracking-tight" style="font-family: var(--font-display)">{{ title }}</div>
               <div class="mt-1 text-sm text-[var(--muted)]">{{ subtitle }}</div>
             </div>

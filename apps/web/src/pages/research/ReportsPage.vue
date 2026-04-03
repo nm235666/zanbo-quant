@@ -23,9 +23,31 @@
         <div v-if="protocolMetaText" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           {{ protocolMetaText }}
         </div>
+        <StatePanel
+          v-if="queryError"
+          class="mt-3"
+          tone="danger"
+          title="报告列表加载失败"
+          :description="queryError"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="reloadList">重新加载</button>
+          </template>
+        </StatePanel>
       </PageSection>
 
       <PageSection :title="`报告结果 (${result?.total || 0})`" subtitle="列表看摘要，抽屉里看正文、预期层和相关内链。">
+        <StatePanel
+          v-if="!queryError && !isFetching && !(result?.items || []).length"
+          class="mb-4"
+          tone="warning"
+          title="当前没有命中的报告"
+          description="可以先清空关键词或日期筛选，回到全量报告列表，再从右侧详情继续下钻。"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" @click="resetFilters">恢复默认筛选</button>
+          </template>
+        </StatePanel>
         <div class="space-y-2">
           <InfoCard
             v-for="item in result?.items || []"
@@ -121,6 +143,7 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import DetailDrawer from '../../shared/ui/DetailDrawer.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchResearchReports } from '../../services/api/research'
 import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/export'
 import { parseJsonArray, parseJsonObject } from '../../shared/utils/finance'
@@ -133,12 +156,20 @@ const selectedItem = ref<Record<string, any> | null>(null)
 const detailExportRef = ref<HTMLElement | null>(null)
 const downloadStatus = ref('')
 
-const { data: result, isFetching } = useQuery({ queryKey: ['research-reports', queryFilters], queryFn: () => fetchResearchReports(queryFilters) })
+const { data: result, isFetching, error, refetch } = useQuery({ queryKey: ['research-reports', queryFilters], queryFn: () => fetchResearchReports(queryFilters) })
 
 watch(
   () => result.value?.items,
   (items) => {
-    if (!items?.length || selectedItem.value) return
+    if (!items?.length) {
+      selectedItem.value = null
+      return
+    }
+    if (selectedItem.value) {
+      const matched = items.find((item: Record<string, any>) => item.id === selectedItem.value?.id)
+      selectedItem.value = matched || items[0]
+      return
+    }
     selectedItem.value = items[0]
   },
   { immediate: true },
@@ -165,6 +196,7 @@ const protocolMetaText = computed(() => {
   if (!version && !primary && !compat && !retireAfter) return ''
   return `协议版本 ${version || '-'} · 主字段 ${primary || '-'} · 兼容字段 ${compat || '-'} · 兼容退场时间 ${retireAfter || '-'}`
 })
+const queryError = computed(() => error.value?.message || '')
 
 function reportTypeLabel(value: unknown) {
   const raw = String(value || '').trim()
@@ -262,5 +294,14 @@ async function downloadImage() {
 
 function applyFilters() {
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
+}
+
+function resetFilters() {
+  Object.assign(draftFilters, { keyword: '', report_type: '', report_date: '', page: 1, page_size: 20 })
+  applyFilters()
+}
+
+function reloadList() {
+  refetch()
 }
 </script>

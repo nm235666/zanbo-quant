@@ -63,5 +63,5 @@ def run_news_job(job_key: str) -> dict:
     if job_key == "news_sentiment_refresh":
         return run_news_sentiment_refresh()
     if job_key == "news_daily_summary_refresh":
-        return run_daily_summary_refresh(summary_date=cn_today(), model="auto")
+        return run_daily_summary_refresh(summary_date=cn_today(), model="gpt-5.4-daily-summary")
     raise KeyError(job_key)

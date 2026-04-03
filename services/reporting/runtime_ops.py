@@ -61,13 +61,22 @@ def query_news_daily_summaries(
         data = []
         for row in rows:
             item = dict(row)
-            item["logic_view"] = get_or_build_cached_logic_view(
-                conn,
-                entity_type="news_daily_summary",
-                entity_key=str(item.get("id") or ""),
-                source_payload=item.get("summary_markdown", ""),
-                builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
-            )
+            try:
+                item["logic_view"] = get_or_build_cached_logic_view(
+                    conn,
+                    entity_type="news_daily_summary",
+                    entity_key=str(item.get("id") or ""),
+                    source_payload=item.get("summary_markdown", ""),
+                    builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
+                )
+            except Exception as exc:
+                # 列表接口优先可用性：单条逻辑视图异常不应导致整页 500。
+                item["logic_view"] = {
+                    "summary": {"conclusion": "", "focus": "", "risk": ""},
+                    "chains": [],
+                    "has_logic": False,
+                    "error": f"logic_view_build_failed: {exc}",
+                }
             data.append(item)
     finally:
         conn.close()
@@ -103,13 +112,21 @@ def get_daily_summary_by_date(*, sqlite3_module, db_path, get_or_build_cached_lo
         if not row:
             return None
         item = dict(row)
-        item["logic_view"] = get_or_build_cached_logic_view(
-            conn,
-            entity_type="news_daily_summary",
-            entity_key=str(item.get("id") or ""),
-            source_payload=item.get("summary_markdown", ""),
-            builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
-        )
+        try:
+            item["logic_view"] = get_or_build_cached_logic_view(
+                conn,
+                entity_type="news_daily_summary",
+                entity_key=str(item.get("id") or ""),
+                source_payload=item.get("summary_markdown", ""),
+                builder=lambda text=item.get("summary_markdown", ""): extract_logic_view_from_markdown(text),
+            )
+        except Exception as exc:
+            item["logic_view"] = {
+                "summary": {"conclusion": "", "focus": "", "risk": ""},
+                "chains": [],
+                "has_logic": False,
+                "error": f"logic_view_build_failed: {exc}",
+            }
         return item
     finally:
         conn.close()

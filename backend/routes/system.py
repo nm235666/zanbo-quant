@@ -4,6 +4,25 @@ from urllib.parse import parse_qs
 
 
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
+    if parsed.path in {
+        "/api/system/llm-providers/multi-role-v2-policies",
+        "/api/llm-providers/multi-role-v2-policies",
+    }:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可更新多角色 V2 模型策略"}, status=403)
+            return True
+        try:
+            result = deps["update_multi_role_v2_policies"](payload)
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"更新多角色 V2 策略失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
     if parsed.path in {"/api/system/llm-providers/create", "/api/llm-providers/create"}:
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):
@@ -542,6 +561,22 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
 
 
 def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
+    if parsed.path in {
+        "/api/system/llm-providers/multi-role-v2-policies",
+        "/api/llm-providers/multi-role-v2-policies",
+    }:
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可查看多角色 V2 模型策略"}, status=403)
+            return True
+        try:
+            payload = deps["get_multi_role_v2_policies"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"多角色 V2 策略查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
     if parsed.path in {"/api/system/llm-providers", "/api/llm-providers"}:
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):

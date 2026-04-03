@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="因子挖掘工作台" subtitle="QuantaAlpha 旁路：因子挖掘、回测、任务状态与结果统一查看。">
+  <AppShell title="因子挖掘工作台" subtitle="因子挖掘、回测、任务状态与结果统一查看。">
     <div class="space-y-4">
       <PageSection title="任务启动" subtitle="输入研究方向后，可启动 mine/backtest 任务。">
         <div class="grid gap-3 xl:grid-cols-5 md:grid-cols-2">

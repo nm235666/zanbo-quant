@@ -41,8 +41,8 @@ bash /home/zanbo/zanbotest/<script>.sh
 | `bash /home/zanbo/zanbotest/start_backend_multi_role.sh` | 启动后端 `8006` |
 | `bash /home/zanbo/zanbotest/start_frontend.sh` | 启动新版前端构建产物 `8080` |
 | `python3 /home/zanbo/zanbotest/serve_spa.py --host 0.0.0.0 --port 8080 --root /home/zanbo/zanbotest/apps/web/dist` | 直接托管 SPA（含 fallback） |
-| `bash /home/zanbo/zanbotest/start_frontend_nextgen_dev.sh` | 启动新前端开发环境 |
-| `bash /home/zanbo/zanbotest/start_frontend_nextgen_preview.sh` | 启动新前端预览环境 |
+| `bash /home/zanbo/zanbotest/start_frontend_nextgen_dev.sh` | 启动主前端开发环境（兼容旧脚本名） |
+| `bash /home/zanbo/zanbotest/start_frontend_nextgen_preview.sh` | 启动主前端预览环境（兼容旧脚本名） |
 | `bash /home/zanbo/zanbotest/start_nginx_8077.sh` | 启动 Nginx 统一入口 `8077` |
 | `bash /home/zanbo/zanbotest/start_stream_news_worker.sh` | 启动 Redis Stream 新闻 Worker |
 | `bash /home/zanbo/zanbotest/start_ws_realtime.sh` | 启动 WebSocket 实时广播服务 `8010` |

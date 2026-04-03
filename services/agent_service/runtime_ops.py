@@ -101,13 +101,23 @@ def call_llm_trend(
     )
     user_prompt = (
         f"请分析股票 {ts_code} 的走势。\n"
-        "请按以下结构输出：\n"
-        "1) 趋势判断（上涨/震荡/下跌）\n"
-        "2) 置信度（0-100）\n"
-        "3) 依据（3-5条）\n"
-        "4) 风险点（2-4条）\n"
-        "5) 未来5-20个交易日观察要点\n"
-        "6) 免责声明（非投资建议）\n\n"
+        "请严格使用 Markdown 二级标题输出，不要改写标题名：\n"
+        "## 趋势判断\n"
+        "需要包含：趋势方向（上涨/震荡/下跌）、置信度（0-100）、依据（3-5条）。\n"
+        "## 风险提示\n"
+        "需要包含：主要风险点（2-4条）。\n"
+        "## 未来5-20个交易日观察要点\n"
+        "需要包含：可验证观察项（3-5条）。\n"
+        "## 综合结论\n"
+        "至少包含四行：\n"
+        "- 核心结论：...\n"
+        "- 关注方向：...\n"
+        "- 风险提示：...\n"
+        "- 影响传导路径：A -> B -> C\n"
+        "## 行动清单\n"
+        "给出简明可执行项（2-5条）。\n"
+        "## 非投资建议免责声明\n"
+        "必须给出标准免责声明。\n\n"
         f"输入特征JSON：\n{json.dumps(features, ensure_ascii=False, allow_nan=False)}"
     )
     if trend_template_text:
@@ -179,6 +189,7 @@ def build_multi_role_context(
             score_model=default_llm_model,
             score_limit=2,
             score_timeout_s=60,
+            non_blocking=True,
         )
 
     conn = sqlite3_module.connect(db_path)
@@ -295,8 +306,8 @@ def call_llm_multi_role(
         result = chat_completion_with_fallback(
             model=model or default_llm_model,
             temperature=temperature,
-            timeout_s=180,
-            max_retries=3,
+            timeout_s=90,
+            max_retries=1,
             messages=[
                 {
                     "role": "system",

@@ -533,13 +533,16 @@ def build_routes(model: str, base_url: str = "", api_key: str = "", temperature:
     for item in candidates:
         resolved_base_url, resolved_api_key = ensure_provider_ready(item.model, item.base_url, item.api_key)
         route_limit = int(item.rate_limit_per_minute or get_default_rate_limit_per_minute())
+        # Use requested model key for provider signature to keep dedicated channels
+        # (e.g. gpt-5.4-multi-role) isolated from generic model rate buckets.
+        signature_model = normalized_model or item.model
         routes.append(
             LLMRoute(
                 model=item.model,
                 base_url=resolved_base_url,
                 api_key=resolved_api_key,
                 temperature=normalize_temperature_for_model(item.model, temperature),
-                provider_signature=_build_provider_signature(item.model, resolved_base_url),
+                provider_signature=_build_provider_signature(signature_model, resolved_base_url),
                 rate_limit_enabled=bool(item.rate_limit_enabled),
                 rate_limit_per_minute=max(1, route_limit),
             )
@@ -755,7 +758,13 @@ def chat_completion_with_fallback(
     errors: list[str] = []
 
     for candidate in candidate_models:
-        routes = build_routes(model=candidate, base_url=base_url, api_key=api_key, temperature=temperature)
+        try:
+            routes = build_routes(model=candidate, base_url=base_url, api_key=api_key, temperature=temperature)
+        except Exception as exc:
+            err = str(exc)
+            attempts.append(LLMAttempt(model=candidate, base_url="", error=err))
+            errors.append(f"{candidate}: {err}")
+            continue
         for route in routes:
             if route.rate_limit_enabled:
                 allowed, current_count, window_reset_at = rate_limit_allow(

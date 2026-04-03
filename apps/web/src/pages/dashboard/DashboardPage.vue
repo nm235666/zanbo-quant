@@ -2,6 +2,32 @@
   <AppShell title="总控台" subtitle="把系统健康、研究优先级、任务编排与重点情报压进一个统一研究入口。">
     <div class="space-y-4">
       <PageSection title="核心状态" subtitle="优先判断今天系统是不是足够新、足够稳，再决定去哪个模块深入。">
+        <StatePanel
+          v-if="dashboardError"
+          tone="danger"
+          title="总控台加载失败"
+          :description="dashboardError"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="reload">重新加载</button>
+          </template>
+        </StatePanel>
+        <StatePanel
+          v-else-if="!dashboard && isFetching"
+          title="总控台正在加载"
+          description="正在拉取系统健康、任务回放和研究优先队列。"
+        />
+        <StatePanel
+          v-else-if="!dashboard"
+          tone="warning"
+          title="总控台暂时没有数据"
+          description="当前没有拿到总控数据，可以先重新加载，或直接进入数据源监控与数据库审计页。"
+        >
+          <template #action>
+            <RouterLink to="/system/source-monitor" class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white">数据源监控</RouterLink>
+            <RouterLink to="/system/database-audit" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">数据库审计</RouterLink>
+          </template>
+        </StatePanel>
         <div v-if="dashboard" class="grid gap-3 xl:grid-cols-6 md:grid-cols-3">
           <StatCard title="上市股票" :value="dashboard.overview?.listed_total ?? 0" :hint="`总股票 ${dashboard.overview?.stock_total ?? 0}`" />
           <StatCard title="国际/国内新闻" :value="dashboard.overview?.news_total ?? 0" :hint="`个股新闻 ${dashboard.overview?.stock_news_total ?? 0}`" />
@@ -18,7 +44,7 @@
             <div>
               <div class="mb-2 text-sm font-bold">评分领先股票</div>
               <div class="space-y-2">
-                <InfoCard v-for="item in dashboard?.top_scores || []" :key="item.ts_code" :title="item.name || item.ts_code" :meta="`${item.ts_code || '-'} · ${item.industry || '-'} · ${item.market || '-'}`">
+                <InfoCard v-for="item in dashboard?.top_scores || []" :key="item.ts_code" :title="item.name || item.ts_code" :meta="`${item.ts_code || '-'} · ${item.industry || '-'} · ${item.market || '-'}`" class="cursor-pointer" @click="goStockDetail(item.ts_code)">
                   <template #badge>
                     <StatusBadge value="brand" :label="`总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`" />
                   </template>
@@ -28,7 +54,7 @@
             <div>
               <div class="mb-2 text-sm font-bold">群聊候选池</div>
               <div class="space-y-2">
-                <InfoCard v-for="item in dashboard?.candidate_pool_top || []" :key="item.candidate_name" :title="item.candidate_name || '-'" :meta="`${item.candidate_type || '-'} · 净分 ${item.net_score ?? 0} · 群数 ${item.room_count ?? 0}`">
+                <InfoCard v-for="item in dashboard?.candidate_pool_top || []" :key="item.candidate_name" :title="item.candidate_name || '-'" :meta="`${item.candidate_type || '-'} · 净分 ${item.net_score ?? 0} · 群数 ${item.room_count ?? 0}`" class="cursor-pointer" @click="goCandidate(item)">
                   <template #badge>
                     <StatusBadge :value="item.dominant_bias" :label="item.dominant_bias || '-'" />
                   </template>
@@ -167,20 +193,42 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchDashboard } from '../../services/api/dashboard'
 import { formatDate, formatDateTime } from '../../shared/utils/format'
 
-const { data } = useQuery({
+const router = useRouter()
+const { data, error, isFetching, refetch } = useQuery({
   queryKey: ['dashboard'],
   queryFn: fetchDashboard,
   refetchInterval: 60_000,
 })
 
 const dashboard = computed(() => data.value)
+const dashboardError = computed(() => error.value?.message || '')
+
+function reload() {
+  refetch()
+}
+
+function goStockDetail(tsCode: unknown) {
+  const code = String(tsCode || '').trim()
+  if (!code) return
+  router.push({ path: `/stocks/detail/${encodeURIComponent(code)}` })
+}
+
+function goCandidate(item: Record<string, any>) {
+  const name = String(item.candidate_name || '').trim()
+  if (String(item.candidate_type || '').trim() === '主题') {
+    router.push({ path: '/signals/themes', query: { keyword: name } })
+    return
+  }
+  router.push({ path: '/chatrooms/candidates', query: { keyword: name } })
+}
 </script>

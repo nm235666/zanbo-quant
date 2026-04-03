@@ -31,6 +31,18 @@
             {{ isFetching ? '查询中...' : '应用筛选' }}
           </button>
         </div>
+        <StatePanel
+          v-if="signalsError"
+          class="mt-3"
+          tone="danger"
+          title="信号列表加载失败"
+          :description="signalsError"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="retryQuery">重新加载</button>
+            <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]" @click="resetFilters">清空筛选</button>
+          </template>
+        </StatePanel>
       </PageSection>
 
       <div class="grid gap-4 lg:grid-cols-4 md:grid-cols-2">
@@ -41,6 +53,17 @@
       </div>
 
       <PageSection :title="`信号结果 (${result?.total || 0})`" subtitle="信号强度、来源结构和状态机统一展示，点击即可跳时间线。">
+        <StatePanel
+          v-if="!signalsError && !isFetching && !(result?.items || []).length"
+          class="mb-4"
+          tone="warning"
+          title="当前筛选下没有信号结果"
+          description="可以先清空来源、状态机或关键词筛选，再回到 7 天口径查看更完整的结果。"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" @click="resetFilters">恢复默认筛选</button>
+          </template>
+        </StatePanel>
         <DataTable :columns="columns" :rows="result?.items || []" row-key="signal_key" empty-text="暂无信号结果">
           <template #cell_signal_type="{ row }">{{ signalTypeLabel(row.signal_type) }}</template>
           <template #cell_subject_name="{ row }">
@@ -80,6 +103,7 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchInvestmentSignals } from '../../services/api/signals'
 import { formatNumber } from '../../shared/utils/format'
 import { parseJsonObject } from '../../shared/utils/finance'
@@ -116,13 +140,14 @@ const columns = [
   { key: 'source_mix', label: '来源结构' },
   { key: 'actions', label: '跳转' },
 ]
-const { data: result, isFetching } = useQuery({
+const { data: result, isFetching, error, refetch } = useQuery({
   queryKey: computed(() => ['investment-signals', { ...queryFilters }]),
   queryFn: () => fetchInvestmentSignals({ ...queryFilters }),
 })
 const summary = computed(() => result.value?.summary || {})
 const directionOptions = computed(() => result.value?.filters?.directions || [])
 const statusOptions = computed(() => result.value?.filters?.signal_statuses || [])
+const signalsError = computed(() => error.value?.message || '')
 
 function signalTypeLabel(value: unknown) {
   const raw = String(value || '').trim()
@@ -152,5 +177,22 @@ function applyFilters() {
   queryFilters.keyword = (filters.keyword || '').trim()
   queryFilters.page_size = Number(filters.page_size) || 30
   queryFilters.page = 1
+}
+
+function resetFilters() {
+  Object.assign(filters, {
+    scope: '7d',
+    signal_group: '',
+    direction: '',
+    source_filter: '',
+    signal_status: '',
+    keyword: '',
+    page_size: 30,
+  })
+  applyFilters()
+}
+
+function retryQuery() {
+  refetch()
 }
 </script>

@@ -1,5 +1,7 @@
 # 改造迁移完成定义（收口基线）
 
+> 说明：本文件描述的是“迁移完成后的目标状态与验收基线”，不是对当前仓库现状的逐项事实陈述。当前真实状态应同时结合 `docs/system_overview_cn.md`、`README_WEB.md`、`job_registry.py` 和实际代码结构判断。
+
 ## 目标
 确保新增能力默认走 `collectors + jobs + services`，而不是继续回流到根目录散脚本和 `server.py` 业务拼装。
 

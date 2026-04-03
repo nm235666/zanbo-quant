@@ -40,6 +40,21 @@ def _safe_int(value, default: int) -> int:
         return default
 
 
+def _safe_bool(value, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "enabled", "active"}:
+        return True
+    if text in {"0", "false", "no", "off", "disabled", "inactive"}:
+        return False
+    return default
+
+
 def _resolve_api_key_from_item(item: dict) -> str:
     api_key = str(item.get("api_key") or "").strip()
     api_key_env = str(item.get("api_key_env") or "").strip()
@@ -48,8 +63,24 @@ def _resolve_api_key_from_item(item: dict) -> str:
         if env_name:
             return _env(env_name, "")
     if api_key_env:
-        return _env(api_key_env, "")
+        env_key = _env(api_key_env, "")
+        if env_key:
+            return env_key
+        # Keep inline fallback for safer migration to env-based dedicated channels.
+        return api_key
     return api_key
+
+
+def _resolve_base_url_from_item(item: dict) -> str:
+    base_url = str(item.get("base_url") or "").strip()
+    base_url_env = str(item.get("base_url_env") or "").strip()
+    if base_url_env:
+        env_url = _env(base_url_env, "")
+        if env_url:
+            return env_url
+        # Keep inline fallback for safer migration to env-based dedicated channels.
+        return base_url
+    return base_url
 
 
 DEFAULT_PROVIDER_FILE = "/home/zanbo/zanbotest/config/llm_providers.json"
@@ -59,8 +90,11 @@ _LOCK = threading.RLock()
 _LAST_RELOAD_AT = 0.0
 _LAST_PROVIDER_FILE = ""
 _LAST_PROVIDER_FILE_MTIME = -1.0
+_LAST_EMPTY_OVERRIDE_KEYS: set[str] = set()
 
 DEFAULT_REQUEST_MODEL = "auto"
+# Runtime source of truth is config/llm_providers.json.
+# These defaults are only used as a cold-start fallback when config file/env is missing.
 DEFAULT_FALLBACK_MODELS: tuple[str, ...] = ("GPT-5.4", "kimi-k2.5", "deepseek-chat")
 DEFAULT_RATE_LIMIT_PER_MINUTE = 10
 PROVIDER_CONFIGS: dict[str, ProviderConfig] = {}
@@ -102,6 +136,30 @@ def _build_env_provider_configs() -> tuple[dict[str, ProviderConfig], dict[str, 
             api_key=_env("GPT54_API_KEY"),
             default_temperature=0.2,
         ),
+        "gpt-5.4-multi-role": ProviderConfig(
+            model="GPT-5.4",
+            base_url=_env("GPT54_MULTI_ROLE_BASE_URL"),
+            api_key=_env("GPT54_MULTI_ROLE_API_KEY"),
+            default_temperature=0.2,
+        ),
+        "gpt-5.4-trend": ProviderConfig(
+            model="GPT-5.4",
+            base_url=_env("GPT54_TREND_BASE_URL"),
+            api_key=_env("GPT54_TREND_API_KEY"),
+            default_temperature=0.2,
+        ),
+        "gpt-5.4-daily-summary": ProviderConfig(
+            model="GPT-5.4",
+            base_url=_env("GPT54_DAILY_SUMMARY_BASE_URL"),
+            api_key=_env("GPT54_DAILY_SUMMARY_API_KEY"),
+            default_temperature=0.2,
+        ),
+        "zhipu-news": ProviderConfig(
+            model="glm-4-plus",
+            base_url=_env("ZHIPU_NEWS_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
+            api_key=_env("ZHIPU_NEWS_API_KEY"),
+            default_temperature=0.2,
+        ),
         "kimi-k2.5": ProviderConfig(
             model="kimi-k2.5",
             base_url=_env("KIMI_BASE_URL", "https://api.moonshot.cn/v1"),
@@ -121,38 +179,9 @@ def _build_env_provider_configs() -> tuple[dict[str, ProviderConfig], dict[str, 
             default_temperature=0.2,
         ),
     }
-    backups: dict[str, tuple[ProviderConfig, ...]] = {
-        "gpt-5.4": tuple(
-            item
-            for item in (
-                ProviderConfig(
-                    model="GPT-5.4",
-                    base_url=_env("GPT54_ALT2_BASE_URL", "http://38.175.200.219:8317/v1"),
-                    api_key=_env("GPT54_ALT2_API_KEY"),
-                    default_temperature=0.2,
-                ),
-                ProviderConfig(
-                    model="GPT-5.4",
-                    base_url=_env("GPT54_ALT3_BASE_URL", "https://free.9e.nz/v1"),
-                    api_key=_env("GPT54_ALT3_API_KEY"),
-                    default_temperature=0.2,
-                ),
-                ProviderConfig(
-                    model="GPT-5.4",
-                    base_url=_env("GPT54_ALT4_BASE_URL", "http://ice.v.ua/v1"),
-                    api_key=_env("GPT54_ALT4_API_KEY"),
-                    default_temperature=0.2,
-                ),
-                ProviderConfig(
-                    model="GPT-5.4",
-                    base_url=_env("GPT54_ALT5_BASE_URL", "https://ai.dooo.ng/v1"),
-                    api_key=_env("GPT54_ALT5_API_KEY"),
-                    default_temperature=0.2,
-                ),
-            )
-            if item.base_url and item.api_key
-        ),
-    }
+    # Legacy hard-coded GPT alt nodes are intentionally removed.
+    # Backup nodes should be declared in config/llm_providers.json provider arrays.
+    backups: dict[str, tuple[ProviderConfig, ...]] = {}
     return providers, backups
 
 
@@ -164,6 +193,7 @@ def _apply_external_overrides(
     provider_configs: dict[str, ProviderConfig],
     provider_backups: dict[str, tuple[ProviderConfig, ...]],
 ) -> tuple[str, tuple[str, ...], int, dict[str, ProviderConfig], dict[str, tuple[ProviderConfig, ...]]]:
+    global _LAST_EMPTY_OVERRIDE_KEYS
     external_default = str(external_cfg.get("default_request_model") or "").strip()
     if external_default:
         default_request_model = external_default
@@ -176,6 +206,7 @@ def _apply_external_overrides(
     default_rate_limit_per_minute = max(1, _safe_int(external_cfg.get("default_rate_limit_per_minute", 10), 10))
 
     providers = external_cfg.get("providers")
+    empty_override_keys: set[str] = set()
     if isinstance(providers, dict):
         for model_key_raw, entries in providers.items():
             model_key = _normalize_model_key(str(model_key_raw))
@@ -192,16 +223,16 @@ def _apply_external_overrides(
             for item in entry_list:
                 if not isinstance(item, dict):
                     continue
-                enabled = item.get("enabled", True)
+                enabled = _safe_bool(item.get("enabled", True), True)
                 status = str(item.get("status") or item.get("health_status") or "").strip().lower()
                 # Skip providers explicitly disabled by health-check script or manual ops.
-                if enabled is False or status in {"disabled", "inactive", "down", "unavailable", "unhealthy"}:
+                if (not enabled) or status in {"disabled", "inactive", "down", "unavailable", "unhealthy"}:
                     continue
-                base_url = str(item.get("base_url") or "").strip()
+                base_url = _resolve_base_url_from_item(item)
                 api_key = _resolve_api_key_from_item(item)
                 if not base_url or not api_key:
                     continue
-                rate_limit_enabled = bool(item.get("rate_limit_enabled", True))
+                rate_limit_enabled = _safe_bool(item.get("rate_limit_enabled", True), True)
                 node_limit = item.get("rate_limit_per_minute", None)
                 rate_limit_per_minute = (
                     max(1, _safe_int(node_limit, default_rate_limit_per_minute))
@@ -221,6 +252,19 @@ def _apply_external_overrides(
             if parsed:
                 provider_configs[model_key] = parsed[0]
                 provider_backups[model_key] = tuple(parsed[1:])
+            else:
+                # External config explicitly declared this key but provided no active node.
+                # In that case, do not silently fall back to env defaults.
+                provider_configs.pop(model_key, None)
+                provider_backups.pop(model_key, None)
+                empty_override_keys.add(model_key)
+    if empty_override_keys != _LAST_EMPTY_OVERRIDE_KEYS:
+        for model_key in sorted(empty_override_keys):
+            print(
+                f"[llm-provider-config] provider_key={model_key} has no active nodes in external config; runtime candidates disabled",
+                flush=True,
+            )
+        _LAST_EMPTY_OVERRIDE_KEYS = set(empty_override_keys)
     return default_request_model, fallback_models, default_rate_limit_per_minute, provider_configs, provider_backups
 
 

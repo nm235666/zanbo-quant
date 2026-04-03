@@ -235,7 +235,7 @@ def score_stock_news_now(
         )
 
     script_path = root_dir / "llm_score_stock_news.py"
-    used_model = "GPT-5.4"
+    used_model = str(model or "").strip() or "auto"
     cmd = [
         "python3",
         str(script_path),

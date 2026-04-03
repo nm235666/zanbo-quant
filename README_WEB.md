@@ -1,4 +1,4 @@
-# 前后端分离股票查询网页
+# 前后端分离投研系统运行说明
 
 ## 目录结构
 
@@ -36,11 +36,11 @@ cd /home/zanbo/zanbotest
 说明：
 
 - 现在主后端、新闻脚本、聊天脚本、回填脚本、LLM 脚本默认都直接读写 PostgreSQL
-- `stock_codes.db` 已可退役；退役后只保留 PostgreSQL 主库
+- PostgreSQL 是当前唯一主运行库；仓库中若仍存在 SQLite 文件，视为迁移源、兼容保留或历史遗留，不应作为当前主库
 - 只有迁移脚本 `migrate_sqlite_to_postgres.py` / `init_postgres_schema.py` 仍会直接读取 SQLite 源结构
 - 任务触发、立即抓取、评分、日报生成、配置保存等受保护接口现在要求 `BACKEND_ADMIN_TOKEN`
 - 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
-- 旧版 `frontend/` 已退役删除，系统仅保留 `apps/web/` 新前端
+- `apps/web/` 是当前唯一主力前端；旧版 `frontend/` 已退场，不再作为开发或部署目标
 
 ## SQLite 退役
 
@@ -59,7 +59,7 @@ bash /home/zanbo/zanbotest/retire_sqlite.sh --execute
 退役后：
 
 - SQLite 主文件会被压缩归档到 `backups/sqlite_retired/<UTC时间>/`
-- 主目录只保留 PostgreSQL + Redis 运行链路
+- 运行链路以 PostgreSQL + Redis 为准；若主目录仍有 SQLite 文件，不改变这一事实
 - 退役说明会写入 [SQLITE_RETIRED.md](/home/zanbo/zanbotest/SQLITE_RETIRED.md)
 
 3. 新开一个终端，单独启动前端（默认新版构建产物）：

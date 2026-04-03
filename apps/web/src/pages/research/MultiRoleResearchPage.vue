@@ -13,17 +13,52 @@
             {{ isPending ? '任务创建中...' : '发起分析' }}
           </button>
         </div>
+        <label class="mt-3 flex items-center gap-2 text-sm text-[var(--muted)]">
+          <input v-model="acceptAutoDegrade" type="checkbox" />
+          允许自动降级完成（失败角色不阻塞全局汇总）
+        </label>
         <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
           {{ actionMessage }}
         </div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
         <div v-if="attemptChain" class="mt-1 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
         <div v-if="quotaHint" class="mt-1 text-sm text-[var(--muted)]">今日额度：{{ quotaHint }}</div>
+        <div v-if="pendingDecision" class="mt-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div>有角色任务失败，等待你的决策：重试 / 降级 / 终止。</div>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button class="rounded-xl bg-[var(--brand)] px-3 py-2 text-white" :disabled="decisionPending" @click="submitDecision('retry')">重试失败角色</button>
+            <button class="rounded-xl bg-stone-700 px-3 py-2 text-white" :disabled="decisionPending" @click="submitDecision('degrade')">降级并继续汇总</button>
+            <button class="rounded-xl bg-red-700 px-3 py-2 text-white" :disabled="decisionPending" @click="submitDecision('abort')">终止任务</button>
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection title="子任务进度" subtitle="每个角色独立执行，状态可单独追踪。">
+        <div v-if="roleRuns.length" class="space-y-2">
+          <div v-for="item in roleRuns" :key="item.role" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-semibold">{{ item.role }}</div>
+              <div class="text-[var(--muted)]">{{ item.status || '-' }}</div>
+            </div>
+            <div class="mt-1 text-[var(--muted)]">
+              模型：{{ item.used_model || item.requested_model || '-' }} · 重试 {{ item.retry_count || 0 }} 次 · 耗时 {{ item.duration_ms || 0 }}ms
+            </div>
+            <div v-if="item.error" class="mt-1 text-red-600">错误：{{ item.error }}</div>
+          </div>
+        </div>
+        <div v-else class="text-sm text-[var(--muted)]">尚未启动角色子任务。</div>
       </PageSection>
 
       <PageSection title="角色视图" subtitle="优先展示按角色切分后的结论，也保留完整原文。">
         <template #action>
           <div class="flex flex-wrap gap-2">
+            <button
+              class="rounded-2xl bg-emerald-700 px-4 py-2 text-white"
+              :disabled="!canRetryAggregate || aggregateRetryPending"
+              @click="retryAggregate"
+            >
+              {{ aggregateRetryPending ? '重试汇总中...' : '重试汇总' }}
+            </button>
             <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white" :disabled="!selectedRoleSection" @click="downloadRoleMarkdown">下载当前角色 Markdown</button>
             <button class="rounded-2xl bg-blue-700 px-4 py-2 text-white" :disabled="!fullMarkdown" @click="downloadFullMarkdown">下载完整 Markdown</button>
           </div>
@@ -44,9 +79,13 @@
 
       <PageSection title="公共结论" subtitle="统一展示置信度、风险复核和行动视图。">
         <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-1">
-          <InfoCard title="决策置信度" :description="decisionConfidence.summary || '暂无结构化置信度'" :meta="decisionConfidence.label || '-'" />
-          <InfoCard title="风险复核" :description="riskReview.summary || '暂无结构化风险复核'" :meta="riskReview.source || '-'" />
-          <InfoCard title="行动视图" :description="portfolioView.summary || '暂无结构化行动视图'" :meta="portfolioView.source || '-'" />
+          <InfoCard title="决策置信度" :description="decisionConfidenceSummary" :meta="decisionConfidenceMeta" />
+          <InfoCard title="风险复核" :meta="riskReviewMeta">
+            <div class="markdown-compact" v-html="riskReviewHtml" />
+          </InfoCard>
+          <InfoCard title="行动视图" :meta="portfolioViewMeta">
+            <div class="markdown-compact" v-html="portfolioViewHtml" />
+          </InfoCard>
         </div>
         <div v-if="usedContextDims.length" class="mt-3 flex flex-wrap gap-2">
           <span v-for="item in usedContextDims" :key="item" class="metric-chip">{{ item }}</span>
@@ -78,11 +117,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
+import MarkdownIt from 'markdown-it'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
-import { fetchMultiRoleTask, fetchStocks, triggerMultiRoleTask } from '../../services/api/stocks'
+import { decideMultiRoleTaskV2, fetchMultiRoleTaskV2, fetchStocks, retryMultiRoleAggregateV2, triggerMultiRoleTaskV2 } from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
 
 function looksLikeTsCode(value: string) {
@@ -115,6 +155,13 @@ const portfolioView = ref<Record<string, any>>({})
 const usedContextDims = ref<string[]>([])
 const preTradeCheck = ref<Record<string, any>>({})
 const notification = ref<Record<string, any>>({})
+const roleRuns = ref<Array<Record<string, any>>>([])
+const aggregatorRun = ref<Record<string, any>>({})
+const acceptAutoDegrade = ref(true)
+const currentJobId = ref('')
+const taskStatus = ref('')
+const decisionPending = ref(false)
+const aggregateRetryPending = ref(false)
 let timer = 0
 
 const selectedRoleSection = computed(() => roleSections.value.find((item) => item.role === activeRole.value) || null)
@@ -142,6 +189,37 @@ const notificationMeta = computed(() => {
   if (notification.value.ok) return 'ok'
   if (notification.value.skipped) return 'skipped'
   return 'error'
+})
+const pendingDecision = computed(() => taskStatus.value === 'pending_user_decision')
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
+function normalizeSummary(value: unknown, fallback: string) {
+  const text = String(value || '').trim()
+  return text || fallback
+}
+const decisionConfidenceSummary = computed(() => normalizeSummary(decisionConfidence.value.summary, '原始分析未稳定提供数值化置信度。'))
+const decisionConfidenceMeta = computed(() => {
+  const label = String(decisionConfidence.value.label || '').trim()
+  if (!label || label === '无' || label.toLowerCase() === 'none' || label.toLowerCase() === 'markdown') return '未显式给出'
+  return label
+})
+const riskReviewText = computed(() => normalizeSummary(riskReview.value.summary, '暂无结构化风险复核'))
+const riskReviewMeta = computed(() => {
+  const source = String(riskReview.value.source || '').trim()
+  if (!source || source.toLowerCase() === 'markdown') return '结构化摘要'
+  return source
+})
+const riskReviewHtml = computed(() => markdown.render(riskReviewText.value))
+const portfolioViewText = computed(() => normalizeSummary(portfolioView.value.summary, '暂无结构化行动视图'))
+const portfolioViewMeta = computed(() => {
+  const source = String(portfolioView.value.source || '').trim()
+  if (!source || source.toLowerCase() === 'markdown') return '结构化摘要'
+  return source
+})
+const portfolioViewHtml = computed(() => markdown.render(portfolioViewText.value))
+const canRetryAggregate = computed(() => {
+  const status = taskStatus.value
+  const aggStatus = String(aggregatorRun.value?.status || '')
+  return Boolean(currentJobId.value) && (status === 'done' || status === 'done_with_warnings') && aggStatus === 'error'
 })
 const { data: authStatus, refetch: refetchAuthStatus } = useQuery({
   queryKey: ['auth-status-multi-role-page'],
@@ -171,18 +249,30 @@ const mutation = useMutation({
     resolvedStock.value = resolved
     usedModel.value = ''
     attempts.value = []
+    roleRuns.value = []
+    aggregatorRun.value = {}
+    taskStatus.value = ''
+    currentJobId.value = ''
     actionMessage.value = `已解析股票：${resolved.name || resolved.ts_code}，正在创建分析任务...`
-    const payload = await triggerMultiRoleTask({ ts_code: resolved.ts_code, lookback: form.lookback })
+    const payload = await triggerMultiRoleTaskV2({
+      ts_code: resolved.ts_code,
+      lookback: form.lookback,
+      accept_auto_degrade: acceptAutoDegrade.value,
+    })
     const jobId = payload.job_id
+    currentJobId.value = String(jobId || '')
     fullMarkdown.value = '任务已创建，正在后台生成分析...'
     if (!jobId) return
     window.clearTimeout(timer)
-    const poll = async () => {
-      const res = await fetchMultiRoleTask({ job_id: jobId })
-      if (res.status === 'done') {
+    const poll = async (): Promise<void> => {
+      const res = await fetchMultiRoleTaskV2({ job_id: jobId })
+      taskStatus.value = String(res.status || '')
+      roleRuns.value = Array.isArray(res.role_runs) ? res.role_runs : []
+      aggregatorRun.value = (res.aggregator_run || {}) as Record<string, any>
+      if (res.status === 'done' || res.status === 'done_with_warnings') {
         usedModel.value = String(res.used_model || res.model || '')
         attempts.value = Array.isArray(res.attempts) ? res.attempts : []
-        actionMessage.value = `分析完成：${res.name || resolved.name || resolved.ts_code}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
+        actionMessage.value = `分析完成：${res.name || resolved.name || resolved.ts_code}${res.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
         fullMarkdown.value = res.analysis_markdown || res.analysis || res.result || '分析完成，但未返回正文。'
         roleSections.value = Array.isArray(res.role_outputs) ? res.role_outputs : (Array.isArray(res.role_sections) ? res.role_sections : [])
         activeRole.value = roleSections.value[0]?.role || ''
@@ -192,6 +282,11 @@ const mutation = useMutation({
         usedContextDims.value = Array.isArray(res.used_context_dims) ? res.used_context_dims : []
         preTradeCheck.value = (res.pre_trade_check || {}) as Record<string, any>
         notification.value = (res.notification || {}) as Record<string, any>
+        return
+      }
+      if (res.status === 'pending_user_decision') {
+        attempts.value = Array.isArray(res.attempts) ? res.attempts : []
+        actionMessage.value = '有角色任务失败，等待你的决策（重试/降级/终止）。'
         return
       }
       if (res.status === 'error') {
@@ -227,6 +322,10 @@ const mutation = useMutation({
     usedContextDims.value = []
     preTradeCheck.value = {}
     notification.value = {}
+    roleRuns.value = []
+    aggregatorRun.value = {}
+    taskStatus.value = ''
+    currentJobId.value = ''
   },
 })
 
@@ -234,6 +333,82 @@ const isPending = computed(() => mutation.isPending.value)
 
 function runAnalysis() {
   mutation.mutate()
+}
+
+async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
+  if (!currentJobId.value || decisionPending.value) return
+  decisionPending.value = true
+  try {
+    const res = await decideMultiRoleTaskV2({ job_id: currentJobId.value, action })
+    taskStatus.value = String(res.status || '')
+    if (action === 'abort' || res.status === 'error') {
+      actionMessage.value = `任务已终止：${res.error || '用户终止'}`
+      fullMarkdown.value = `任务已终止：${res.error || '用户终止'}`
+      return
+    }
+    actionMessage.value = action === 'degrade' ? '正在按降级策略收口汇总...' : '正在执行补重试，请稍候...'
+    window.clearTimeout(timer)
+    const poll = async (): Promise<void> => {
+      const task = await fetchMultiRoleTaskV2({ job_id: currentJobId.value })
+      taskStatus.value = String(task.status || '')
+      roleRuns.value = Array.isArray(task.role_runs) ? task.role_runs : []
+      aggregatorRun.value = (task.aggregator_run || {}) as Record<string, any>
+      if (task.status === 'done' || task.status === 'done_with_warnings') {
+        usedModel.value = String(task.used_model || task.model || '')
+        attempts.value = Array.isArray(task.attempts) ? task.attempts : []
+        fullMarkdown.value = task.analysis_markdown || task.analysis || '分析完成，但未返回正文。'
+        roleSections.value = Array.isArray(task.role_outputs) ? task.role_outputs : (Array.isArray(task.role_sections) ? task.role_sections : [])
+        activeRole.value = roleSections.value[0]?.role || ''
+        decisionConfidence.value = (task.decision_confidence || {}) as Record<string, any>
+        riskReview.value = (task.risk_review || {}) as Record<string, any>
+        portfolioView.value = (task.portfolio_view || {}) as Record<string, any>
+        actionMessage.value = `分析完成：${task.name || resolvedStock.value.name || resolvedStock.value.ts_code}`
+        return
+      }
+      if (task.status === 'pending_user_decision') {
+        actionMessage.value = '重试后仍有角色失败，等待你的下一次决策。'
+        return
+      }
+      if (task.status === 'error') {
+        actionMessage.value = `分析失败：${task.error || task.message || '未知错误'}`
+        fullMarkdown.value = `分析失败：${task.error || task.message || '未知错误'}`
+        return
+      }
+      actionMessage.value = `任务运行中：${task.progress || 0}% · ${task.message || task.status || '运行中'}`
+      timer = window.setTimeout(poll, 3000)
+    }
+    await poll()
+  } catch (error: any) {
+    actionMessage.value = `决策提交失败：${error?.message || String(error)}`
+  } finally {
+    decisionPending.value = false
+  }
+}
+
+async function retryAggregate() {
+  if (!currentJobId.value || aggregateRetryPending.value || !canRetryAggregate.value) return
+  aggregateRetryPending.value = true
+  actionMessage.value = '正在重试聚合汇总，请稍候...'
+  try {
+    const res = await retryMultiRoleAggregateV2({ job_id: currentJobId.value })
+    taskStatus.value = String(res.status || taskStatus.value)
+    roleRuns.value = Array.isArray(res.role_runs) ? res.role_runs : roleRuns.value
+    aggregatorRun.value = (res.aggregator_run || {}) as Record<string, any>
+    usedModel.value = String(res.used_model || usedModel.value || '')
+    attempts.value = Array.isArray(res.attempts) ? res.attempts : attempts.value
+    fullMarkdown.value = res.analysis_markdown || res.analysis || fullMarkdown.value
+    roleSections.value = Array.isArray(res.role_outputs) ? res.role_outputs : (Array.isArray(res.role_sections) ? res.role_sections : roleSections.value)
+    activeRole.value = roleSections.value[0]?.role || activeRole.value
+    decisionConfidence.value = (res.decision_confidence || decisionConfidence.value) as Record<string, any>
+    riskReview.value = (res.risk_review || riskReview.value) as Record<string, any>
+    portfolioView.value = (res.portfolio_view || portfolioView.value) as Record<string, any>
+    const aggStatus = String((res.aggregator_run || {}).status || '')
+    actionMessage.value = aggStatus === 'done' ? '汇总重试成功。' : '汇总重试失败，已保留角色原文。'
+  } catch (error: any) {
+    actionMessage.value = `重试汇总失败：${error?.message || String(error)}`
+  } finally {
+    aggregateRetryPending.value = false
+  }
 }
 
 function downloadRoleMarkdown() {
@@ -247,3 +422,28 @@ function downloadFullMarkdown() {
   downloadText(fullMarkdown.value || '', `${stock}_LLM多角色公司分析.md`)
 }
 </script>
+
+<style scoped>
+.markdown-compact :deep(p),
+.markdown-compact :deep(ul),
+.markdown-compact :deep(ol) {
+  margin: 0;
+}
+
+.markdown-compact :deep(p + p),
+.markdown-compact :deep(ul + p),
+.markdown-compact :deep(p + ul),
+.markdown-compact :deep(ol + p),
+.markdown-compact :deep(p + ol) {
+  margin-top: 0.5rem;
+}
+
+.markdown-compact :deep(ul),
+.markdown-compact :deep(ol) {
+  padding-left: 1rem;
+}
+
+.markdown-compact :deep(li + li) {
+  margin-top: 0.25rem;
+}
+</style>

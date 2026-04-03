@@ -239,27 +239,35 @@ def call_llm(
     max_retries: int,
     retry_backoff: float,
 ):
-    last_error = None
-    for attempt in range(max_retries + 1):
-        try:
-            return chat_completion_with_fallback(
-                model=model,
-                temperature=temperature,
-                timeout_s=max(request_timeout, 30),
-                max_retries=1,
-                messages=[
-                    {"role": "system", "content": "你是专业、克制、面向交易与风控的金融分析助手。"},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-        except Exception as exc:
-            last_error = exc
-            if attempt < max_retries:
-                sleep_s = max(retry_backoff, 0.1) * (2**attempt)
-                time.sleep(sleep_s)
-                continue
-            break
-    raise RuntimeError(f"调用LLM失败: {last_error}")
+    model_candidates = [normalize_model_name(model)]
+    # 日报专用通道启用严格路由：专线失败时不自动回落到 auto，避免旁路到非专线模型。
+    if model_candidates[0].lower() != "auto" and model_candidates[0].lower() != "gpt-5.4-daily-summary":
+        model_candidates.append("auto")
+
+    errors: list[str] = []
+    for model_candidate in model_candidates:
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                return chat_completion_with_fallback(
+                    model=model_candidate,
+                    temperature=temperature,
+                    timeout_s=max(request_timeout, 30),
+                    max_retries=1,
+                    messages=[
+                        {"role": "system", "content": "你是专业、克制、面向交易与风控的金融分析助手。"},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+            except Exception as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    sleep_s = max(retry_backoff, 0.1) * (2**attempt)
+                    time.sleep(sleep_s)
+                    continue
+                break
+        errors.append(f"{model_candidate}: {last_error}")
+    raise RuntimeError(f"调用LLM失败: {' | '.join(errors)}")
 
 
 def build_fallback_sizes(total: int, min_news: int) -> list[int]:

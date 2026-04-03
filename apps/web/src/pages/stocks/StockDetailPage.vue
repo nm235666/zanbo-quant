@@ -67,7 +67,13 @@
         </div>
 
         <div v-if="detailError" class="mt-4 rounded-[20px] border border-[rgba(178,77,84,0.18)] bg-[rgba(178,77,84,0.06)] px-4 py-3 text-sm text-[var(--danger)]">
-          {{ detailError }}
+          <div class="font-semibold">股票详情加载失败</div>
+          <div class="mt-1">{{ detailError }}</div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="refetch()">重新加载</button>
+            <RouterLink to="/stocks/prices" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去价格中心</RouterLink>
+            <RouterLink to="/intelligence/stock-news" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去个股新闻页</RouterLink>
+          </div>
         </div>
       </PageSection>
 
