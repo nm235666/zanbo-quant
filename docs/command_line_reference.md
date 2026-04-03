@@ -1,6 +1,6 @@
 # 项目命令行命令总表
 
-更新时间：2026-03-30
+更新时间：2026-04-03
 
 本文件汇总当前项目主要命令行入口，包括：
 
@@ -50,6 +50,20 @@ bash /home/zanbo/zanbotest/<script>.sh
 | `bash /home/zanbo/zanbotest/start_auto_update.sh 3600` | 启动定时自动更新循环，默认每 3600 秒一轮 |
 | `bash /home/zanbo/zanbotest/watch_cn_news_eastmoney_10s.sh` | 检查东方财富 10 秒抓取是否存活，不存活则拉起 |
 | `bash /home/zanbo/zanbotest/watch_realtime_services.sh` | 检查 WebSocket / Stream Worker 等实时服务 |
+
+常用排障（不依赖 `rg`）：
+
+```bash
+cd /home/zanbo/zanbotest
+pkill -f "python3 backend/server.py" || true
+sleep 1
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8000 python3 backend/server.py' >/tmp/stock_backend_8000.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8002 python3 backend/server.py' >/tmp/stock_backend_8002.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8004 python3 backend/server.py' >/tmp/stock_backend_8004.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8005 python3 backend/server.py' >/tmp/stock_backend_8005.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8006 python3 backend/server.py' >/tmp/stock_backend_8006.log 2>&1 &
+ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
+```
 
 ## 定时任务安装
 

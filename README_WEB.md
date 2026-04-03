@@ -42,6 +42,30 @@ cd /home/zanbo/zanbotest
 - 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
 - `apps/web/` 是当前唯一主力前端；旧版 `frontend/` 已退场，不再作为开发或部署目标
 
+### 多角色分析 v2（当前主链路）
+
+- 前端页面：`/research/multi-role`
+- 主接口：
+  - `POST /api/llm/multi-role/v2/start`
+  - `GET /api/llm/multi-role/v2/task?job_id=...`
+  - `POST /api/llm/multi-role/v2/decision`
+  - `POST /api/llm/multi-role/v2/retry-aggregate`
+- 常见任务状态：`queued` / `running` / `pending_user_decision` / `done` / `done_with_warnings` / `error`
+
+### 后端重启（不依赖 ripgrep）
+
+```bash
+cd /home/zanbo/zanbotest
+pkill -f "python3 backend/server.py" || true
+sleep 1
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8000 python3 backend/server.py' >/tmp/stock_backend_8000.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8002 python3 backend/server.py' >/tmp/stock_backend_8002.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8004 python3 backend/server.py' >/tmp/stock_backend_8004.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8005 python3 backend/server.py' >/tmp/stock_backend_8005.log 2>&1 &
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8006 python3 backend/server.py' >/tmp/stock_backend_8006.log 2>&1 &
+ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
+```
+
 ## SQLite 退役
 
 dry-run 预览：

@@ -232,6 +232,30 @@
 5. 记录快照和信号事件
 6. 前端展示“总览 + 时间线”
 
+### 4.5 LLM 分析线（走势 + 多角色）
+
+1. 前端在 `/research/trend` 或 `/research/multi-role` 发起分析
+2. 后端创建异步任务并轮询状态
+3. 多角色 v2 角色阶段并行执行
+4. 汇总阶段串行生成公共结论（决策置信度 / 风险复核 / 行动视图）
+5. 前端回显完整 Markdown 与按角色视图
+
+多角色 v2 当前接口：
+
+- `POST /api/llm/multi-role/v2/start`
+- `GET /api/llm/multi-role/v2/task?job_id=...`
+- `POST /api/llm/multi-role/v2/decision`
+- `POST /api/llm/multi-role/v2/retry-aggregate`
+
+多角色 v2 当前关键状态：
+
+- `queued`
+- `running`
+- `pending_user_decision`
+- `done`
+- `done_with_warnings`
+- `error`
+
 ## 5. 当前自动运行的定时任务
 
 > 说明：当前任务系统以 `job_registry.py` 为准，不应再仅以历史 crontab 片段理解系统调度。下面列的是当前主链路中的代表性任务。
