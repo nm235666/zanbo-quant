@@ -25,7 +25,7 @@ class ProbeResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="探测 llm_providers.json 中 GPT 节点可用性：可用优先，不可用自动停用(enabled=false)"
+        description="探测 llm_providers.json 节点可用性：支持单 provider 或全 provider 全模型巡检"
     )
     parser.add_argument(
         "--config",
@@ -33,6 +33,11 @@ def parse_args() -> argparse.Namespace:
         help="配置文件路径",
     )
     parser.add_argument("--provider-key", default="gpt-5.4", help="provider key，默认 gpt-5.4")
+    parser.add_argument(
+        "--all-providers",
+        action="store_true",
+        help="巡检 providers 下所有 provider key（按节点 model 字段逐个探测）",
+    )
     parser.add_argument("--probe-model", default="gpt-5.4", help="探测请求使用的模型名（默认小写）")
     parser.add_argument(
         "--case-mode",
@@ -243,6 +248,7 @@ def save_config(path: Path, data: dict[str, Any]) -> None:
 def check_once(
     config_path: Path,
     provider_key: str,
+    all_providers: bool,
     probe_model: str,
     case_mode: str,
     timeout: float,
@@ -254,97 +260,108 @@ def check_once(
     providers_obj = data.get("providers")
     if not isinstance(providers_obj, dict):
         raise ValueError("配置文件缺少 providers 对象")
-    items = providers_obj.get(provider_key)
-    if isinstance(items, dict):
-        items = [items]
-    if not isinstance(items, list):
-        raise ValueError(f"providers.{provider_key} 必须是数组")
+    target_provider_keys: list[str]
+    if all_providers:
+        target_provider_keys = sorted([str(k).strip() for k in providers_obj.keys() if str(k).strip()])
+    else:
+        target_provider_keys = [provider_key]
+    if not target_provider_keys:
+        raise ValueError("providers 为空，没有可探测的 provider")
 
-    checked: list[dict[str, Any]] = []
-    ts = now_utc_iso()
-    for idx, item in enumerate(items, start=1):
-        if not isinstance(item, dict):
-            continue
-        node = dict(item)
-        base_url = str(node.get("base_url") or "").strip()
-        api_key = str(node.get("api_key") or "").strip()
-        model = str(node.get("model") or probe_model).strip() or probe_model
-
-        if not base_url or not api_key:
-            node["enabled"] = False if not keep_unhealthy_enabled else bool(node.get("enabled", True))
-            node["health_status"] = "unhealthy"
-            node["status"] = "disabled" if not keep_unhealthy_enabled else "unhealthy"
-            node["last_checked_at"] = ts
-            node["last_http_status"] = None
-            node["last_latency_ms"] = 0
-            node["last_error"] = "missing base_url/api_key"
-            node["last_probe_model"] = model
-            node["last_probe_base_url"] = base_url
-            checked.append(node)
-            print(f"[{idx}] DOWN {base_url or '<empty>'} err=missing base_url/api_key")
+    for current_provider_key in target_provider_keys:
+        items = providers_obj.get(current_provider_key)
+        if isinstance(items, dict):
+            items = [items]
+        if not isinstance(items, list):
+            print(f"[skip] provider={current_provider_key} 配置不是数组，已跳过")
             continue
 
-        r, attempts = probe_endpoint_autovalidate(
-            base_url=base_url,
-            api_key=api_key,
-            probe_model=model,
-            case_mode=case_mode,
-            timeout=timeout,
-            probe_retries=probe_retries,
-        )
-        fail_streak = int(node.get("consecutive_failures") or 0)
-        node["last_checked_at"] = ts
-        node["last_http_status"] = r.status_code
-        node["last_latency_ms"] = r.latency_ms
-        node["last_error"] = r.error
-        node["last_probe_model"] = r.used_model
-        node["last_probe_base_url"] = r.used_base_url
-        node["last_probe_attempts"] = attempts[-8:]
-        if r.ok:
-            node["consecutive_failures"] = 0
-            node["enabled"] = True
-            node["health_status"] = "healthy"
-            node["status"] = "active"
-            # Write back verified working combo for production callers.
-            node["base_url"] = r.used_base_url
-            node["model"] = r.used_model
-            print(f"[{idx}] OK   {r.used_base_url} model={r.used_model} latency={r.latency_ms}ms")
-        else:
-            fail_streak += 1
-            node["consecutive_failures"] = fail_streak
-            if keep_unhealthy_enabled:
-                node["enabled"] = bool(node.get("enabled", True))
-                node["status"] = "unhealthy"
-            elif fail_streak < max(int(disable_fail_threshold), 1):
-                node["enabled"] = True
-                node["status"] = "degraded"
-            else:
-                node["enabled"] = False
-                node["status"] = "disabled"
-            node["health_status"] = "unhealthy"
-            print(
-                f"[{idx}] DOWN {base_url} status={r.status_code if r.status_code is not None else '-'} "
-                f"model={r.used_model} api_base={r.used_base_url} latency={r.latency_ms}ms "
-                f"fail_streak={fail_streak} err={r.error}"
+        checked: list[dict[str, Any]] = []
+        ts = now_utc_iso()
+        print(f"[start] provider={current_provider_key} nodes={len(items)}")
+        for idx, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                continue
+            node = dict(item)
+            base_url = str(node.get("base_url") or "").strip()
+            api_key = str(node.get("api_key") or "").strip()
+            model = str(node.get("model") or probe_model).strip() or probe_model
+
+            if not base_url or not api_key:
+                node["enabled"] = False if not keep_unhealthy_enabled else bool(node.get("enabled", True))
+                node["health_status"] = "unhealthy"
+                node["status"] = "disabled" if not keep_unhealthy_enabled else "unhealthy"
+                node["last_checked_at"] = ts
+                node["last_http_status"] = None
+                node["last_latency_ms"] = 0
+                node["last_error"] = "missing base_url/api_key"
+                node["last_probe_model"] = model
+                node["last_probe_base_url"] = base_url
+                checked.append(node)
+                print(f"[{current_provider_key}#{idx}] DOWN {base_url or '<empty>'} err=missing base_url/api_key")
+                continue
+
+            r, attempts = probe_endpoint_autovalidate(
+                base_url=base_url,
+                api_key=api_key,
+                probe_model=model,
+                case_mode=case_mode,
+                timeout=timeout,
+                probe_retries=probe_retries,
             )
-        checked.append(node)
+            fail_streak = int(node.get("consecutive_failures") or 0)
+            node["last_checked_at"] = ts
+            node["last_http_status"] = r.status_code
+            node["last_latency_ms"] = r.latency_ms
+            node["last_error"] = r.error
+            node["last_probe_model"] = r.used_model
+            node["last_probe_base_url"] = r.used_base_url
+            node["last_probe_attempts"] = attempts[-8:]
+            if r.ok:
+                node["consecutive_failures"] = 0
+                node["enabled"] = True
+                node["health_status"] = "healthy"
+                node["status"] = "active"
+                # Write back verified working combo for production callers.
+                node["base_url"] = r.used_base_url
+                node["model"] = r.used_model
+                print(f"[{current_provider_key}#{idx}] OK   {r.used_base_url} model={r.used_model} latency={r.latency_ms}ms")
+            else:
+                fail_streak += 1
+                node["consecutive_failures"] = fail_streak
+                if keep_unhealthy_enabled:
+                    node["enabled"] = bool(node.get("enabled", True))
+                    node["status"] = "unhealthy"
+                elif fail_streak < max(int(disable_fail_threshold), 1):
+                    node["enabled"] = True
+                    node["status"] = "degraded"
+                else:
+                    node["enabled"] = False
+                    node["status"] = "disabled"
+                node["health_status"] = "unhealthy"
+                print(
+                    f"[{current_provider_key}#{idx}] DOWN {base_url} status={r.status_code if r.status_code is not None else '-'} "
+                    f"model={r.used_model} api_base={r.used_base_url} latency={r.latency_ms}ms "
+                    f"fail_streak={fail_streak} err={r.error}"
+                )
+            checked.append(node)
 
-    healthy = [x for x in checked if x.get("health_status") == "healthy"]
-    unhealthy = [x for x in checked if x.get("health_status") != "healthy"]
-    healthy.sort(key=lambda x: int(x.get("last_latency_ms") or 10**9))
+        healthy = [x for x in checked if x.get("health_status") == "healthy"]
+        unhealthy = [x for x in checked if x.get("health_status") != "healthy"]
+        healthy.sort(key=lambda x: int(x.get("last_latency_ms") or 10**9))
 
-    ordered = healthy + unhealthy
-    for i, x in enumerate(ordered, start=1):
-        x["priority"] = i
+        ordered = healthy + unhealthy
+        for i, x in enumerate(ordered, start=1):
+            x["priority"] = i
 
-    providers_obj[provider_key] = ordered
+        providers_obj[current_provider_key] = ordered
+        print(
+            f"[done] provider={current_provider_key} total={len(ordered)} "
+            f"healthy={len(healthy)} unhealthy={len(unhealthy)} "
+            f"config={config_path}"
+        )
+
     save_config(config_path, data)
-
-    print(
-        f"[done] provider={provider_key} total={len(ordered)} "
-        f"healthy={len(healthy)} unhealthy={len(unhealthy)} "
-        f"config={config_path}"
-    )
     return 0
 
 
@@ -358,6 +375,7 @@ def main() -> int:
                 check_once(
                     config_path=path,
                     provider_key=args.provider_key,
+                    all_providers=bool(args.all_providers),
                     probe_model=args.probe_model,
                     case_mode=args.case_mode,
                     timeout=args.timeout,
@@ -372,6 +390,7 @@ def main() -> int:
     return check_once(
         config_path=path,
         provider_key=args.provider_key,
+        all_providers=bool(args.all_providers),
         probe_model=args.probe_model,
         case_mode=args.case_mode,
         timeout=args.timeout,

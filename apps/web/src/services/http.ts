@@ -23,9 +23,13 @@ http.interceptors.response.use(
   (error) => {
     const data = error?.response?.data || {}
     const status = error?.response?.status
+    const reqBase = String(error?.config?.baseURL || resolvedBaseUrl || '').trim()
+    const reqUrl = String(error?.config?.url || '').trim()
+    const endpoint = `${reqBase}${reqUrl}` || reqUrl || reqBase
     const code = data?.code ? ` [${data.code}]` : ''
     const hint = data?.hint ? `（${data.hint}）` : ''
-    const message = `${data?.error || error?.message || '请求失败'}${code}${hint}`
+    const networkHint = !error?.response && endpoint ? `（endpoint: ${endpoint}）` : ''
+    const message = `${data?.error || error?.message || '请求失败'}${code}${hint}${networkHint}`
     const wrapped: Error & { status?: number; response?: any; data?: any } = new Error(message)
     wrapped.status = status
     wrapped.response = error?.response

@@ -236,25 +236,31 @@
 
 1. 前端在 `/research/trend` 或 `/research/multi-role` 发起分析
 2. 后端创建异步任务并轮询状态
-3. 多角色 v2 角色阶段并行执行
-4. 汇总阶段串行生成公共结论（决策置信度 / 风险复核 / 行动视图）
-5. 前端回显完整 Markdown 与按角色视图
+3. 多角色沿用 v3 API 路径，执行内核已切换为 v4（LangGraph 图编排），仍是六阶段（Analyst -> Bull/Bear -> Research Manager -> Trader -> 风控三方 -> Portfolio Manager）
+4. 独立 worker 进程消费任务队列，API 仅负责创建/查询/控制任务
+5. 前端回显阶段时间线、辩论面板、审批面板与完整 Markdown
 
-多角色 v2 当前接口：
+多角色 v3 当前接口：
 
-- `POST /api/llm/multi-role/v2/start`
-- `GET /api/llm/multi-role/v2/task?job_id=...`
-- `POST /api/llm/multi-role/v2/decision`
-- `POST /api/llm/multi-role/v2/retry-aggregate`
+- `POST /api/llm/multi-role/v3/jobs`
+- `GET /api/llm/multi-role/v3/jobs/<job_id>`
+- `GET /api/llm/multi-role/v3/jobs/<job_id>/stream`
+- `POST /api/llm/multi-role/v3/jobs/<job_id>/decisions`
+- `POST /api/llm/multi-role/v3/jobs/<job_id>/actions`
 
-多角色 v2 当前关键状态：
+多角色 v3 当前关键状态：
 
 - `queued`
 - `running`
 - `pending_user_decision`
-- `done`
+- `approved`
+- `rejected`
+- `deferred`
 - `done_with_warnings`
 - `error`
+
+多角色任务返回中会带 `engine_version`；当前默认应为 `v4`。如遇紧急回滚，可通过环境变量 `MULTI_ROLE_V4_ROLLBACK_TO_V3=1` 临时切回旧执行管线。
+多角色 v3 模型路由支持“按角色 + 按阶段”双层策略，配置入口为 `config/llm_providers.json` 的 `multi_role_v3_policies`（可参考 quick/deep 思路分别配置证据节点与裁决节点）。
 
 ## 5. 当前自动运行的定时任务
 
@@ -311,6 +317,8 @@
 | --- | --- |
 | `50 16 * * *` | 数据库审核报告刷新 |
 | `40 16 * * *` | 数据库健康巡检 |
+| `*/20 * * * *` | LLM 节点全模型巡检 |
+| `*/5 * * * *` | 多角色僵尸任务回收 |
 | `*/30 * * * *` | QuantaAlpha 健康检查 |
 | `20 1 * * *` | QuantaAlpha 因子挖掘 |
 | `45 1 * * *` | QuantaAlpha 回测 |

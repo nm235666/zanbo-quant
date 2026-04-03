@@ -49,6 +49,23 @@ def _default_payload() -> dict[str, Any]:
             "风险控制官": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5", "deepseek-chat"]},
             "行业分析师": {"primary_model": "gpt-5.4-multi-role", "fallback_models": ["kimi-k2.5", "deepseek-chat"]},
         },
+        "multi_role_v3_policies": {
+            "quick_think_llm": "deepseek-chat",
+            "deep_think_llm": "gpt-5.4-multi-role",
+            "fallback_models": ["deepseek-chat"],
+            "stage_models": {
+                "analyst": {"mode": "quick"},
+                "research_debate": {"mode": "deep"},
+                "research_manager": {"mode": "deep"},
+                "trader": {"mode": "deep"},
+                "risk_debate": {"mode": "deep"},
+                "portfolio_manager": {"mode": "deep"},
+            },
+            "role_models": {
+                "analyst:news": {"primary_model": "zhipu-news", "fallback_models": ["deepseek-chat"]},
+                "analyst:sentiment": {"primary_model": "zhipu-news", "fallback_models": ["deepseek-chat"]},
+            },
+        },
         "providers": {},
     }
 
@@ -68,6 +85,8 @@ def _load_payload(path: Path) -> dict[str, Any]:
         merged["providers"] = {}
     if not isinstance(merged.get("multi_role_v2_policies"), dict):
         merged["multi_role_v2_policies"] = _default_payload().get("multi_role_v2_policies", {})
+    if not isinstance(merged.get("multi_role_v3_policies"), dict):
+        merged["multi_role_v3_policies"] = _default_payload().get("multi_role_v3_policies", {})
     merged["default_rate_limit_per_minute"] = max(
         1,
         int(merged.get("default_rate_limit_per_minute") or get_default_rate_limit_per_minute() or 10),
@@ -241,6 +260,7 @@ def list_llm_providers() -> dict[str, Any]:
         "fallback_models": list(payload.get("fallback_models") or []),
         "default_rate_limit_per_minute": default_limit,
         "multi_role_v2_policies": payload.get("multi_role_v2_policies") or {},
+        "multi_role_v3_policies": payload.get("multi_role_v3_policies") or {},
         "items": provider_items,
     }
 
@@ -253,6 +273,17 @@ def get_multi_role_v2_policies() -> dict[str, Any]:
         "ok": True,
         "config_path": str(path),
         "multi_role_v2_policies": payload.get("multi_role_v2_policies") or {},
+    }
+
+
+def get_multi_role_v3_policies() -> dict[str, Any]:
+    path = _resolve_config_path()
+    with _LOCK:
+        payload = _load_payload(path)
+    return {
+        "ok": True,
+        "config_path": str(path),
+        "multi_role_v3_policies": payload.get("multi_role_v3_policies") or {},
     }
 
 

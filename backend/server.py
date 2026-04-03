@@ -56,6 +56,13 @@ from services.agent_service import (
     start_async_multi_role_job as agent_start_async_multi_role_job,
     split_multi_role_analysis as agent_split_multi_role_analysis,
 )
+from services.agent_service.multi_role_v3 import (
+    control_multi_role_v3_job,
+    create_multi_role_v3_job,
+    ensure_multi_role_v3_tables,
+    get_multi_role_v3_job,
+    run_multi_role_v3_worker_loop,
+)
 from services.reporting import build_reporting_runtime_deps
 from services.reporting import (
     cleanup_async_jobs as reporting_cleanup_async_jobs,
@@ -104,6 +111,7 @@ from services.system.llm_providers_admin import (
     create_llm_provider,
     delete_llm_provider,
     get_multi_role_v2_policies,
+    get_multi_role_v3_policies,
     list_llm_providers,
     test_model_llm_providers,
     test_one_llm_provider,
@@ -207,6 +215,7 @@ MULTI_ROLE_V2_MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MULTI_ROLE_V2_MAX_CONC
 MULTI_ROLE_V2_CONTEXT_CACHE: dict[str, dict] = {}
 MULTI_ROLE_V2_CONTEXT_CACHE_LOCK = threading.Lock()
 LAST_MULTI_ROLE_V2_POLICY_LOAD_ERROR = ""
+LAST_MULTI_ROLE_V3_POLICY_LOAD_ERROR = ""
 ASYNC_DAILY_SUMMARY_JOBS: dict[str, dict] = {}
 ASYNC_DAILY_SUMMARY_LOCK = threading.Lock()
 TMP_DIR = Path("/tmp")
@@ -238,6 +247,7 @@ PROTECTED_POST_PATHS = {
     "/api/llm/multi-role/v2/start",
     "/api/llm/multi-role/v2/decision",
     "/api/llm/multi-role/v2/retry-aggregate",
+    "/api/llm/multi-role/v3/jobs",
 }
 PROTECTED_GET_PATHS = {
     "/api/jobs",
@@ -251,6 +261,7 @@ PROTECTED_GET_PATHS = {
     "/api/news/daily-summaries/generate",
     "/api/llm/multi-role/start",
     "/api/llm/multi-role/v2/stream",
+    "/api/llm/multi-role/v3/jobs",
 }
 DEFAULT_ALLOWED_ADMIN_ORIGINS = {
     "http://127.0.0.1:8077",
@@ -384,6 +395,11 @@ API_ENDPOINTS_CATALOG = {
     "llm_multi_role_v2_decision": "/api/llm/multi-role/v2/decision",
     "llm_multi_role_v2_retry_aggregate": "/api/llm/multi-role/v2/retry-aggregate",
     "llm_multi_role_v2_history": "/api/llm/multi-role/v2/history?version=v2&ts_code=000001.SZ&status=done&page=1&page_size=20",
+    "llm_multi_role_v3_jobs_create": "/api/llm/multi-role/v3/jobs",
+    "llm_multi_role_v3_job_get": "/api/llm/multi-role/v3/jobs/<job_id>",
+    "llm_multi_role_v3_job_stream": "/api/llm/multi-role/v3/jobs/<job_id>/stream?interval_ms=1000&timeout_seconds=180",
+    "llm_multi_role_v3_job_decisions": "/api/llm/multi-role/v3/jobs/<job_id>/decisions",
+    "llm_multi_role_v3_job_actions": "/api/llm/multi-role/v3/jobs/<job_id>/actions",
     "macro_indicators": "/api/macro/indicators",
     "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
     "source_monitor": "/api/source-monitor",
@@ -414,6 +430,8 @@ def _normalize_origin(origin: str) -> str:
 
 def _request_is_protected(path: str, method: str, params: dict[str, list[str]] | None = None) -> bool:
     normalized_method = (method or "").upper()
+    if path.startswith("/api/llm/multi-role/v3/"):
+        return True
     if normalized_method == "POST":
         return path in PROTECTED_POST_PATHS
     if normalized_method in {"GET", "OPTIONS"} and path in PROTECTED_GET_PATHS:
@@ -466,7 +484,7 @@ def _permission_denied_payload(path: str) -> dict:
         "/api/llm/multi-role/v2/decision",
         "/api/llm/multi-role/v2/retry-aggregate",
         "/api/llm/multi-role/v2/history",
-    }:
+    } or path.startswith("/api/llm/multi-role/v3/"):
         code = "AUTH_PERMISSION_DENIED_MULTI_ROLE"
         hint = "该账号不可访问多角色分析接口，请联系管理员开通。"
     elif path == "/api/llm/trend":
@@ -5525,6 +5543,116 @@ def _load_multi_role_v2_policies() -> dict:
     return defaults
 
 
+def _default_multi_role_v3_policies() -> dict:
+    return {
+        "quick_think_llm": "deepseek-chat",
+        "deep_think_llm": "gpt-5.4-multi-role",
+        "fallback_models": ["deepseek-chat"],
+        "stage_models": {
+            "analyst": {"mode": "quick"},
+            "research_debate": {"mode": "deep"},
+            "research_manager": {"mode": "deep"},
+            "trader": {"mode": "deep"},
+            "risk_debate": {"mode": "deep"},
+            "portfolio_manager": {"mode": "deep"},
+        },
+        "role_models": {
+            "analyst:news": {"primary_model": "zhipu-news", "fallback_models": ["deepseek-chat"]},
+            "analyst:sentiment": {"primary_model": "zhipu-news", "fallback_models": ["deepseek-chat"]},
+        },
+    }
+
+
+def _normalize_multi_role_v3_policy_entry(
+    raw: dict,
+    *,
+    fallback_profile: str,
+    quick_model: str,
+    deep_model: str,
+    global_fallback: list[str],
+) -> dict:
+    mode = str(raw.get("mode") or "").strip().lower()
+    if mode not in {"quick", "deep"}:
+        mode = fallback_profile
+    primary = str(raw.get("primary_model") or "").strip()
+    if not primary:
+        primary = quick_model if mode == "quick" else deep_model
+    fallback_raw = raw.get("fallback_models") or []
+    if isinstance(fallback_raw, str):
+        fallback = [x.strip() for x in fallback_raw.split(",") if x.strip()]
+    elif isinstance(fallback_raw, list):
+        fallback = [str(x).strip() for x in fallback_raw if str(x).strip()]
+    else:
+        fallback = []
+    if not fallback:
+        fallback = list(global_fallback)
+    return {
+        "mode": mode,
+        "primary_model": primary,
+        "fallback_models": fallback,
+    }
+
+
+def _load_multi_role_v3_policies() -> dict:
+    global LAST_MULTI_ROLE_V3_POLICY_LOAD_ERROR
+    defaults = _default_multi_role_v3_policies()
+    try:
+        payload = get_multi_role_v3_policies()
+        raw = payload.get("multi_role_v3_policies") or {}
+        if isinstance(raw, dict):
+            quick = str(raw.get("quick_think_llm") or defaults.get("quick_think_llm") or "").strip() or defaults["quick_think_llm"]
+            deep = str(raw.get("deep_think_llm") or defaults.get("deep_think_llm") or "").strip() or defaults["deep_think_llm"]
+            fallback_raw = raw.get("fallback_models") or defaults.get("fallback_models") or []
+            if isinstance(fallback_raw, str):
+                fallback = [x.strip() for x in fallback_raw.split(",") if x.strip()]
+            elif isinstance(fallback_raw, list):
+                fallback = [str(x).strip() for x in fallback_raw if str(x).strip()]
+            else:
+                fallback = list(defaults.get("fallback_models") or [])
+            defaults["quick_think_llm"] = quick
+            defaults["deep_think_llm"] = deep
+            defaults["fallback_models"] = fallback
+
+            stage_models = dict(defaults.get("stage_models") or {})
+            role_models = dict(defaults.get("role_models") or {})
+            raw_stages = raw.get("stage_models") or {}
+            if isinstance(raw_stages, dict):
+                for stage_key, cfg in raw_stages.items():
+                    key = str(stage_key or "").strip()
+                    if not key or not isinstance(cfg, dict):
+                        continue
+                    stage_models[key] = _normalize_multi_role_v3_policy_entry(
+                        cfg,
+                        fallback_profile="deep",
+                        quick_model=quick,
+                        deep_model=deep,
+                        global_fallback=fallback,
+                    )
+            raw_roles = raw.get("role_models") or {}
+            if isinstance(raw_roles, dict):
+                for role_key, cfg in raw_roles.items():
+                    key = str(role_key or "").strip().lower()
+                    if not key or not isinstance(cfg, dict):
+                        continue
+                    role_models[key] = _normalize_multi_role_v3_policy_entry(
+                        cfg,
+                        fallback_profile="quick",
+                        quick_model=quick,
+                        deep_model=deep,
+                        global_fallback=fallback,
+                    )
+            defaults["stage_models"] = stage_models
+            defaults["role_models"] = role_models
+        LAST_MULTI_ROLE_V3_POLICY_LOAD_ERROR = ""
+    except Exception as exc:
+        LAST_MULTI_ROLE_V3_POLICY_LOAD_ERROR = f"{type(exc).__name__}: {exc}"
+        print(
+            f"[multi-role-v3] policy load failed; fallback to defaults. error={LAST_MULTI_ROLE_V3_POLICY_LOAD_ERROR}",
+            flush=True,
+        )
+    return defaults
+
+
 def _policy_model_chain(policy_map: dict, role: str) -> list[str]:
     cfg = policy_map.get(role) or {}
     primary = normalize_model_name(str(cfg.get("primary_model") or DEFAULT_LLM_MODEL))
@@ -5542,6 +5670,11 @@ def _is_kimi_model(model: str) -> bool:
 
 def _is_gpt54_model(model: str) -> bool:
     return normalize_model_name(str(model or "")).lower() == "gpt-5.4"
+
+
+def _is_gpt54_family_model(model: str) -> bool:
+    normalized = normalize_model_name(str(model or "")).lower()
+    return normalized == "gpt-5.4" or "gpt-5.4" in normalized
 
 
 def _candidate_route_chain(model_chain: list[str], *, per_model_limit: int) -> list[dict]:
@@ -5608,13 +5741,14 @@ def _run_multi_role_v2_single_role(*, role: str, context: dict, policy_map: dict
         request_model = str(route.get("model") or model_chain[idx % len(model_chain)])
         request_base_url = str(route.get("base_url") or "")
         request_api_key = str(route.get("api_key") or "")
+        role_timeout_s = 90 if _is_gpt54_family_model(request_model) else 60
         try:
             result = chat_completion_with_fallback(
                 model=request_model,
                 base_url=request_base_url,
                 api_key=request_api_key,
                 temperature=0.2,
-                timeout_s=60,
+                timeout_s=role_timeout_s,
                 max_retries=0,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -5721,13 +5855,14 @@ def _run_multi_role_v2_aggregator(*, role_runs: list[dict], ts_code: str, lookba
         request_model = str(route.get("model") or chain[idx % len(chain)])
         request_base_url = str(route.get("base_url") or "")
         request_api_key = str(route.get("api_key") or "")
+        aggregate_timeout_s = 120 if _is_gpt54_family_model(request_model) else 75
         try:
             result = chat_completion_with_fallback(
                 model=request_model,
                 base_url=request_base_url,
                 api_key=request_api_key,
                 temperature=0.2,
-                timeout_s=75,
+                timeout_s=aggregate_timeout_s,
                 max_retries=0,
                 messages=[
                     {"role": "system", "content": "你是严谨的投研纪要整合器，只输出结构化 Markdown。"},
@@ -6818,6 +6953,166 @@ def get_async_daily_summary_job(job_id: str):
     )
 
 
+def _multi_role_v3_resolve_stage_role(node_key: str, strong: bool) -> tuple[str, str]:
+    key = str(node_key or "").strip().lower()
+    if key.startswith("analyst:"):
+        return "analyst", key
+    if key in {"research:bull", "research:bear", "research:manager"}:
+        return "research_debate", key
+    if key.startswith("risk:"):
+        return "risk_debate", key
+    if key == "decision:research_manager":
+        return "research_manager", key
+    if key == "decision:trader":
+        return "trader", key
+    if key == "decision:portfolio_manager":
+        return "portfolio_manager", key
+    # 未识别节点回退到阶段强弱模型。
+    return ("default_strong" if strong else "default_quick"), key
+
+
+def _multi_role_v3_entry_chain(entry: dict | None, *, quick_model: str, deep_model: str, global_fallback: list[str], default_mode: str) -> list[str]:
+    cfg = dict(entry or {})
+    mode = str(cfg.get("mode") or "").strip().lower()
+    if mode not in {"quick", "deep"}:
+        mode = default_mode
+    base = str(cfg.get("primary_model") or "").strip() or (quick_model if mode == "quick" else deep_model)
+    fallback_raw = cfg.get("fallback_models") or []
+    if isinstance(fallback_raw, str):
+        fallback = [x.strip() for x in fallback_raw.split(",") if x.strip()]
+    elif isinstance(fallback_raw, list):
+        fallback = [str(x).strip() for x in fallback_raw if str(x).strip()]
+    else:
+        fallback = []
+    if not fallback:
+        fallback = list(global_fallback or [])
+    out: list[str] = []
+    for item in [base, *fallback]:
+        normalized = normalize_model_name(str(item or ""))
+        if normalized and normalized not in out:
+            out.append(normalized)
+    return out
+
+
+def _multi_role_v3_model_chain(*, node_key: str, strong: bool) -> list[str]:
+    policies = _load_multi_role_v3_policies()
+    stage, role_key = _multi_role_v3_resolve_stage_role(node_key, strong)
+    quick_model = normalize_model_name(str(policies.get("quick_think_llm") or "kimi-k2.5"))
+    deep_model = normalize_model_name(str(policies.get("deep_think_llm") or "gpt-5.4-multi-role"))
+    global_fallback = [normalize_model_name(str(x or "")) for x in list(policies.get("fallback_models") or []) if str(x or "").strip()]
+
+    default_mode = "deep" if strong else "quick"
+    base_chain = _multi_role_v3_entry_chain(
+        None,
+        quick_model=quick_model,
+        deep_model=deep_model,
+        global_fallback=global_fallback,
+        default_mode=default_mode,
+    )
+    stage_chain = _multi_role_v3_entry_chain(
+        dict((policies.get("stage_models") or {}).get(stage) or {}),
+        quick_model=quick_model,
+        deep_model=deep_model,
+        global_fallback=global_fallback,
+        default_mode=default_mode,
+    )
+    role_chain = _multi_role_v3_entry_chain(
+        dict((policies.get("role_models") or {}).get(role_key.lower()) or {}),
+        quick_model=quick_model,
+        deep_model=deep_model,
+        global_fallback=global_fallback,
+        default_mode=default_mode,
+    )
+
+    chain: list[str] = []
+    for bucket in (role_chain, stage_chain, base_chain):
+        for item in bucket:
+            if item and item not in chain:
+                chain.append(item)
+    return chain or [normalize_model_name(DEFAULT_LLM_MODEL)]
+
+
+def _multi_role_v3_call_llm(*, node_key: str, prompt: str, strong: bool, timeout_s: int = 60) -> dict:
+    chain = _multi_role_v3_model_chain(node_key=node_key, strong=strong)
+    attempts: list[dict] = []
+    last_err = ""
+    for model in chain:
+        try:
+            result = chat_completion_with_fallback(
+                model=model,
+                temperature=0.2 if strong else 0.1,
+                timeout_s=max(20, int(timeout_s or 60)),
+                max_retries=0,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是结构化投研节点执行器。只输出 JSON，不要额外解释。",
+                    },
+                    {"role": "user", "content": str(prompt or "")},
+                ],
+            )
+            for item in list(result.attempts or []):
+                attempts.append({"model": item.model, "base_url": item.base_url, "error": item.error})
+            return {
+                "text": str(result.text or ""),
+                "used_model": str(result.used_model or model),
+                "requested_model": str(result.requested_model or model),
+                "attempts": attempts,
+            }
+        except Exception as exc:
+            last_err = str(exc)
+            attempts.append({"model": model, "base_url": "", "error": last_err})
+            continue
+    raise RuntimeError(f"{node_key} 调用失败: {last_err or 'unknown error'}")
+
+
+def _multi_role_v3_build_context(*, ts_code: str, lookback: int) -> dict:
+    return build_multi_role_context(ts_code=ts_code, lookback=lookback)
+
+
+def start_multi_role_v3_job(payload: dict) -> dict:
+    return create_multi_role_v3_job(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        payload=payload,
+    )
+
+
+def get_multi_role_v3_job_by_id(job_id: str):
+    return get_multi_role_v3_job(sqlite3_module=sqlite3, db_path=DB_PATH, job_id=job_id)
+
+
+def decide_multi_role_v3_job(*, job_id: str, action: str):
+    return control_multi_role_v3_job(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        job_id=job_id,
+        action=action,
+    )
+
+
+def action_multi_role_v3_job(*, job_id: str, action: str, stage: str = ""):
+    return control_multi_role_v3_job(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        job_id=job_id,
+        action=action,
+        stage=stage,
+    )
+
+
+def run_multi_role_v3_worker_once() -> None:
+    run_multi_role_v3_worker_loop(
+        sqlite3_module=sqlite3,
+        db_path=DB_PATH,
+        runtime={
+            "build_context": _multi_role_v3_build_context,
+            "llm_call": _multi_role_v3_call_llm,
+        },
+        once=True,
+    )
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     def _request_params(self) -> dict[str, list[str]]:
         return parse_qs(urlparse(self.path).query)
@@ -6920,7 +7215,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/llm/multi-role/v2/decision",
             "/api/llm/multi-role/v2/retry-aggregate",
             "/api/llm/multi-role/v2/history",
-        }:
+        } or path.startswith("/api/llm/multi-role/v3/"):
             return "multi_role_analyze" in perms
         if path in {"/api/stocks", "/api/stocks/filters"}:
             return "multi_role_analyze" in perms
@@ -7053,6 +7348,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             "decide_async_multi_role_v2_job": decide_async_multi_role_v2_job,
             "retry_async_multi_role_v2_aggregate": retry_async_multi_role_v2_aggregate,
             "find_today_reusable_multi_role_v2_job": find_today_reusable_multi_role_v2_job,
+            "start_multi_role_v3_job": start_multi_role_v3_job,
+            "get_multi_role_v3_job_by_id": get_multi_role_v3_job_by_id,
+            "decide_multi_role_v3_job": decide_multi_role_v3_job,
+            "action_multi_role_v3_job": action_multi_role_v3_job,
             **build_stock_news_service_runtime_deps(),
             "query_news_sources": query_news_sources,
             "query_news": query_news,
@@ -7157,6 +7456,11 @@ class ApiHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     assert_database_ready()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        ensure_multi_role_v3_tables(conn)
+    finally:
+        conn.close()
 
     server = ThreadingHTTPServer((HOST, PORT), ApiHandler)
     print(f"Backend API running on http://{HOST}:{PORT}")

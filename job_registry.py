@@ -273,6 +273,26 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=((PYTHON_BIN, str(ROOT_DIR / "db_health_check.py")),),
     ),
     JobDefinition(
+        job_key="llm_provider_nodes_probe",
+        name="LLM 节点全模型巡检",
+        category="maintenance",
+        schedule_expr="*/20 * * * *",
+        description="全量探测 llm provider 节点健康并更新 enabled/priority",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_llm_job.py"), "--job-key", "llm_provider_nodes_probe"),
+        ),
+    ),
+    JobDefinition(
+        job_key="multi_role_v3_stale_recovery",
+        name="多角色僵尸任务回收",
+        category="maintenance",
+        schedule_expr="*/5 * * * *",
+        description="自动回收 multi_role_v3 中 worker 已失活的 running 僵尸任务",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_llm_job.py"), "--job-key", "multi_role_v3_stale_recovery"),
+        ),
+    ),
+    JobDefinition(
         job_key="daily_postclose_update",
         name="盘后更新流水线",
         category="market_data",

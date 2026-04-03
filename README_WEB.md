@@ -42,15 +42,26 @@ cd /home/zanbo/zanbotest
 - 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
 - `apps/web/` 是当前唯一主力前端；旧版 `frontend/` 已退场，不再作为开发或部署目标
 
-### 多角色分析 v2（当前主链路）
+### 多角色分析 v3（当前主链路，v4 引擎）
 
 - 前端页面：`/research/multi-role`
 - 主接口：
-  - `POST /api/llm/multi-role/v2/start`
-  - `GET /api/llm/multi-role/v2/task?job_id=...`
-  - `POST /api/llm/multi-role/v2/decision`
-  - `POST /api/llm/multi-role/v2/retry-aggregate`
-- 常见任务状态：`queued` / `running` / `pending_user_decision` / `done` / `done_with_warnings` / `error`
+  - `POST /api/llm/multi-role/v3/jobs`
+  - `GET /api/llm/multi-role/v3/jobs/<job_id>`
+  - `GET /api/llm/multi-role/v3/jobs/<job_id>/stream`
+  - `POST /api/llm/multi-role/v3/jobs/<job_id>/decisions`
+  - `POST /api/llm/multi-role/v3/jobs/<job_id>/actions`
+- 常见任务状态：`queued` / `running` / `pending_user_decision` / `approved` / `rejected` / `deferred` / `done_with_warnings` / `error`
+- 执行内核：默认走 `engine_version=v4`（LangGraph 图编排）；接口路径保持 v3 不变
+- 模型路由：v3 已支持“按角色 + 按阶段”双层策略（`config/llm_providers.json` 的 `multi_role_v3_policies`）
+- 紧急回滚开关：设置环境变量 `MULTI_ROLE_V4_ROLLBACK_TO_V3=1` 可临时回退旧 v3 执行管线
+
+独立 worker（建议长期运行）：
+
+```bash
+cd /home/zanbo/zanbotest
+nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; python3 jobs/run_multi_role_v3_worker.py' >/tmp/multi_role_v3_worker.log 2>&1 &
+```
 
 ### 后端重启（不依赖 ripgrep）
 

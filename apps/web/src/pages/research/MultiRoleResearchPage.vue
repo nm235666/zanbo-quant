@@ -49,6 +49,33 @@
         <div v-else class="text-sm text-[var(--muted)]">尚未启动角色子任务。</div>
       </PageSection>
 
+      <PageSection title="阶段时间线" subtitle="展示 v3 六阶段编排状态与当前执行位置。">
+        <div v-if="stageTimeline.length" class="grid gap-2 md:grid-cols-3">
+          <div v-for="item in stageTimeline" :key="item.stage" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm">
+            <div class="font-semibold">{{ item.stage }}</div>
+            <div class="mt-1 text-[var(--muted)]">{{ item.status || '-' }}</div>
+          </div>
+        </div>
+        <div v-else class="text-sm text-[var(--muted)]">尚无阶段数据。</div>
+      </PageSection>
+
+      <PageSection title="辩论面板" subtitle="展示 Bull/Bear 与风险三方辩论摘要。">
+        <div class="grid gap-3 xl:grid-cols-2 md:grid-cols-1">
+          <InfoCard title="Bull/Bear 研究辩论" :meta="`rounds ${researchDebateRounds}`">
+            <div class="markdown-compact" v-html="researchDebateHtml" />
+          </InfoCard>
+          <InfoCard title="风险三方辩论" :meta="`rounds ${riskDebateRounds}`">
+            <div class="markdown-compact" v-html="riskDebateHtml" />
+          </InfoCard>
+        </div>
+      </PageSection>
+
+      <PageSection title="审批面板" subtitle="Portfolio Manager 最终审批结论。">
+        <InfoCard title="审批结论" :meta="portfolioDecisionMeta">
+          <div class="markdown-compact" v-html="portfolioDecisionHtml" />
+        </InfoCard>
+      </PageSection>
+
       <PageSection title="角色视图" subtitle="优先展示按角色切分后的结论，也保留完整原文。">
         <template #action>
           <div class="flex flex-wrap gap-2">
@@ -63,6 +90,9 @@
             <button class="rounded-2xl bg-blue-700 px-4 py-2 text-white" :disabled="!fullMarkdown" @click="downloadFullMarkdown">下载完整 Markdown</button>
           </div>
         </template>
+        <InfoCard title="汇总面板" :meta="aggregatorPanelMeta" class="mb-4">
+          <div class="markdown-compact" v-html="aggregatorPanelHtml" />
+        </InfoCard>
         <div v-if="roleSections.length" class="mb-4 flex flex-wrap gap-2">
           <button
             v-for="item in roleSections"
@@ -122,7 +152,14 @@ import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
-import { decideMultiRoleTaskV2, fetchMultiRoleTaskV2, fetchStocks, retryMultiRoleAggregateV2, streamMultiRoleTaskV2, triggerMultiRoleTaskV2 } from '../../services/api/stocks'
+import {
+  actMultiRoleTaskV3,
+  decideMultiRoleTaskV3,
+  fetchMultiRoleTaskV3,
+  fetchStocks,
+  streamMultiRoleTaskV3,
+  triggerMultiRoleTaskV3,
+} from '../../services/api/stocks'
 import { fetchAuthStatus } from '../../services/api/auth'
 
 function looksLikeTsCode(value: string) {
@@ -155,8 +192,13 @@ const portfolioView = ref<Record<string, any>>({})
 const usedContextDims = ref<string[]>([])
 const preTradeCheck = ref<Record<string, any>>({})
 const notification = ref<Record<string, any>>({})
+const commonSectionsMarkdown = ref('')
 const roleRuns = ref<Array<Record<string, any>>>([])
 const aggregatorRun = ref<Record<string, any>>({})
+const stageTimeline = ref<Array<Record<string, any>>>([])
+const researchDebate = ref<Record<string, any>>({})
+const riskDebate = ref<Record<string, any>>({})
+const portfolioReview = ref<Record<string, any>>({})
 const acceptAutoDegrade = ref(true)
 const currentJobId = ref('')
 const taskStatus = ref('')
@@ -217,10 +259,55 @@ const portfolioViewMeta = computed(() => {
   return source
 })
 const portfolioViewHtml = computed(() => markdown.render(portfolioViewText.value))
+const aggregatorPanelMeta = computed(() => {
+  const run = aggregatorRun.value || {}
+  const status = String(run.status || taskStatus.value || '-')
+  const model = String(run.used_model || usedModel.value || '-')
+  const duration = Number(run.duration_ms || 0)
+  return `status ${status} · model ${model} · ${duration}ms`
+})
+const aggregatorPanelMarkdown = computed(() => {
+  const content = String(commonSectionsMarkdown.value || '').trim()
+  if (content) return content
+  const err = String((aggregatorRun.value || {}).error || '').trim()
+  if (err) return `> 汇总器错误：${err}`
+  return '暂无汇总正文，可先查看各角色原文。'
+})
+const aggregatorPanelHtml = computed(() => markdown.render(aggregatorPanelMarkdown.value))
+const researchDebateRounds = computed(() => Number((researchDebate.value?.rounds || []).length || 0))
+const riskDebateRounds = computed(() => Number((riskDebate.value?.rounds || []).length || 0))
+const researchDebateText = computed(() => {
+  const summary = String((researchDebate.value?.summary || {}).claim || '').trim()
+  if (summary) return summary
+  return '暂无研究辩论摘要。'
+})
+const riskDebateText = computed(() => {
+  const summary = String((riskDebate.value?.summary || {}).claim || '').trim()
+  if (summary) return summary
+  return '暂无风险辩论摘要。'
+})
+const researchDebateHtml = computed(() => markdown.render(researchDebateText.value))
+const riskDebateHtml = computed(() => markdown.render(riskDebateText.value))
+const portfolioDecisionText = computed(() => {
+  const decision = String(portfolioReview.value?.decision || '').trim().toLowerCase()
+  const claim = String(portfolioReview.value?.claim || '').trim()
+  const label = decision ? `决策：${decision.toUpperCase()}` : '决策：未显式给出'
+  if (!claim) return `${label}\n\n暂无审批说明。`
+  return `${label}\n\n${claim}`
+})
+const portfolioDecisionMeta = computed(() => {
+  const decision = String(portfolioReview.value?.decision || '').trim().toLowerCase()
+  if (!decision) return 'pending'
+  return decision
+})
+const portfolioDecisionHtml = computed(() => markdown.render(portfolioDecisionText.value))
+const hasAggregatorContent = computed(() => String(commonSectionsMarkdown.value || '').trim().length > 0)
 const canRetryAggregate = computed(() => {
   const status = taskStatus.value
   const aggStatus = String(aggregatorRun.value?.status || '')
-  return Boolean(currentJobId.value) && (status === 'done' || status === 'done_with_warnings') && aggStatus === 'error'
+  const terminal = status === 'done' || status === 'done_with_warnings' || status === 'approved' || status === 'rejected' || status === 'deferred'
+  const needRetry = aggStatus === 'error' || !hasAggregatorContent.value
+  return Boolean(currentJobId.value) && terminal && needRetry
 })
 const { data: authStatus, refetch: refetchAuthStatus } = useQuery({
   queryKey: ['auth-status-multi-role-page'],
@@ -257,15 +344,24 @@ function resetResultViews() {
   usedContextDims.value = []
   preTradeCheck.value = {}
   notification.value = {}
+  commonSectionsMarkdown.value = ''
+  stageTimeline.value = []
+  researchDebate.value = {}
+  riskDebate.value = {}
+  portfolioReview.value = {}
 }
 
 function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: string; name: string }) {
   taskStatus.value = String(task.status || '')
+  stageTimeline.value = Array.isArray(task.v3_stage_timeline) ? task.v3_stage_timeline : stageTimeline.value
+  researchDebate.value = (task.v3_research_debate || {}) as Record<string, any>
+  riskDebate.value = (task.v3_risk_debate || {}) as Record<string, any>
+  portfolioReview.value = (task.v3_portfolio_review || {}) as Record<string, any>
   roleRuns.value = Array.isArray(task.role_runs) ? task.role_runs : []
   aggregatorRun.value = (task.aggregator_run || {}) as Record<string, any>
   attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
 
-  if (task.status === 'done' || task.status === 'done_with_warnings') {
+  if (task.status === 'done' || task.status === 'done_with_warnings' || task.status === 'approved' || task.status === 'rejected' || task.status === 'deferred') {
     usedModel.value = String(task.used_model || task.model || usedModel.value || '')
     fullMarkdown.value = task.analysis_markdown || task.analysis || task.result || fullMarkdown.value || '分析完成，但未返回正文。'
     roleSections.value = Array.isArray(task.role_outputs) ? task.role_outputs : (Array.isArray(task.role_sections) ? task.role_sections : roleSections.value)
@@ -276,7 +372,9 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     usedContextDims.value = Array.isArray(task.used_context_dims) ? task.used_context_dims : []
     preTradeCheck.value = (task.pre_trade_check || {}) as Record<string, any>
     notification.value = (task.notification || {}) as Record<string, any>
-    actionMessage.value = `分析完成：${task.name || resolved?.name || resolved?.ts_code || resolvedStock.value.name || resolvedStock.value.ts_code}${task.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
+    commonSectionsMarkdown.value = String(task.common_sections_markdown || '')
+    const statusLabel = String(task.status || '').toUpperCase()
+    actionMessage.value = `分析完成：${task.name || resolved?.name || resolved?.ts_code || resolvedStock.value.name || resolvedStock.value.ts_code} · ${statusLabel}${task.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
     return true
   }
   if (task.status === 'pending_user_decision') {
@@ -297,7 +395,7 @@ function startPolling(jobId: string, resolved?: { ts_code: string; name: string 
   clearTimer()
   const poll = async (): Promise<void> => {
     try {
-      const task = await fetchMultiRoleTaskV2({ job_id: jobId })
+      const task = await fetchMultiRoleTaskV3(jobId)
       const terminal = applyTaskSnapshot(task as Record<string, any>, resolved)
       if (!terminal) timer = window.setTimeout(poll, 3000)
     } catch (error: any) {
@@ -312,7 +410,7 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
   stopLiveStream()
   const controller = new AbortController()
   streamController = controller
-  streamMultiRoleTaskV2(
+  streamMultiRoleTaskV3(
     { job_id: jobId, interval_ms: 1000, timeout_seconds: 180 },
     {
       signal: controller.signal,
@@ -367,10 +465,13 @@ const mutation = useMutation({
     taskStatus.value = ''
     currentJobId.value = ''
     actionMessage.value = `已解析股票：${resolved.name || resolved.ts_code}，正在创建分析任务...`
-    const payload = await triggerMultiRoleTaskV2({
+    const payload = await triggerMultiRoleTaskV3({
       ts_code: resolved.ts_code,
       lookback: form.lookback,
       accept_auto_degrade: acceptAutoDegrade.value,
+      max_research_debate_rounds: 2,
+      max_risk_debate_rounds: 2,
+      early_stop: true,
     })
     const jobId = String(payload.job_id || '')
     currentJobId.value = jobId
@@ -402,7 +503,7 @@ async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
   if (!currentJobId.value || decisionPending.value) return
   decisionPending.value = true
   try {
-    const res = await decideMultiRoleTaskV2({ job_id: currentJobId.value, action })
+    const res = await decideMultiRoleTaskV3(currentJobId.value, action)
     const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     if (action === 'abort' || res.status === 'error') {
       actionMessage.value = `任务已终止：${res.error || '用户终止'}`
@@ -423,7 +524,7 @@ async function retryAggregate() {
   aggregateRetryPending.value = true
   actionMessage.value = '正在重试聚合汇总，请稍候...'
   try {
-    const res = await retryMultiRoleAggregateV2({ job_id: currentJobId.value })
+    const res = await actMultiRoleTaskV3(currentJobId.value, 're_aggregate')
     const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     const aggStatus = String((res.aggregator_run || {}).status || '')
     actionMessage.value = aggStatus === 'done' ? '汇总重试成功。' : '汇总重试失败，已保留角色原文。'
