@@ -3,12 +3,18 @@
     <div class="space-y-4">
       <PageSection title="分析发起" subtitle="可以直接输 ts_code，也可以输股票简称，由前端自动解析第一条匹配结果。">
         <div class="grid gap-3 xl:grid-cols-[1fr_140px_180px] md:grid-cols-2">
-          <input v-model="form.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="输入 ts_code 或简称，如 000001.SZ / 平安银行" />
-          <select v-model.number="form.lookback" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="60">60 日</option>
-            <option :value="120">120 日</option>
-            <option :value="240">240 日</option>
-          </select>
+          <label class="text-sm font-semibold text-[var(--ink)] xl:col-span-1">
+            股票代码 / 简称
+            <input v-model="form.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 000001.SZ / 平安银行" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            回看区间
+            <select v-model.number="form.lookback" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option :value="60">60 日</option>
+              <option :value="120">120 日</option>
+              <option :value="240">240 日</option>
+            </select>
+          </label>
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" :disabled="isPending" @click="runAnalysis">
             {{ isPending ? '任务创建中...' : '发起分析' }}
           </button>
@@ -17,7 +23,7 @@
           <input v-model="acceptAutoDegrade" type="checkbox" />
           允许自动降级完成（失败角色不阻塞全局汇总）
         </label>
-        <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
+        <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]" role="status" aria-live="polite">
           {{ actionMessage }}
         </div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
@@ -30,6 +36,19 @@
             <button class="rounded-xl bg-stone-700 px-3 py-2 text-white" :disabled="decisionPending" @click="submitDecision('degrade')">降级并继续汇总</button>
             <button class="rounded-xl bg-red-700 px-3 py-2 text-white" :disabled="decisionPending" @click="submitDecision('abort')">终止任务</button>
           </div>
+        </div>
+      </PageSection>
+
+      <PageSection title="任务状态区" subtitle="先看当前任务走到哪里，再决定是否进入角色原文和完整 Markdown。">
+        <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+          <InfoCard title="当前任务" :meta="currentJobId || '-'" :description="statusSummary">
+            <template #badge>
+              <StatusBadge :value="taskStatusTone" :label="taskStatusLabel" />
+            </template>
+          </InfoCard>
+          <InfoCard title="已解析股票" :meta="resolvedStock.ts_code || '-'" :description="resolvedStock.name || '等待解析'" />
+          <InfoCard title="模型链路" :meta="usedModel || '-'" :description="attemptChain || '等待任务返回模型链路'" />
+          <InfoCard title="额度提示" :meta="quotaHint || '-'" :description="pendingDecision ? '当前存在失败角色，等待用户决策。' : '当前无额外用户决策阻塞。'" />
         </div>
       </PageSection>
 
@@ -138,7 +157,13 @@
       </PageSection>
 
       <PageSection title="公共结论 / 完整原文" subtitle="如果角色切分不够完整，仍然可以回到完整 Markdown 原文。">
-        <MarkdownBlock :content="fullMarkdown" />
+        <button class="mb-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]" :aria-expanded="fullMarkdownExpanded ? 'true' : 'false'" @click="fullMarkdownExpanded = !fullMarkdownExpanded">
+          {{ fullMarkdownExpanded ? '收起完整 Markdown' : '展开完整 Markdown' }}
+        </button>
+        <MarkdownBlock v-if="fullMarkdownExpanded" :content="fullMarkdown" />
+        <div v-else class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-4 text-sm text-[var(--muted)]">
+          完整原文默认不直接渲染，优先把首屏留给任务状态、子任务进度和关键结论。
+        </div>
       </PageSection>
     </div>
   </AppShell>
@@ -152,6 +177,7 @@ import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MarkdownBlock from '../../shared/markdown/MarkdownBlock.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
+import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import {
   actMultiRoleTaskV3,
   decideMultiRoleTaskV3,
@@ -204,6 +230,9 @@ const currentJobId = ref('')
 const taskStatus = ref('')
 const decisionPending = ref(false)
 const aggregateRetryPending = ref(false)
+const pollRetryCount = ref(0)
+const pollMaxRetries = 5
+const fullMarkdownExpanded = ref(false)
 let timer = 0
 let streamController: AbortController | null = null
 
@@ -234,6 +263,21 @@ const notificationMeta = computed(() => {
   return 'error'
 })
 const pendingDecision = computed(() => taskStatus.value === 'pending_user_decision')
+const taskStatusLabel = computed(() => taskStatus.value || 'idle')
+const taskStatusTone = computed(() => {
+  if (pendingDecision.value) return 'warning'
+  if (['done', 'done_with_warnings', 'approved'].includes(taskStatus.value)) return 'success'
+  if (['error', 'rejected', 'aborted'].includes(taskStatus.value)) return 'danger'
+  if (taskStatus.value) return 'info'
+  return 'muted'
+})
+const statusSummary = computed(() => {
+  if (pendingDecision.value) return '存在失败角色，等待重试、降级或终止决策。'
+  if (!taskStatus.value) return '尚未启动分析任务。'
+  if (['done', 'done_with_warnings', 'approved'].includes(taskStatus.value)) return '任务已完成，优先查看汇总面板与审批结论。'
+  if (['error', 'rejected', 'aborted'].includes(taskStatus.value)) return '任务已终止或失败，请查看子任务进度和错误信息。'
+  return `任务仍在运行中，当前状态 ${taskStatus.value}。`
+})
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
 function normalizeSummary(value: unknown, fallback: string) {
   const text = String(value || '').trim()
@@ -326,6 +370,10 @@ function clearTimer() {
   timer = 0
 }
 
+function pollRetryDelayMs(retryCount: number) {
+  return Math.min(8000, 1000 * (2 ** Math.max(0, retryCount - 1)))
+}
+
 function stopLiveStream() {
   if (streamController) {
     streamController.abort()
@@ -387,19 +435,38 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     resetResultViews()
     return true
   }
+  const queueInfo = (task.queue_info || {}) as Record<string, any>
+  const queueAlert = Boolean(queueInfo.alert)
+  const queueEtaMinutes = Number(queueInfo.estimated_wait_minutes || 0)
+  if (task.status === 'queued' && queueAlert) {
+    const etaLabel = queueEtaMinutes > 0 ? `${queueEtaMinutes}` : '1'
+    actionMessage.value = `排队中，预计等待 ${etaLabel} 分钟（前方排队 ${queueInfo.queue_position || '-'} / 总排队 ${queueInfo.queued_total || '-'}）`
+    return false
+  }
   actionMessage.value = `任务运行中：${task.progress || 0}% · ${task.message || task.status || '运行中'}`
   return false
 }
 
 function startPolling(jobId: string, resolved?: { ts_code: string; name: string }) {
   clearTimer()
+  pollRetryCount.value = 0
   const poll = async (): Promise<void> => {
     try {
       const task = await fetchMultiRoleTaskV3(jobId)
+      pollRetryCount.value = 0
       const terminal = applyTaskSnapshot(task as Record<string, any>, resolved)
       if (!terminal) timer = window.setTimeout(poll, 3000)
     } catch (error: any) {
-      actionMessage.value = `轮询失败：${error?.message || String(error)}`
+      pollRetryCount.value += 1
+      const message = error?.message || String(error)
+      if (pollRetryCount.value <= pollMaxRetries) {
+        const delay = pollRetryDelayMs(pollRetryCount.value)
+        const seconds = Math.max(1, Math.round(delay / 1000))
+        actionMessage.value = `轮询短暂失败（第 ${pollRetryCount.value}/${pollMaxRetries} 次），${seconds} 秒后自动重试...`
+        timer = window.setTimeout(poll, delay)
+        return
+      }
+      actionMessage.value = `轮询失败：${message}（endpoint: /api/llm/multi-role/v3/jobs/${jobId}）`
     }
   }
   poll()

@@ -301,29 +301,148 @@ LIMITED_ALLOWED_EXACT_PATHS = {
 }
 ROLE_PERMISSIONS = {
     "admin": {"*"},
-    "pro": {"*"},
+    "pro": {
+        "news_read",
+        "stock_news_read",
+        "daily_summary_read",
+        "trend_analyze",
+        "multi_role_analyze",
+        "research_advanced",
+        "chatrooms_advanced",
+        "stocks_advanced",
+        "macro_advanced",
+    },
     "limited": {"news_read", "stock_news_read", "daily_summary_read", "trend_analyze", "multi_role_analyze"},
 }
 TREND_DAILY_LIMIT_BY_ROLE = {
+    "pro": 200,
     "limited": 30,
 }
 MULTI_ROLE_DAILY_LIMIT_BY_ROLE = {
+    "pro": 80,
     "limited": 10,
 }
 
+DEFAULT_ROLE_POLICIES: dict[str, dict[str, object]] = {
+    role: {
+        "permissions": sorted(str(x) for x in perms),
+        "trend_daily_limit": TREND_DAILY_LIMIT_BY_ROLE.get(role),
+        "multi_role_daily_limit": MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role),
+    }
+    for role, perms in ROLE_PERMISSIONS.items()
+}
+REQUIRED_ROLE_PERMISSIONS: dict[str, set[str]] = {
+    "admin": {"*"},
+}
+ROLE_POLICIES_CACHE_SECONDS = 10.0
+ROLE_POLICIES_CACHE: dict[str, object] = {"value": None, "expires_at": 0.0}
+ROLE_POLICIES_LOCK = threading.Lock()
+
+
+def _normalize_role_policy_permissions(value: object) -> set[str]:
+    if isinstance(value, str):
+        parts = [x.strip() for x in value.split(",")]
+        return {x for x in parts if x}
+    if isinstance(value, (list, tuple, set)):
+        return {str(x or "").strip() for x in value if str(x or "").strip()}
+    return set()
+
+
+def _normalize_role_policy_limit(value: object) -> int | None:
+    if value is None:
+        return None
+    raw = str(value).strip().lower()
+    if not raw or raw in {"none", "null", "unlimited", "inf"}:
+        return None
+    try:
+        num = int(raw)
+    except Exception:
+        return None
+    return max(num, 0)
+
+
+def _invalidate_role_policies_cache() -> None:
+    with ROLE_POLICIES_LOCK:
+        ROLE_POLICIES_CACHE["value"] = None
+        ROLE_POLICIES_CACHE["expires_at"] = 0.0
+
+
+def _effective_role_policies(force: bool = False) -> dict[str, dict[str, object]]:
+    now = time.time()
+    with ROLE_POLICIES_LOCK:
+        cached = ROLE_POLICIES_CACHE.get("value")
+        if not force and isinstance(cached, dict) and now < float(ROLE_POLICIES_CACHE.get("expires_at") or 0.0):
+            return cached
+    policies: dict[str, dict[str, object]] = {
+        str(role): {
+            "permissions": set(_normalize_role_policy_permissions(payload.get("permissions"))),
+            "trend_daily_limit": _normalize_role_policy_limit(payload.get("trend_daily_limit")),
+            "multi_role_daily_limit": _normalize_role_policy_limit(payload.get("multi_role_daily_limit")),
+        }
+        for role, payload in DEFAULT_ROLE_POLICIES.items()
+    }
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        _ensure_auth_tables(conn)
+        rows = conn.execute(
+            """
+            SELECT role, permissions_json, trend_daily_limit, multi_role_daily_limit
+            FROM app_auth_role_policies
+            """
+        ).fetchall()
+        for row in rows:
+            role = str(row["role"] or "").strip().lower()
+            if not role:
+                continue
+            permissions_raw = str(row["permissions_json"] or "").strip()
+            permissions: set[str] = set()
+            if permissions_raw:
+                try:
+                    parsed = json.loads(permissions_raw)
+                except Exception:
+                    parsed = None
+                if parsed is not None:
+                    permissions = _normalize_role_policy_permissions(parsed)
+            # Only fallback when DB field is truly empty.
+            # If the row explicitly stores [], keep it as an empty permission set.
+            if not permissions_raw and role in DEFAULT_ROLE_POLICIES:
+                permissions = set(_normalize_role_policy_permissions(DEFAULT_ROLE_POLICIES[role].get("permissions")))
+            policies[role] = {
+                "permissions": permissions,
+                "trend_daily_limit": _normalize_role_policy_limit(row["trend_daily_limit"]),
+                "multi_role_daily_limit": _normalize_role_policy_limit(row["multi_role_daily_limit"]),
+            }
+    finally:
+        conn.close()
+    with ROLE_POLICIES_LOCK:
+        ROLE_POLICIES_CACHE["value"] = policies
+        ROLE_POLICIES_CACHE["expires_at"] = now + ROLE_POLICIES_CACHE_SECONDS
+    for role, required in REQUIRED_ROLE_PERMISSIONS.items():
+        if not required:
+            continue
+        payload = policies.get(role) or {}
+        current = set(_normalize_role_policy_permissions(payload.get("permissions")))
+        payload["permissions"] = current | set(required)
+        policies[role] = payload
+    return policies
+
 
 def _role_permission_matrix() -> dict[str, list[str]]:
+    policies = _effective_role_policies()
     out: dict[str, list[str]] = {}
-    for role, perms in ROLE_PERMISSIONS.items():
-        out[str(role)] = sorted(str(x) for x in perms)
+    for role, payload in policies.items():
+        out[str(role)] = sorted(str(x) for x in _normalize_role_policy_permissions(payload.get("permissions")))
     return out
 
 
 def _effective_permissions_for_user(user: dict | None) -> list[str]:
     if not user:
         return []
-    role = str((user or {}).get("role") or (user or {}).get("tier") or "limited").lower()
-    perms = ROLE_PERMISSIONS.get(role, set())
+    role = str((user or {}).get("role") or (user or {}).get("tier") or "limited").strip().lower()
+    policies = _effective_role_policies()
+    policy = policies.get(role) or {}
+    perms = _normalize_role_policy_permissions(policy.get("permissions"))
     return sorted(str(x) for x in perms)
 
 
@@ -357,6 +476,9 @@ API_ENDPOINTS_CATALOG = {
     "auth_user_reset_trend_quota": "/api/auth/user/reset-trend-quota",
     "auth_user_reset_multi_role_quota": "/api/auth/user/reset-multi-role-quota",
     "auth_quota_reset_batch": "/api/auth/quota/reset-batch",
+    "auth_role_policies": "/api/auth/role-policies",
+    "auth_role_policies_update": "/api/auth/role-policies/update",
+    "auth_role_policies_reset_default": "/api/auth/role-policies/reset-default",
     "auth_sessions": "/api/auth/sessions?keyword=&user_id=&page=1&page_size=20",
     "auth_session_revoke": "/api/auth/session/revoke",
     "auth_user_sessions_revoke": "/api/auth/user/revoke-sessions",
@@ -3121,6 +3243,19 @@ def _ensure_auth_tables(conn):
         """
     )
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_app_auth_usage_user_date ON app_auth_usage_daily(user_id, usage_date)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_auth_role_policies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL UNIQUE,
+            permissions_json TEXT NOT NULL DEFAULT '[]',
+            trend_daily_limit INTEGER,
+            multi_role_daily_limit INTEGER,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_verify_user ON app_auth_email_verifications(user_id, used_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_app_auth_verify_email ON app_auth_email_verifications(email, used_at)")
     conn.execute(
@@ -3190,6 +3325,18 @@ def _ensure_auth_tables(conn):
     if "multi_role_count" not in usage_columns:
         conn.execute("ALTER TABLE app_auth_usage_daily ADD COLUMN multi_role_count INTEGER NOT NULL DEFAULT 0")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_app_auth_users_email ON app_auth_users(email)")
+    for role, payload in DEFAULT_ROLE_POLICIES.items():
+        perms_json = json.dumps(sorted(_normalize_role_policy_permissions(payload.get("permissions"))), ensure_ascii=False)
+        trend_limit = _normalize_role_policy_limit(payload.get("trend_daily_limit"))
+        multi_role_limit = _normalize_role_policy_limit(payload.get("multi_role_daily_limit"))
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO app_auth_role_policies
+            (role, permissions_json, trend_daily_limit, multi_role_daily_limit, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """,
+            (str(role), perms_json, trend_limit, multi_role_limit),
+        )
 
 
 def _hash_password(password: str, salt_hex: str | None = None) -> str:
@@ -3464,8 +3611,8 @@ def _register_auth_user(
             "username": str(row[1] or ""),
             "display_name": str(row[2] or ""),
             "email": str(row[3] or ""),
-            "role": str(row[4] or "limited"),
-            "tier": str(row[5] or "limited"),
+            "role": str(row[4] or "limited").strip().lower(),
+            "tier": str(row[5] or "limited").strip().lower(),
             "email_verified": int((row[6] or 0)) == 1,
         }
         return token, user, {}
@@ -3516,8 +3663,8 @@ def _login_auth_user(username: str, password: str) -> tuple[str, dict]:
             "username": str(row[1] or ""),
             "display_name": str(row[2] or ""),
             "email": str(row[5] or ""),
-            "role": str(row[6] or "limited"),
-            "tier": str(row[7] or "limited"),
+            "role": str(row[6] or "limited").strip().lower(),
+            "tier": str(row[7] or "limited").strip().lower(),
             "email_verified": int((row[8] or 0)) == 1,
         }
     finally:
@@ -3686,8 +3833,9 @@ def _reset_password_with_code(username: str = "", reset_code: str = "", new_pass
 def _consume_trend_daily_quota(user: dict | None) -> dict:
     if not user:
         return {"allowed": True, "limit": None, "used": 0, "remaining": None}
-    role = str(user.get("role") or user.get("tier") or "limited")
-    limit = TREND_DAILY_LIMIT_BY_ROLE.get(role)
+    role = str(user.get("role") or user.get("tier") or "limited").strip().lower()
+    policies = _effective_role_policies()
+    limit = _normalize_role_policy_limit((policies.get(role) or {}).get("trend_daily_limit"))
     if not limit:
         return {"allowed": True, "limit": None, "used": 0, "remaining": None}
     user_id = int(user.get("id") or 0)
@@ -3722,8 +3870,9 @@ def _consume_trend_daily_quota(user: dict | None) -> dict:
 def _get_trend_daily_quota_status(user: dict | None) -> dict:
     if not user:
         return {"limit": None, "used": 0, "remaining": None}
-    role = str(user.get("role") or user.get("tier") or "limited")
-    limit = TREND_DAILY_LIMIT_BY_ROLE.get(role)
+    role = str(user.get("role") or user.get("tier") or "limited").strip().lower()
+    policies = _effective_role_policies()
+    limit = _normalize_role_policy_limit((policies.get(role) or {}).get("trend_daily_limit"))
     if not limit:
         return {"limit": None, "used": 0, "remaining": None}
     user_id = int(user.get("id") or 0)
@@ -3744,8 +3893,9 @@ def _get_trend_daily_quota_status(user: dict | None) -> dict:
 def _consume_multi_role_daily_quota(user: dict | None) -> dict:
     if not user:
         return {"allowed": True, "limit": None, "used": 0, "remaining": None}
-    role = str(user.get("role") or user.get("tier") or "limited")
-    limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role)
+    role = str(user.get("role") or user.get("tier") or "limited").strip().lower()
+    policies = _effective_role_policies()
+    limit = _normalize_role_policy_limit((policies.get(role) or {}).get("multi_role_daily_limit"))
     if not limit:
         return {"allowed": True, "limit": None, "used": 0, "remaining": None}
     user_id = int(user.get("id") or 0)
@@ -3780,8 +3930,9 @@ def _consume_multi_role_daily_quota(user: dict | None) -> dict:
 def _get_multi_role_daily_quota_status(user: dict | None) -> dict:
     if not user:
         return {"limit": None, "used": 0, "remaining": None}
-    role = str(user.get("role") or user.get("tier") or "limited")
-    limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role)
+    role = str(user.get("role") or user.get("tier") or "limited").strip().lower()
+    policies = _effective_role_policies()
+    limit = _normalize_role_policy_limit((policies.get(role) or {}).get("multi_role_daily_limit"))
     if not limit:
         return {"limit": None, "used": 0, "remaining": None}
     user_id = int(user.get("id") or 0)
@@ -3831,8 +3982,8 @@ def _validate_auth_session(token: str) -> dict | None:
             "username": str(row[1] or ""),
             "display_name": str(row[2] or ""),
             "email": str(row[3] or ""),
-            "role": str(row[4] or "limited"),
-            "tier": str(row[5] or "limited"),
+            "role": str(row[4] or "limited").strip().lower(),
+            "tier": str(row[5] or "limited").strip().lower(),
             "email_verified": int((row[6] or 0)) == 1,
         }
     finally:
@@ -3933,12 +4084,14 @@ def _query_auth_users(keyword: str = "", role: str = "", active: str = "", page:
             }
         finally:
             conn.close()
+    policies = _effective_role_policies()
     for item in items:
-        role_key = str(item.get("role") or item.get("tier") or "limited")
+        role_key = str(item.get("role") or item.get("tier") or "limited").strip().lower()
         usage = usage_map.get(int(item["id"]), {"trend": 0, "multi_role": 0})
-        trend_limit = TREND_DAILY_LIMIT_BY_ROLE.get(role_key)
+        policy = policies.get(role_key) or {}
+        trend_limit = _normalize_role_policy_limit(policy.get("trend_daily_limit"))
         trend_used = int(usage.get("trend", 0))
-        multi_role_limit = MULTI_ROLE_DAILY_LIMIT_BY_ROLE.get(role_key)
+        multi_role_limit = _normalize_role_policy_limit(policy.get("multi_role_daily_limit"))
         multi_role_used = int(usage.get("multi_role", 0))
         item["trend_usage_date_utc"] = usage_date_utc
         item["trend_used_today"] = trend_used
@@ -3956,6 +4109,81 @@ def _query_auth_users(keyword: str = "", role: str = "", active: str = "", page:
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size if page_size else 0,
     }
+
+
+def _get_auth_role_policies() -> dict:
+    policies = _effective_role_policies(force=True)
+    roles = []
+    for role in sorted(policies.keys()):
+        payload = policies.get(role) or {}
+        roles.append(
+            {
+                "role": role,
+                "permissions": sorted(_normalize_role_policy_permissions(payload.get("permissions"))),
+                "trend_daily_limit": _normalize_role_policy_limit(payload.get("trend_daily_limit")),
+                "multi_role_daily_limit": _normalize_role_policy_limit(payload.get("multi_role_daily_limit")),
+            }
+        )
+    return {"ok": True, "roles": roles, "effective_source": "db"}
+
+
+def _update_auth_role_policy(role: str, permissions: list[str], trend_daily_limit: object, multi_role_daily_limit: object) -> dict:
+    role_key = str(role or "").strip().lower()
+    if role_key not in {"admin", "pro", "limited"}:
+        raise ValueError("role 必须是 admin/pro/limited")
+    normalized_perms = sorted(_normalize_role_policy_permissions(permissions))
+    if role_key == "admin":
+        normalized_perms = ["*"]
+    elif "*" in normalized_perms:
+        raise ValueError("仅 admin 角色允许使用 * 权限")
+    trend_limit = _normalize_role_policy_limit(trend_daily_limit)
+    multi_role_limit = _normalize_role_policy_limit(multi_role_daily_limit)
+    perms_json = json.dumps(normalized_perms, ensure_ascii=False)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO app_auth_role_policies (role, permissions_json, trend_daily_limit, multi_role_daily_limit, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(role) DO UPDATE SET
+              permissions_json = excluded.permissions_json,
+              trend_daily_limit = excluded.trend_daily_limit,
+              multi_role_daily_limit = excluded.multi_role_daily_limit,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (role_key, perms_json, trend_limit, multi_role_limit),
+        )
+    finally:
+        conn.close()
+    _invalidate_role_policies_cache()
+    return {"ok": True, "role": role_key}
+
+
+def _reset_auth_role_policies_to_default() -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_auth_tables(conn)
+        for role, payload in DEFAULT_ROLE_POLICIES.items():
+            perms_json = json.dumps(sorted(_normalize_role_policy_permissions(payload.get("permissions"))), ensure_ascii=False)
+            trend_limit = _normalize_role_policy_limit(payload.get("trend_daily_limit"))
+            multi_role_limit = _normalize_role_policy_limit(payload.get("multi_role_daily_limit"))
+            conn.execute(
+                """
+                INSERT INTO app_auth_role_policies (role, permissions_json, trend_daily_limit, multi_role_daily_limit, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(role) DO UPDATE SET
+                  permissions_json = excluded.permissions_json,
+                  trend_daily_limit = excluded.trend_daily_limit,
+                  multi_role_daily_limit = excluded.multi_role_daily_limit,
+                  updated_at = CURRENT_TIMESTAMP
+                """,
+                (str(role), perms_json, trend_limit, multi_role_limit),
+            )
+    finally:
+        conn.close()
+    _invalidate_role_policies_cache()
+    return _get_auth_role_policies()
 
 
 def _update_auth_user(user_id: int | None = None, username: str = "", role: str | None = None, is_active: int | None = None, display_name: str | None = None) -> dict:
@@ -3997,8 +4225,8 @@ def _update_auth_user(user_id: int | None = None, username: str = "", role: str 
         return {
             "id": int(row[0]),
             "username": str(row[1] or ""),
-            "role": str(row[2] or "limited"),
-            "tier": str(row[3] or "limited"),
+            "role": str(row[2] or "limited").strip().lower(),
+            "tier": str(row[3] or "limited").strip().lower(),
             "is_active": int((row[4] or 0)) == 1,
             "display_name": str(row[5] or ""),
         }
@@ -7199,12 +7427,19 @@ class ApiHandler(BaseHTTPRequestHandler):
         if auth_ctx.get("is_admin"):
             return True
         user = auth_ctx.get("user") or {}
-        role = str(user.get("role") or user.get("tier") or "limited")
-        perms = ROLE_PERMISSIONS.get(role, set())
+        perms = set(_effective_permissions_for_user(user))
         if "*" in perms:
             return True
+
+        def _has(perm: str) -> bool:
+            return perm in perms
+
+        if path.startswith("/api/system/") or path.startswith("/api/jobs") or path.startswith("/api/job-"):
+            return _has("admin_system")
+        if path.startswith("/api/auth/users") or path.startswith("/api/auth/user/") or path.startswith("/api/auth/sessions") or path.startswith("/api/auth/audit-logs") or path.startswith("/api/auth/invite"):
+            return _has("admin_users")
         if path == "/api/llm/trend":
-            return "trend_analyze" in perms
+            return _has("trend_analyze")
         if path in {
             "/api/llm/multi-role",
             "/api/llm/multi-role/start",
@@ -7216,17 +7451,36 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/llm/multi-role/v2/retry-aggregate",
             "/api/llm/multi-role/v2/history",
         } or path.startswith("/api/llm/multi-role/v3/"):
-            return "multi_role_analyze" in perms
-        if path in {"/api/stocks", "/api/stocks/filters"}:
-            return "multi_role_analyze" in perms
+            return _has("multi_role_analyze")
+        if path.startswith("/api/stocks") or path in {"/api/stock-detail", "/api/prices", "/api/minline", "/api/stock-scores", "/api/stock-scores/filters"}:
+            return _has("stocks_advanced")
+        if path.startswith("/api/macro"):
+            return _has("macro_advanced")
         if path == "/api/news/daily-summaries":
-            return "daily_summary_read" in perms
+            return _has("daily_summary_read")
         if path in {"/api/news", "/api/news/sources"}:
-            return "news_read" in perms
+            return _has("news_read")
         if path in {"/api/stock-news", "/api/stock-news/sources"}:
-            return "stock_news_read" in perms
+            return _has("stock_news_read")
+        if path in {
+            "/api/investment-signals",
+            "/api/investment-signals/timeline",
+            "/api/theme-hotspots",
+            "/api/signal-state/timeline",
+            "/api/signal-audit",
+            "/api/signal-quality/config",
+            "/api/signal-quality/rules/save",
+            "/api/signal-quality/blocklist/save",
+        }:
+            return _has("signals_advanced")
+        if path.startswith("/api/chatrooms") or path.startswith("/api/wechat-chatlog"):
+            return _has("chatrooms_advanced")
+        if path in {"/api/reports", "/api/research-reports"} or path.startswith("/api/research/"):
+            return _has("research_advanced")
+        if path == "/api/source-monitor" or path == "/api/database-audit":
+            return _has("admin_system")
         if path.startswith("/api/quant-factors"):
-            return "research_advanced" in perms
+            return _has("research_advanced")
         return False
 
     def _client_is_private(self) -> bool:
@@ -7314,6 +7568,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             "admin_reset_user_trend_quota": _admin_reset_user_trend_quota,
             "admin_reset_user_multi_role_quota": _admin_reset_user_multi_role_quota,
             "admin_reset_quota_batch": _admin_reset_quota_batch,
+            "get_auth_role_policies": _get_auth_role_policies,
+            "update_auth_role_policy": _update_auth_role_policy,
+            "reset_auth_role_policies_to_default": _reset_auth_role_policies_to_default,
             "query_auth_sessions": _query_auth_sessions,
             "revoke_auth_session_by_id": _revoke_auth_session_by_id,
             "revoke_auth_sessions_by_user": _revoke_auth_sessions_by_user,
@@ -7458,6 +7715,7 @@ if __name__ == "__main__":
     assert_database_ready()
     conn = sqlite3.connect(DB_PATH)
     try:
+        _ensure_auth_tables(conn)
         ensure_multi_role_v3_tables(conn)
     finally:
         conn.close()

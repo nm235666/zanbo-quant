@@ -21,7 +21,7 @@
 - 没跑什么验证？
 - 剩余风险是什么？
 
-推荐最小验证：
+推荐验证：
 - 前端改动：`cd /home/zanbo/zanbotest/apps/web && npm run build`
 - Python 改动：`cd /home/zanbo/zanbotest && python3 -m py_compile backend/server.py backend/routes/*.py job_registry.py`
 

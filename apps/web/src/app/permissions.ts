@@ -22,7 +22,6 @@ const ROLE_PERMS: Record<string, Set<AppPermission | '*'> > = {
     'trend_analyze',
     'multi_role_analyze',
     'research_advanced',
-    'signals_advanced',
     'chatrooms_advanced',
     'stocks_advanced',
     'macro_advanced',

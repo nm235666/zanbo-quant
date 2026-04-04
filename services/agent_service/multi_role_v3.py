@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, TypedDict
@@ -43,6 +45,8 @@ def _safe_json(value: Any):
     if value is None:
         return None
     if isinstance(value, (str, int, float, bool)):
+        if isinstance(value, float) and (not math.isfinite(value)):
+            return None
         return value
     if isinstance(value, dict):
         return {str(k): _safe_json(v) for k, v in value.items()}
@@ -224,6 +228,90 @@ def _hydrate_job_row(row: dict[str, Any]) -> dict[str, Any]:
     return output
 
 
+def _queue_alert_threshold() -> int:
+    raw = str(os.getenv("MULTI_ROLE_V3_QUEUE_ALERT_THRESHOLD", "3") or "3").strip()
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return 3
+
+
+def _queue_avg_wait_seconds() -> int:
+    raw = str(os.getenv("MULTI_ROLE_V3_QUEUE_AVG_WAIT_SECONDS", "120") or "120").strip()
+    try:
+        return max(30, int(raw))
+    except Exception:
+        return 120
+
+
+def _with_queue_info(conn, row: dict[str, Any], hydrated: dict[str, Any]) -> dict[str, Any]:
+    job_id = str(row.get("job_id") or "")
+    status = str(row.get("status") or "")
+    try:
+        job_pk = int(row.get("id") or 0)
+    except Exception:
+        job_pk = 0
+    threshold = _queue_alert_threshold()
+    avg_wait_seconds = _queue_avg_wait_seconds()
+
+    queued_total_row = conn.execute("SELECT COUNT(*) AS c FROM multi_role_v3_jobs WHERE status = 'queued'").fetchone()
+    running_total_row = conn.execute("SELECT COUNT(*) AS c FROM multi_role_v3_jobs WHERE status = 'running'").fetchone()
+    active_worker_row = conn.execute(
+        "SELECT COUNT(DISTINCT worker_id) AS c FROM multi_role_v3_jobs WHERE status = 'running' AND worker_id != ''"
+    ).fetchone()
+    queued_total = int((dict(queued_total_row).get("c") if queued_total_row else 0) or 0)
+    running_total = int((dict(running_total_row).get("c") if running_total_row else 0) or 0)
+    active_workers = int((dict(active_worker_row).get("c") if active_worker_row else 0) or 0)
+    if active_workers <= 0:
+        active_workers = 1
+
+    queue_position = 0
+    queued_ahead = 0
+    if status == "queued" and job_pk > 0:
+        pos_row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM multi_role_v3_jobs
+            WHERE status = 'queued' AND id <= ?
+            """,
+            (job_pk,),
+        ).fetchone()
+        ahead_row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM multi_role_v3_jobs
+            WHERE status = 'queued' AND id < ?
+            """,
+            (job_pk,),
+        ).fetchone()
+        queue_position = int((dict(pos_row).get("c") if pos_row else 0) or 0)
+        queued_ahead = int((dict(ahead_row).get("c") if ahead_row else 0) or 0)
+
+    estimated_wait_seconds = 0
+    if status == "queued":
+        full_batches = queued_ahead // active_workers
+        workers_busy = running_total >= active_workers
+        estimated_wait_seconds = full_batches * avg_wait_seconds
+        if workers_busy:
+            estimated_wait_seconds += avg_wait_seconds
+    estimated_wait_minutes = max(1, int(math.ceil(estimated_wait_seconds / 60.0))) if estimated_wait_seconds > 0 else 0
+
+    queue_info = {
+        "job_id": job_id,
+        "status": status,
+        "threshold": threshold,
+        "queued_total": queued_total,
+        "running_total": running_total,
+        "active_workers": active_workers,
+        "queue_position": queue_position,
+        "estimated_wait_seconds": estimated_wait_seconds,
+        "estimated_wait_minutes": estimated_wait_minutes,
+        "alert": bool(status == "queued" and queued_total >= threshold),
+    }
+    hydrated["queue_info"] = queue_info
+    return hydrated
+
+
 def create_multi_role_v3_job(*, sqlite3_module, db_path, payload: dict[str, Any]) -> dict[str, Any]:
     ts_code = str(payload.get("ts_code") or "").strip().upper()
     if not ts_code:
@@ -304,7 +392,8 @@ def create_multi_role_v3_job(*, sqlite3_module, db_path, payload: dict[str, Any]
         _append_event(conn, job_id=job_id, stage="queued", event_type="job_created", payload={"ts_code": ts_code, "lookback": lookback})
         conn.commit()
         row = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (job_id,)).fetchone()
-        return _hydrate_job_row(dict(row))
+        raw = dict(row)
+        return _with_queue_info(conn, raw, _hydrate_job_row(raw))
     finally:
         conn.close()
 
@@ -320,7 +409,8 @@ def get_multi_role_v3_job(*, sqlite3_module, db_path, job_id: str) -> dict[str, 
         row = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (target_job_id,)).fetchone()
         if not row:
             return None
-        return _hydrate_job_row(dict(row))
+        raw = dict(row)
+        return _with_queue_info(conn, raw, _hydrate_job_row(raw))
     finally:
         conn.close()
 
@@ -395,7 +485,8 @@ def control_multi_role_v3_job(*, sqlite3_module, db_path, job_id: str, action: s
             _append_event(conn, job_id=target_job_id, stage="error", event_type="abort", payload={})
             conn.commit()
             row2 = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (target_job_id,)).fetchone()
-            return _hydrate_job_row(dict(row2))
+            raw2 = dict(row2)
+            return _with_queue_info(conn, raw2, _hydrate_job_row(raw2))
 
         if cmd == "degrade":
             decision_state.update(
@@ -424,7 +515,8 @@ def control_multi_role_v3_job(*, sqlite3_module, db_path, job_id: str, action: s
             _append_event(conn, job_id=target_job_id, stage=current_stage or "queued", event_type="degrade", payload={})
             conn.commit()
             row2 = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (target_job_id,)).fetchone()
-            return _hydrate_job_row(dict(row2))
+            raw2 = dict(row2)
+            return _with_queue_info(conn, raw2, _hydrate_job_row(raw2))
 
         target_stage = str(stage or "").strip() or current_stage or "queued"
         if cmd == "re_aggregate":
@@ -460,7 +552,8 @@ def control_multi_role_v3_job(*, sqlite3_module, db_path, job_id: str, action: s
         _append_event(conn, job_id=target_job_id, stage=target_stage, event_type=cmd, payload={"target_stage": target_stage})
         conn.commit()
         row2 = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (target_job_id,)).fetchone()
-        return _hydrate_job_row(dict(row2))
+        raw2 = dict(row2)
+        return _with_queue_info(conn, raw2, _hydrate_job_row(raw2))
     finally:
         conn.close()
 
@@ -1769,7 +1862,42 @@ def process_one_multi_role_v3_job(*, sqlite3_module, db_path, runtime: dict[str,
         _append_event(conn, job_id=str(job.get("job_id") or ""), stage=str(job.get("stage") or "context"), event_type="worker_claimed", payload={"worker_id": wid})
         conn.commit()
         row2 = conn.execute("SELECT * FROM multi_role_v3_jobs WHERE job_id = ? LIMIT 1", (str(job.get("job_id") or ""),)).fetchone()
-        _run_pipeline(conn, dict(row2), runtime, wid)
+        try:
+            _run_pipeline(conn, dict(row2), runtime, wid)
+        except Exception as exc:
+            # 防止 worker 吞异常后把任务永久留在 running。
+            raw2 = dict(row2)
+            state = _loads(str(raw2.get("state_json") or ""), {})
+            result = _loads(str(raw2.get("result_json") or ""), {})
+            decision_state = _loads(str(raw2.get("decision_state_json") or ""), {})
+            metrics = _loads(str(raw2.get("metrics_json") or ""), {})
+            tb = traceback.format_exc()
+            decision_state.update({"pending_user_decision": False, "last_error": str(exc), "updated_at": _now_iso()})
+            metrics["message"] = f"worker 未捕获异常: {exc}"
+            metrics["progress"] = max(10, int(metrics.get("progress") or 10))
+            _update_job_row(
+                conn,
+                job_id=str(raw2.get("job_id") or ""),
+                status="error",
+                stage=str(raw2.get("stage") or "error"),
+                state=state,
+                result=result,
+                decision_state=decision_state,
+                metrics=metrics,
+                error=str(exc),
+                finished=True,
+                worker_id="",
+                lease_until="",
+            )
+            _append_event(
+                conn,
+                job_id=str(raw2.get("job_id") or ""),
+                stage=str(raw2.get("stage") or "error"),
+                event_type="worker_unhandled_exception",
+                payload={"error": str(exc), "traceback": tb[-4000:]},
+            )
+            conn.commit()
+            print(f"[multi-role-v3-worker] unhandled exception job_id={raw2.get('job_id')} error={exc}\n{tb}", flush=True)
         return True
     finally:
         conn.close()

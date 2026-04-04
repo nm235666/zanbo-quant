@@ -2,13 +2,34 @@
   <AppShell title="数据源监控" subtitle="把数据源、进程、实时链路、任务编排和最近错误统一收口。">
     <div class="space-y-4">
       <PageSection title="监控总览" subtitle="这是运维、研发、研究三方都该看的统一监控页。">
+        <StatePanel
+          v-if="monitorError"
+          class="mb-4"
+          tone="danger"
+          title="监控数据加载失败"
+          :description="monitorError"
+        >
+          <template #action>
+            <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="reload">重新加载</button>
+          </template>
+        </StatePanel>
+        <StatePanel
+          v-else-if="suspiciousSummary"
+          class="mb-4"
+          tone="warning"
+          title="监控总览存在可疑汇总"
+          :description="suspiciousSummary"
+        />
+        <div class="mb-3 text-sm text-[var(--muted)]">
+          最后刷新 {{ formatDateTime(summaryNow) }} · 数据源 {{ monitor ? '接口成功' : '暂无数据' }}
+        </div>
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-3">
-          <StatCard title="数据源正常" :value="monitor?.summary?.source_ok ?? 0" :hint="`总数 ${monitor?.summary?.source_total ?? 0}`" />
-          <StatCard title="数据源延迟" :value="monitor?.summary?.source_warn ?? 0" hint="需关注但未完全失效" />
-          <StatCard title="数据源异常" :value="monitor?.summary?.source_error ?? 0" hint="优先排查" />
-          <StatCard title="进程正常" :value="monitor?.summary?.process_ok ?? 0" hint="守护进程、Worker、服务进程" />
-          <StatCard title="进程告警" :value="monitor?.summary?.process_warn ?? 0" hint="日志旧或心跳异常" />
-          <StatCard title="进程异常" :value="monitor?.summary?.process_error ?? 0" hint="服务离线" />
+          <StatCard title="数据源正常" :value="effectiveSummary.source_ok" :hint="`总数 ${effectiveSummary.source_total}`" />
+          <StatCard title="数据源延迟" :value="effectiveSummary.source_warn" hint="需关注但未完全失效" />
+          <StatCard title="数据源异常" :value="effectiveSummary.source_error" hint="优先排查" />
+          <StatCard title="进程正常" :value="effectiveSummary.process_ok" hint="守护进程、Worker、服务进程" />
+          <StatCard title="进程告警" :value="effectiveSummary.process_warn" hint="日志旧或心跳异常" />
+          <StatCard title="进程异常" :value="effectiveSummary.process_error" hint="服务离线" />
         </div>
       </PageSection>
 
@@ -75,16 +96,81 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchSourceMonitor } from '../../services/api/dashboard'
 import { formatDateTime } from '../../shared/utils/format'
 
-const { data: monitor } = useQuery({ queryKey: ['source-monitor'], queryFn: fetchSourceMonitor, refetchInterval: 60_000 })
+const { data: monitor, error, refetch } = useQuery({ queryKey: ['source-monitor'], queryFn: fetchSourceMonitor, refetchInterval: 60_000 })
+
+const effectiveSummary = computed(() => {
+  const sourceItems = monitor.value?.sources || []
+  const processItems = monitor.value?.processes || []
+  const summary = monitor.value?.summary || {}
+  const sourceTotal = Number(summary.source_total ?? sourceItems.length ?? 0)
+  const sourceOk = Number(summary.source_ok ?? 0)
+  const sourceWarn = Number(summary.source_warn ?? 0)
+  const sourceError = Number(summary.source_error ?? 0)
+  const processOk = Number(summary.process_ok ?? 0)
+  const processWarn = Number(summary.process_warn ?? 0)
+  const processError = Number(summary.process_error ?? 0)
+  const summaryLooksEmpty =
+    sourceTotal > 0 &&
+    sourceOk === 0 &&
+    sourceWarn === 0 &&
+    sourceError === 0 &&
+    processOk === 0 &&
+    processWarn === 0 &&
+    processError === 0
+  if (!summaryLooksEmpty) {
+    return {
+      source_total: sourceTotal,
+      source_ok: sourceOk,
+      source_warn: sourceWarn,
+      source_error: sourceError,
+      process_ok: processOk,
+      process_warn: processWarn,
+      process_error: processError,
+    }
+  }
+  return {
+    source_total: sourceItems.length,
+    source_ok: sourceItems.filter((item: Record<string, any>) => item.status === 'ok').length,
+    source_warn: sourceItems.filter((item: Record<string, any>) => item.status === 'warn').length,
+    source_error: sourceItems.filter((item: Record<string, any>) => item.status === 'error').length,
+    process_ok: processItems.filter((item: Record<string, any>) => item.status === 'ok').length,
+    process_warn: processItems.filter((item: Record<string, any>) => item.status === 'warn').length,
+    process_error: processItems.filter((item: Record<string, any>) => item.status === 'error').length,
+  }
+})
+
+const suspiciousSummary = computed(() => {
+  if (!monitor.value) return ''
+  const summary = monitor.value.summary || {}
+  const hasDetails = Boolean((monitor.value.sources || []).length || (monitor.value.processes || []).length || (monitor.value.orchestrator?.recent_runs || []).length)
+  const allZero =
+    Number(summary.source_ok ?? 0) === 0 &&
+    Number(summary.source_warn ?? 0) === 0 &&
+    Number(summary.source_error ?? 0) === 0 &&
+    Number(summary.process_ok ?? 0) === 0 &&
+    Number(summary.process_warn ?? 0) === 0 &&
+    Number(summary.process_error ?? 0) === 0
+  if (!hasDetails || !allZero) return ''
+  return '接口返回了明细，但汇总区全为 0；页面已按明细重新聚合，建议继续核对缓存或接口 summary 字段。'
+})
+
+const summaryNow = computed(() => monitor.value?.summary?.now || '')
+const monitorError = computed(() => error.value?.message || '')
+
+function reload() {
+  refetch()
+}
 
 async function copyLog(text: string) {
   try {

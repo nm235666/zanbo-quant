@@ -5,17 +5,23 @@
         <div class="grid gap-4 2xl:grid-cols-[1.15fr_0.85fr]">
           <div class="space-y-4">
             <div class="grid gap-3 xl:grid-cols-[1fr_140px_140px]">
-              <input
-                v-model="tsCodeInput"
-                class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
-                placeholder="输入 ts_code 或简称，如 000001.SZ / 平安银行"
-                @keydown.enter="applyCode"
-              />
-              <select v-model.number="lookback" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-                <option :value="60">近 60 日</option>
-                <option :value="120">近 120 日</option>
-                <option :value="240">近 240 日</option>
-              </select>
+              <label class="text-sm font-semibold text-[var(--ink)] xl:col-span-1">
+                股票代码 / 简称
+                <input
+                  v-model="tsCodeInput"
+                  class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
+                  placeholder="如 000001.SZ / 平安银行"
+                  @keydown.enter="applyCode"
+                />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                回看区间
+                <select v-model.number="lookback" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+                  <option :value="60">近 60 日</option>
+                  <option :value="120">近 120 日</option>
+                  <option :value="240">近 240 日</option>
+                </select>
+              </label>
               <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyCode">
                 {{ isFetching ? '刷新中...' : '刷新详情' }}
               </button>
@@ -41,8 +47,21 @@
             <button class="rounded-2xl bg-blue-700 px-4 py-3 font-semibold text-white" :disabled="isMultiRolePending" @click="runMultiRole">
               {{ isMultiRolePending ? '任务创建中...' : '发起多角色分析' }}
             </button>
-            <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]">
+            <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]" role="status" aria-live="polite">
               {{ actionMessage }}
+            </div>
+            <div class="grid gap-3 md:grid-cols-3">
+              <InfoCard
+                v-for="item in actionStatusCards"
+                :key="item.title"
+                :title="item.title"
+                :meta="item.meta"
+                :description="item.description"
+              >
+                <template #badge>
+                  <StatusBadge :value="item.tone" :label="item.label" />
+                </template>
+              </InfoCard>
             </div>
 
             <div class="grid gap-3 xl:grid-cols-2">
@@ -77,10 +96,14 @@
         </div>
       </PageSection>
 
+      <div class="flex flex-wrap gap-2">
+        <a v-for="item in sectionAnchors" :key="item.href" :href="item.href" class="section-anchor-link">{{ item.label }}</a>
+      </div>
+
       <div class="grid gap-4 2xl:grid-cols-[1.08fr_0.92fr]">
-        <PageSection title="近端价格走势" subtitle="最近一段收盘价的结构，用来快速判断趋势背景和区间位置。">
+        <PageSection id="price-trend" title="近端价格走势" subtitle="最近一段收盘价的结构，用来快速判断趋势背景和区间位置。">
           <TrendAreaChart v-if="chartsReady" :labels="dailyChart.labels" :series="dailyChart.series" :height="320" empty-text="暂无日线数据" />
-          <div v-else class="h-[320px] rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-4 text-sm text-[var(--muted)]">
+          <div v-else class="loading-skeleton h-[320px] rounded-[20px] border border-[var(--line)] px-4 py-4 text-sm text-[var(--muted)]">
             图表加载中...
           </div>
           <div class="mt-4 flex flex-wrap gap-2 text-xs">
@@ -97,7 +120,7 @@
 
         <PageSection title="最新分钟走势" subtitle="最近一批分钟线，帮助判断盘中价格和均价是否同向。">
           <TrendAreaChart v-if="chartsReady" :labels="minuteChart.labels" :series="minuteChart.series" :height="320" empty-text="暂无分钟线数据" />
-          <div v-else class="h-[320px] rounded-[20px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-4 text-sm text-[var(--muted)]">
+          <div v-else class="loading-skeleton h-[320px] rounded-[20px] border border-[var(--line)] px-4 py-4 text-sm text-[var(--muted)]">
             图表加载中...
           </div>
           <div class="mt-4 flex flex-wrap gap-2 text-xs">
@@ -110,7 +133,7 @@
         </PageSection>
       </div>
 
-      <PageSection title="公司深度面板" subtitle="按模块切换查看，避免评分、财务、治理、风险信息堆在一起。">
+      <PageSection id="company-panels" title="公司深度面板" subtitle="按模块切换查看，避免评分、财务、治理、风险信息堆在一起。">
         <div class="flex flex-wrap gap-2">
           <button
             v-for="item in detailTabs"
@@ -175,8 +198,13 @@
         </div>
       </PageSection>
 
-      <div class="grid gap-4 xl:grid-cols-2">
-        <PageSection title="相关个股新闻" subtitle="最近几条个股新闻、重要度和事件影响项。">
+      <details id="news-impact" class="group">
+        <summary class="cursor-pointer list-none rounded-[24px] border border-[var(--line)] bg-white/82 px-4 py-4 text-base font-bold text-[var(--ink)] shadow-[var(--shadow-soft)]">
+          相关个股新闻与群聊摘要
+          <span class="ml-2 text-sm font-normal text-[var(--muted)]">先看摘要，需要时再展开详细卡片。</span>
+        </summary>
+        <div class="mt-4 grid gap-4 xl:grid-cols-2">
+          <PageSection title="相关个股新闻" subtitle="最近几条个股新闻、重要度和事件影响项。">
           <div class="space-y-2">
             <InfoCard
               v-for="item in stockNewsItems"
@@ -196,9 +224,9 @@
               </div>
             </InfoCard>
           </div>
-        </PageSection>
+          </PageSection>
 
-        <PageSection title="群聊与候选池" subtitle="看是否已进入候选池，哪些群在讨论，最终偏向如何。">
+          <PageSection title="群聊与候选池" subtitle="看是否已进入候选池，哪些群在讨论，最终偏向如何。">
           <div class="space-y-2">
             <InfoCard
               v-if="candidatePoolItem"
@@ -223,17 +251,24 @@
               </template>
             </InfoCard>
           </div>
-        </PageSection>
-      </div>
+          </PageSection>
+        </div>
+      </details>
 
-      <div class="grid gap-4 xl:grid-cols-2">
-        <PageSection title="LLM 走势分析" subtitle="直接在本页看趋势判断，不用再切到单独分析页。">
+      <details id="llm-analysis" class="group">
+        <summary class="cursor-pointer list-none rounded-[24px] border border-[var(--line)] bg-white/82 px-4 py-4 text-base font-bold text-[var(--ink)] shadow-[var(--shadow-soft)]">
+          LLM 分析结果
+          <span class="ml-2 text-sm font-normal text-[var(--muted)]">默认折叠，降低详情页纵向滚动成本。</span>
+        </summary>
+        <div class="mt-4 grid gap-4 xl:grid-cols-2">
+          <PageSection title="LLM 走势分析" subtitle="直接在本页看趋势判断，不用再切到单独分析页。">
           <MarkdownBlock :content="trendResult || '尚未发起走势分析。'" />
-        </PageSection>
-        <PageSection title="LLM 多角色分析" subtitle="继续保留异步轮询结果，让分析完成后自动落回这个页面。">
+          </PageSection>
+          <PageSection title="LLM 多角色分析" subtitle="继续保留异步轮询结果，让分析完成后自动落回这个页面。">
           <MarkdownBlock :content="multiRoleResult || '尚未发起多角色分析。'" />
-        </PageSection>
-      </div>
+          </PageSection>
+        </div>
+      </details>
     </div>
   </AppShell>
 </template>
@@ -317,6 +352,9 @@ const tsCodeInput = ref('000001.SZ')
 const trendResult = ref('')
 const multiRoleResult = ref('')
 const actionMessage = ref('准备就绪')
+const fetchNewsState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const trendState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
+const multiRoleState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 const chartsReady = ref(false)
 const detailTabs = [
   { key: 'score', label: '评分结构' },
@@ -328,6 +366,12 @@ const detailTabs = [
 ] as const
 const activeDetailTab = ref<(typeof detailTabs)[number]['key']>('score')
 let multiRoleTimer = 0
+const sectionAnchors = [
+  { href: '#price-trend', label: '价格走势' },
+  { href: '#company-panels', label: '公司面板' },
+  { href: '#news-impact', label: '新闻与群聊' },
+  { href: '#llm-analysis', label: 'LLM 分析' },
+]
 
 watch(
   [activeTsCode, activeKeyword],
@@ -416,6 +460,40 @@ const rollupChips = computed(() => {
       label: `${Number(x.window_days)}天收益`,
       value: formatSignedPercent(x.close_change_pct, 2),
     }))
+})
+const actionStatusCards = computed(() => {
+  const items = [
+    {
+      title: '股票新闻采集',
+      state: fetchNewsState.value,
+      description: fetchNewsState.value === 'idle' ? '尚未触发，适合先补齐最近个股新闻。'
+        : fetchNewsState.value === 'pending' ? '正在采集并回填最新个股新闻。'
+          : fetchNewsState.value === 'success' ? '最近一次采集已完成，可查看新闻区结果。'
+            : '最近一次采集失败，请查看动作反馈并重试。',
+    },
+    {
+      title: '走势分析',
+      state: trendState.value,
+      description: trendState.value === 'idle' ? '尚未触发，适合先看短期趋势判断。'
+        : trendState.value === 'pending' ? 'LLM 正在生成走势分析摘要。'
+          : trendState.value === 'success' ? '走势分析已完成，结果在下方 LLM 区。'
+            : '走势分析失败，请查看反馈后重试。',
+    },
+    {
+      title: '多角色分析',
+      state: multiRoleState.value,
+      description: multiRoleState.value === 'idle' ? '尚未触发，适合需要更深研究时再发起。'
+        : multiRoleState.value === 'pending' ? '后台任务进行中，页面会自动回填结果。'
+          : multiRoleState.value === 'success' ? '多角色分析已完成，可展开查看完整结论。'
+            : '多角色分析失败，请查看反馈后重试。',
+    },
+  ]
+  return items.map((item) => ({
+    ...item,
+    tone: item.state === 'success' ? 'success' : item.state === 'error' ? 'danger' : item.state === 'pending' ? 'warning' : 'muted',
+    label: item.state === 'success' ? '已完成' : item.state === 'error' ? '失败' : item.state === 'pending' ? '进行中' : '待触发',
+    meta: resolvedTsCode.value || resolvedName.value || '-',
+  }))
 })
 
 const scoreItems = computed(() => [
@@ -542,11 +620,13 @@ const fetchNewsMutation = useMutation({
     score: 1,
   }),
   onSuccess: (payload: DetailRow) => {
+    fetchNewsState.value = 'success'
     const actualModel = String(payload.items?.[0]?.llm_model || '')
     actionMessage.value = `股票新闻采集完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
     refetch()
   },
   onError: (mutationError: Error) => {
+    fetchNewsState.value = 'error'
     actionMessage.value = `股票新闻采集失败：${mutationError.message}`
   },
 })
@@ -557,11 +637,13 @@ const trendMutation = useMutation({
     lookback: lookback.value,
   }),
   onSuccess: (payload: DetailRow) => {
+    trendState.value = 'success'
     const actualModel = String(payload.used_model || payload.model || '')
     actionMessage.value = `走势分析完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
     trendResult.value = payload.analysis_markdown || payload.analysis || payload.result || payload.message || JSON.stringify(payload, null, 2)
   },
   onError: (mutationError: Error) => {
+    trendState.value = 'error'
     actionMessage.value = `走势分析失败：${mutationError.message}`
     trendResult.value = `走势分析失败：${mutationError.message}`
   },
@@ -575,21 +657,25 @@ const multiRoleMutation = useMutation({
   onSuccess: (payload: DetailRow) => {
     const jobId = String(payload.job_id || '').trim()
     if (!jobId) {
+      multiRoleState.value = 'error'
       actionMessage.value = '多角色分析任务创建成功，但未返回 job_id。'
       multiRoleResult.value = '任务创建成功，但未返回 job_id。'
       return
     }
+    multiRoleState.value = 'pending'
     actionMessage.value = `多角色分析任务已创建：${resolvedName.value || resolvedTsCode.value || '-'}`
     window.clearTimeout(multiRoleTimer)
     const poll = async () => {
       const result = await fetchMultiRoleTask({ job_id: jobId })
       if (result.status === 'done') {
+        multiRoleState.value = 'success'
         const actualModel = String(result.used_model || result.model || '')
         actionMessage.value = `多角色分析完成：${resolvedName.value || resolvedTsCode.value || '-'}${actualModel ? ` · 实际模型 ${actualModel}` : ''}`
         multiRoleResult.value = result.analysis_markdown || result.analysis || result.result || '分析完成，但未返回正文。'
         return
       }
       if (result.status === 'error') {
+        multiRoleState.value = 'error'
         actionMessage.value = `多角色分析失败：${result.error || result.message || '未知错误'}`
         multiRoleResult.value = `分析失败：${result.error || result.message || '未知错误'}`
         return
@@ -600,6 +686,7 @@ const multiRoleMutation = useMutation({
     poll()
   },
   onError: (mutationError: Error) => {
+    multiRoleState.value = 'error'
     actionMessage.value = `多角色分析失败：${mutationError.message}`
     multiRoleResult.value = `分析失败：${mutationError.message}`
   },
@@ -611,6 +698,7 @@ const isMultiRolePending = computed(() => multiRoleMutation.isPending.value)
 
 function fetchStockNewsNow() {
   if (!resolvedTsCode.value) return
+  fetchNewsState.value = 'pending'
   actionMessage.value = `正在采集 ${resolvedName.value || resolvedTsCode.value || '-'} 的股票新闻...`
   fetchNewsMutation.mutate()
 }
@@ -620,6 +708,7 @@ function runTrend() {
     trendResult.value = '当前没有可分析的股票代码。'
     return
   }
+  trendState.value = 'pending'
   actionMessage.value = `正在分析 ${resolvedName.value || resolvedTsCode.value || '-'} 的走势...`
   trendResult.value = '正在生成走势分析...'
   trendMutation.mutate()
@@ -630,6 +719,7 @@ function runMultiRole() {
     multiRoleResult.value = '当前没有可分析的股票代码。'
     return
   }
+  multiRoleState.value = 'pending'
   actionMessage.value = `正在创建 ${resolvedName.value || resolvedTsCode.value || '-'} 的多角色分析任务...`
   multiRoleResult.value = '任务已创建，正在后台生成分析...'
   multiRoleMutation.mutate()

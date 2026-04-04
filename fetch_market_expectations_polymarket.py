@@ -41,7 +41,7 @@ def parse_args() -> argparse.Namespace:
         help="PostgreSQL 主库兼容参数（默认走 PostgreSQL；仅兼容保留旧 db-path 传参）",
     )
     parser.add_argument("--limit", type=int, default=150, help="最多抓取多少条 active 市场")
-    parser.add_argument("--min-volume", type=float, default=1000.0, help="最小累计成交量过滤")
+    parser.add_argument("--min-volume", type=float, default=1000.0, help="累计成交量过滤")
     parser.add_argument("--timeout", type=int, default=30, help="HTTP 超时秒数")
     return parser.parse_args()
 

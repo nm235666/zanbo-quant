@@ -29,12 +29,12 @@ def parse_args() -> argparse.Namespace:
 
     # 并发与限速
     parser.add_argument("--workers", type=int, default=10, help="初始并发线程数")
-    parser.add_argument("--min-workers", type=int, default=4, help="自适应最小线程数")
+    parser.add_argument("--min-workers", type=int, default=4, help="自适应线程数")
     parser.add_argument("--max-workers", type=int, default=16, help="自适应最大线程数")
     parser.add_argument("--timeout", type=float, default=12.0, help="单请求超时秒数")
     parser.add_argument("--retry", type=int, default=2, help="单股票单轮内重试次数")
     parser.add_argument("--base-backoff", type=float, default=0.4, help="指数退避基数秒")
-    parser.add_argument("--sleep-min-ms", type=int, default=10, help="请求后最小随机休眠毫秒")
+    parser.add_argument("--sleep-min-ms", type=int, default=10, help="请求后随机休眠毫秒")
     parser.add_argument("--sleep-max-ms", type=int, default=30, help="请求后最大随机休眠毫秒")
 
     # 范围与断点

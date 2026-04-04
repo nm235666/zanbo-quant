@@ -34,6 +34,21 @@
         <header class="mb-4 rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.72)_100%)] px-4 py-4 shadow-[var(--shadow)] backdrop-blur-xl">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
+              <div class="mb-3 flex items-center gap-2 xl:hidden">
+                <button
+                  class="rounded-[18px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-2 text-sm font-semibold text-white"
+                  :aria-expanded="ui.mobileNavOpen ? 'true' : 'false'"
+                  aria-controls="mobile-app-nav"
+                  aria-label="打开导航菜单"
+                  @click="ui.toggleMobileNav()"
+                >
+                  {{ ui.mobileNavOpen ? '关闭菜单' : '导航菜单' }}
+                </button>
+                <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-3 py-2 text-xs text-[var(--muted)]">
+                  <div class="font-semibold text-[var(--ink)]">最近事件</div>
+                  <div class="mt-1 max-w-[180px] truncate">{{ realtime.lastEvent || '暂无' }}</div>
+                </div>
+              </div>
               <div class="text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">Zanbo Quant Vue Frontend</div>
               <div class="mt-1 text-[30px] font-extrabold tracking-tight" style="font-family: var(--font-display)">{{ title }}</div>
               <div class="mt-1 text-sm text-[var(--muted)]">{{ subtitle }}</div>
@@ -46,11 +61,11 @@
                   {{ realtime.connected ? '在线' : '重连中' }}
                 </div>
               </div>
-              <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)]">
+              <div class="hidden rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)] md:block">
                 <div class="text-[11px] uppercase tracking-[0.15em] text-[var(--muted)]">最近事件</div>
                 <div class="mt-1 max-w-[300px] truncate font-semibold">{{ realtime.lastEvent || '暂无' }}</div>
               </div>
-              <button class="rounded-[20px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white" @click="ui.toggleSidebar()">
+              <button class="hidden rounded-[20px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white xl:block" @click="ui.toggleSidebar()">
                 {{ ui.sidebarOpen ? '收起导航' : '展开导航' }}
               </button>
               <button
@@ -69,16 +84,56 @@
         </main>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="ui.mobileNavOpen"
+        class="fixed inset-0 z-50 xl:hidden"
+      >
+        <button class="absolute inset-0 bg-[rgba(8,17,26,0.52)]" aria-label="关闭导航菜单" @click="ui.closeMobileNav()" />
+        <aside
+          id="mobile-app-nav"
+          class="absolute inset-y-0 left-0 w-[min(88vw,340px)] overflow-y-auto border-r border-white/12 bg-[linear-gradient(180deg,#0d1720_0%,#12384a_58%,#0c6977_100%)] p-4 text-white shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-label="主导航"
+        >
+          <div class="mb-4 flex items-center justify-between">
+            <div>
+              <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/82">Zanbo Quant</div>
+              <div class="mt-2 text-lg font-extrabold">研究终端导航</div>
+            </div>
+            <button class="rounded-full border border-white/18 bg-white/10 px-3 py-2 text-sm font-semibold text-white" @click="ui.closeMobileNav()">关闭</button>
+          </div>
+          <nav class="space-y-5">
+            <div v-for="group in navGroups" :key="`mobile-${group.title}`" class="space-y-2">
+              <div class="px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/54">{{ group.title }}</div>
+              <RouterLink
+                v-for="item in group.items"
+                :key="`mobile-${item.to}`"
+                :to="item.to"
+                class="block rounded-[22px] border px-3 py-3 text-sm transition"
+                :class="isNavActive(item.to) ? 'border-white/14 bg-white/18 text-white shadow-lg ring-1 ring-white/18 backdrop-blur-sm' : 'border-white/8 bg-white/[0.05] text-white/84 hover:border-white/14 hover:bg-white/10 hover:text-white'"
+                @click="ui.closeMobileNav()"
+              >
+                <div class="font-semibold">{{ item.label }}</div>
+                <div class="mt-1 text-xs text-white/55">{{ item.desc }}</div>
+              </RouterLink>
+            </div>
+          </nav>
+        </aside>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useUiStore } from '../../stores/ui'
 import { useRealtimeStore } from '../../stores/realtime'
 import { useAuthStore } from '../../stores/auth'
-import { clearAuthStatusCache, fetchAuthStatus, logoutAuth } from '../../services/api/auth'
+import { clearAuthStatusCache, logoutAuth } from '../../services/api/auth'
 import { clearAdminToken, readAdminToken } from '../../services/authToken'
 import { hasPermissionByEffective, type AppPermission } from '../../app/permissions'
 
@@ -93,7 +148,6 @@ const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const hasAdminToken = ref(!!readAdminToken())
-const currentRole = ref('')
 
 const sidebarClasses = computed(() => [
   'hidden shrink-0 xl:block',
@@ -111,6 +165,7 @@ const fullNavGroups = [
       { to: '/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system' as AppPermission },
       { to: '/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system' as AppPermission },
       { to: '/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system' as AppPermission },
+      { to: '/system/permissions', label: '角色权限策略', desc: '配置 pro/limited/admin 的权限与日配额', permission: 'admin_system' as AppPermission },
       { to: '/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system' as AppPermission },
       { to: '/system/invites', label: '邀请码管理', desc: '管理员邀请码与账号规模管理', permission: 'admin_users' as AppPermission },
       { to: '/system/users', label: '用户与会话', desc: '用户、会话、审计日志管理', permission: 'admin_users' as AppPermission },
@@ -134,8 +189,8 @@ const fullNavGroups = [
       { to: '/intelligence/daily-summaries', label: '新闻日报总结', desc: '日报生成、历史查询与双格式导出', permission: 'daily_summary_read' as AppPermission },
       { to: '/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced' as AppPermission },
       { to: '/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/audit', label: '信号审计', desc: '误映射、弱信号与质量问题', permission: 'signals_advanced' as AppPermission },
-      { to: '/signals/quality-config', label: '信号配置', desc: '规则参数与映射黑名单', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/audit', label: '信号质量审计', desc: '误映射、弱信号与质量问题', permission: 'signals_advanced' as AppPermission },
+      { to: '/signals/quality-config', label: '信号质量配置', desc: '规则参数与映射黑名单', permission: 'signals_advanced' as AppPermission },
       { to: '/signals/state-timeline', label: '状态时间线', desc: '状态机迁移与市场预期层', permission: 'signals_advanced' as AppPermission },
     ],
   },
@@ -159,7 +214,7 @@ const navGroups = computed(() => {
   return fullNavGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => hasPermissionByEffective(auth.effectivePermissions, currentRole.value, item.permission)),
+      items: group.items.filter((item) => hasPermissionByEffective(auth.effectivePermissions, auth.role, item.permission)),
     }))
     .filter((group) => group.items.length > 0)
 })
@@ -175,6 +230,13 @@ function isNavActive(to: string): boolean {
   return false
 }
 
+watch(
+  () => route.fullPath,
+  () => {
+    ui.closeMobileNav()
+  },
+)
+
 async function logout() {
   try {
     await logoutAuth()
@@ -189,12 +251,4 @@ async function logout() {
   router.replace('/login')
 }
 
-onMounted(async () => {
-  try {
-    const status = await fetchAuthStatus()
-    currentRole.value = String(status.user?.role || status.user?.tier || '')
-  } catch {
-    currentRole.value = ''
-  }
-})
 </script>

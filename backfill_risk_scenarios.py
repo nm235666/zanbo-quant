@@ -94,7 +94,7 @@ def fetch_price_rows(conn: sqlite3.Connection, codes: list[str], lookback_bars: 
         ROW_NUMBER() OVER (PARTITION BY ts_code ORDER BY trade_date DESC) AS rn
       FROM stock_daily_prices
       WHERE ts_code IN ({placeholders})
-    )
+    ) ranked_prices
     WHERE rn <= ?
     ORDER BY ts_code, trade_date
     """
@@ -239,20 +239,6 @@ def build_scenarios(ts_code: str, stats: dict) -> list[dict]:
 def upsert_rows(conn: sqlite3.Connection, table_name: str, rows: list[dict]) -> int:
     if not rows:
         return 0
-    sql = f"""
-    INSERT INTO {table_name} (
-        ts_code, scenario_date, scenario_name, horizon, pnl_impact, max_drawdown,
-        var_95, cvar_95, assumptions_json, source, update_time
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(ts_code, scenario_date, scenario_name, horizon) DO UPDATE SET
-        pnl_impact=excluded.pnl_impact,
-        max_drawdown=excluded.max_drawdown,
-        var_95=excluded.var_95,
-        cvar_95=excluded.cvar_95,
-        assumptions_json=excluded.assumptions_json,
-        source=excluded.source,
-        update_time=excluded.update_time
-    """
     update_time = utc_now()
     values = [
         (
@@ -271,7 +257,41 @@ def upsert_rows(conn: sqlite3.Connection, table_name: str, rows: list[dict]) -> 
         for row in rows
     ]
     cur = conn.cursor()
-    cur.executemany(sql, values)
+    if sqlite3.using_postgres():
+        # PostgreSQL 当前线上表使用表达式唯一索引（md5+COALESCE）而非列级唯一约束，
+        # 列式 ON CONFLICT 无法命中，采用“先删后插”保证幂等与兼容。
+        delete_sql = f"""
+        DELETE FROM {table_name}
+        WHERE COALESCE(ts_code, '') = COALESCE(?, '')
+          AND COALESCE(scenario_date, '') = COALESCE(?, '')
+          AND COALESCE(scenario_name, '') = COALESCE(?, '')
+          AND COALESCE(horizon, '') = COALESCE(?, '')
+        """
+        insert_sql = f"""
+        INSERT INTO {table_name} (
+            ts_code, scenario_date, scenario_name, horizon, pnl_impact, max_drawdown,
+            var_95, cvar_95, assumptions_json, source, update_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        keys = [(v[0], v[1], v[2], v[3]) for v in values]
+        cur.executemany(delete_sql, keys)
+        cur.executemany(insert_sql, values)
+    else:
+        sql = f"""
+        INSERT INTO {table_name} (
+            ts_code, scenario_date, scenario_name, horizon, pnl_impact, max_drawdown,
+            var_95, cvar_95, assumptions_json, source, update_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ts_code, scenario_date, scenario_name, horizon) DO UPDATE SET
+            pnl_impact=excluded.pnl_impact,
+            max_drawdown=excluded.max_drawdown,
+            var_95=excluded.var_95,
+            cvar_95=excluded.cvar_95,
+            assumptions_json=excluded.assumptions_json,
+            source=excluded.source,
+            update_time=excluded.update_time
+        """
+        cur.executemany(sql, values)
     conn.commit()
     return len(rows)
 

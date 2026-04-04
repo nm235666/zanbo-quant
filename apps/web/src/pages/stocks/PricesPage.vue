@@ -1,91 +1,168 @@
 <template>
   <AppShell title="股票价格中心" subtitle="同一页面查看日线和分钟线，统一查询、统一图表、统一明细。">
     <div class="space-y-4">
-      <PageSection title="查询条件" subtitle="按股票、日期区间和分页查看日线数据。">
-        <div class="grid gap-3 xl:grid-cols-[180px_160px_160px_140px_120px] md:grid-cols-2">
-          <input v-model="filters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票代码，如 000001.SZ" />
-          <input v-model="filters.start_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期 YYYYMMDD" />
-          <input v-model="filters.end_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期 YYYYMMDD" />
-          <select v-model.number="filters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-            <option :value="100">100 / 页</option>
-          </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="submitSearch">查询</button>
-        </div>
-        <p v-if="!hasSearched" class="mt-2 text-sm text-[var(--muted)]">请先输入股票代码或日期区间，再点击“查询”。</p>
-        <p v-else-if="result?.message" class="mt-2 text-sm text-amber-700">{{ result.message }}</p>
-      </PageSection>
+      <PageSection title="查询条件" subtitle="把日线和分钟线拆成两个上下文模块，优先让主图表和结果更快露出。">
+        <div class="grid gap-4 xl:grid-cols-2">
+          <div class="rounded-[22px] border border-[var(--line)] bg-white/78 p-4">
+            <div class="mb-3 text-sm font-bold text-[var(--ink)]">日线查询</div>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                股票代码
+                <input v-model="filters.ts_code" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 000001.SZ" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                每页条数
+                <select v-model.number="filters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+                  <option :value="20">20 / 页</option>
+                  <option :value="50">50 / 页</option>
+                  <option :value="100">100 / 页</option>
+                </select>
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                开始日期
+                <input v-model="filters.start_date" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="YYYYMMDD" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                结束日期
+                <input v-model="filters.end_date" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="YYYYMMDD" />
+              </label>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="submitSearch">查询日线</button>
+              <span class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--muted)]">支持按股票或时间区间快速回看</span>
+            </div>
+          </div>
 
-      <PageSection title="收盘趋势" subtitle="用最近这次查询结果里的收盘价快速判断趋势。">
-        <TrendAreaChart
-          v-if="showChart"
-          :labels="chart.labels"
-          :series="chart.series"
-          :height="320"
-          empty-text="暂无日线数据"
-        />
-        <div v-else class="rounded-2xl border border-dashed border-[var(--line)] bg-white/70 px-4 py-10 text-center text-sm text-[var(--muted)]">
-          暂无可展示的趋势数据，先执行一次查询。
-        </div>
-      </PageSection>
-
-      <PageSection :title="`日线结果 (${result?.total || 0})`" subtitle="点击股票代码可回到统一详情页。">
-        <DataTable :columns="columns" :rows="result?.items || []" row-key="trade_date" empty-text="暂无日线数据">
-          <template #cell-ts_code="{ row }">
-            <RouterLink class="font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">{{ row.ts_code || '-' }}</RouterLink>
-          </template>
-          <template #cell-name="{ row }">{{ row.name || '-' }}</template>
-          <template #cell-trade_date="{ row }">{{ formatDate(row.trade_date) }}</template>
-          <template #cell-open="{ row }">{{ formatNumber(row.open, 2) }}</template>
-          <template #cell-high="{ row }">{{ formatNumber(row.high, 2) }}</template>
-          <template #cell-low="{ row }">{{ formatNumber(row.low, 2) }}</template>
-          <template #cell-close="{ row }">{{ formatNumber(row.close, 2) }}</template>
-          <template #cell-pre_close="{ row }">{{ formatNumber(row.pre_close, 2) }}</template>
-          <template #cell-change="{ row }">{{ formatNumber(row.change, 2) }}</template>
-          <template #cell-pct_chg="{ row }">{{ formatPercent(row.pct_chg, 2) }}</template>
-          <template #cell-vol="{ row }">{{ formatNumber(row.vol, 0) }}</template>
-          <template #cell-amount="{ row }">{{ formatNumber(row.amount, 0) }}</template>
-        </DataTable>
-        <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
-          <div>第 {{ queryParams.page }} / {{ result?.total_pages || 1 }} 页</div>
-          <div class="flex gap-2">
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page <= 1" @click="goPrevPage">上一页</button>
-            <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
+          <div class="rounded-[22px] border border-[var(--line)] bg-white/78 p-4">
+            <div class="mb-3 text-sm font-bold text-[var(--ink)]">分钟线查询</div>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                股票代码
+                <input v-model="minuteFilters.ts_code" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 600114.SH" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                交易日
+                <input v-model="minuteFilters.trade_date" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="YYYYMMDD，可空" />
+              </label>
+              <label class="text-sm font-semibold text-[var(--ink)]">
+                数据点数
+                <select v-model.number="minuteFilters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+                  <option :value="500">500 点</option>
+                  <option :value="300">300 点</option>
+                  <option :value="240">240 点</option>
+                </select>
+              </label>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button class="rounded-2xl bg-stone-900 px-4 py-3 font-semibold text-white" @click="submitMinuteSearch">查询分钟线</button>
+              <span class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--muted)]">适合盘中走势和均价结构回看</span>
+            </div>
           </div>
         </div>
-      </PageSection>
 
-      <PageSection title="分钟线查询" subtitle="同页查看分钟 K 线与明细，无需切换到单独页面。">
-        <div class="grid gap-3 xl:grid-cols-[180px_180px_140px_120px] md:grid-cols-2">
-          <input v-model="minuteFilters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="股票代码，如 600114.SH" />
-          <input v-model="minuteFilters.trade_date" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="交易日 YYYYMMDD，可空" />
-          <select v-model.number="minuteFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="500">500 点</option>
-            <option :value="300">300 点</option>
-            <option :value="240">240 点</option>
-          </select>
-          <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="submitMinuteSearch">查询</button>
+        <div class="mt-3 flex flex-wrap gap-2 lg:hidden">
+          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'daily' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="mobilePanel = 'daily'">日线视图</button>
+          <button class="rounded-full px-4 py-2 text-sm font-semibold" :class="mobilePanel === 'minute' ? 'bg-[var(--brand)] text-white' : 'border border-[var(--line)] bg-white text-[var(--muted)]'" @click="mobilePanel = 'minute'">分钟线视图</button>
         </div>
-        <p v-if="!hasMinuteSearched" class="mt-2 text-sm text-[var(--muted)]">请先输入分钟线查询条件，再点击“查询”。</p>
-      </PageSection>
 
-      <PageSection title="分钟 K 线图" subtitle="分钟价格 + 均价 + 成交量。">
-        <MinuteKlineChart v-if="hasMinuteSearched" :items="minuteResult?.items || []" :height="620" empty-text="暂无分钟线数据" />
-        <div v-else class="rounded-2xl border border-dashed border-[var(--line)] bg-white/70 px-4 py-10 text-center text-sm text-[var(--muted)]">
-          暂无可展示的分钟线数据，先执行一次查询。
+        <div class="mt-3 text-sm text-[var(--muted)]" role="status" aria-live="polite">
+          <template v-if="!hasSearched && !hasMinuteSearched">请先输入查询条件，再执行日线或分钟线查询。</template>
+          <template v-else-if="result?.message">{{ result.message }}</template>
+          <template v-else>日线与分钟线会分别保留最近一次查询结果。</template>
         </div>
       </PageSection>
 
-      <PageSection :title="`分钟线结果 (${minuteResult?.total || 0})`" subtitle="最近一批分钟线明细。">
-        <DataTable :columns="minuteColumns" :rows="minuteResult?.items || []" row-key="minute_time" empty-text="暂无分钟线明细">
-          <template #cell-trade_date="{ row }">{{ formatDate(row.trade_date) }}</template>
-          <template #cell-price="{ row }">{{ formatNumber(row.price, 3) }}</template>
-          <template #cell-avg_price="{ row }">{{ formatNumber(row.avg_price, 3) }}</template>
-          <template #cell-volume="{ row }">{{ formatNumber(row.volume, 0) }}</template>
-          <template #cell-total_volume="{ row }">{{ formatNumber(row.total_volume, 0) }}</template>
-        </DataTable>
-      </PageSection>
+      <div :class="mobilePanel === 'daily' ? '' : 'hidden lg:block'">
+        <PageSection title="收盘趋势" subtitle="用最近这次查询结果里的收盘价快速判断趋势。">
+          <TrendAreaChart
+            v-if="showChart"
+            :labels="chart.labels"
+            :series="chart.series"
+            :height="320"
+            empty-text="暂无日线数据"
+          />
+          <div v-else class="loading-skeleton rounded-2xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--muted)]">
+            暂无可展示的趋势数据，先执行一次查询。
+          </div>
+        </PageSection>
+
+        <PageSection :title="`日线结果 (${result?.total || 0})`" subtitle="点击股票代码可回到统一详情页。">
+          <div class="grid gap-3 lg:hidden">
+            <InfoCard
+              v-for="row in result?.items || []"
+              :key="`${row.ts_code}-${row.trade_date}`"
+              :title="row.name || row.ts_code || '-'"
+              :meta="`${row.ts_code || '-'} · ${formatDate(row.trade_date)}`"
+              :description="`收盘 ${formatNumber(row.close, 2)} · 涨跌幅 ${formatPercent(row.pct_chg, 2)}`"
+            >
+              <div class="flex flex-wrap gap-2 text-xs">
+                <span class="metric-chip">开盘 <strong>{{ formatNumber(row.open, 2) }}</strong></span>
+                <span class="metric-chip">最高 <strong>{{ formatNumber(row.high, 2) }}</strong></span>
+                <span class="metric-chip">最低 <strong>{{ formatNumber(row.low, 2) }}</strong></span>
+                <span class="metric-chip">成交量 <strong>{{ formatNumber(row.vol, 0) }}</strong></span>
+              </div>
+            </InfoCard>
+          </div>
+
+          <DataTable class="hidden lg:block" :columns="columns" :rows="result?.items || []" row-key="trade_date" empty-text="暂无日线数据" caption="日线结果表" aria-label="日线结果表">
+            <template #cell-ts_code="{ row }">
+              <RouterLink class="font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">{{ row.ts_code || '-' }}</RouterLink>
+            </template>
+            <template #cell-name="{ row }">{{ row.name || '-' }}</template>
+            <template #cell-trade_date="{ row }">{{ formatDate(row.trade_date) }}</template>
+            <template #cell-open="{ row }">{{ formatNumber(row.open, 2) }}</template>
+            <template #cell-high="{ row }">{{ formatNumber(row.high, 2) }}</template>
+            <template #cell-low="{ row }">{{ formatNumber(row.low, 2) }}</template>
+            <template #cell-close="{ row }">{{ formatNumber(row.close, 2) }}</template>
+            <template #cell-pre_close="{ row }">{{ formatNumber(row.pre_close, 2) }}</template>
+            <template #cell-change="{ row }">{{ formatNumber(row.change, 2) }}</template>
+            <template #cell-pct_chg="{ row }">{{ formatPercent(row.pct_chg, 2) }}</template>
+            <template #cell-vol="{ row }">{{ formatNumber(row.vol, 0) }}</template>
+            <template #cell-amount="{ row }">{{ formatNumber(row.amount, 0) }}</template>
+          </DataTable>
+
+          <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
+            <div>第 {{ queryParams.page }} / {{ result?.total_pages || 1 }} 页</div>
+            <div class="flex gap-2">
+              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page <= 1" @click="goPrevPage">上一页</button>
+              <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryParams.page >= (result?.total_pages || 1)" @click="goNextPage">下一页</button>
+            </div>
+          </div>
+        </PageSection>
+      </div>
+
+      <div :class="mobilePanel === 'minute' ? '' : 'hidden lg:block'">
+        <PageSection title="分钟 K 线图" subtitle="分钟价格 + 均价 + 成交量。">
+          <MinuteKlineChart v-if="hasMinuteSearched" :items="minuteResult?.items || []" :height="620" empty-text="暂无分钟线数据" />
+          <div v-else class="loading-skeleton rounded-2xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--muted)]">
+            暂无可展示的分钟线数据，先执行一次查询。
+          </div>
+        </PageSection>
+
+        <PageSection :title="`分钟线结果 (${minuteResult?.total || 0})`" subtitle="最近一批分钟线明细。">
+          <div class="grid gap-3 lg:hidden">
+            <InfoCard
+              v-for="row in minuteResult?.items || []"
+              :key="`${row.trade_date}-${row.minute_time}`"
+              :title="`${formatDate(row.trade_date)} ${row.minute_time || '-'}`"
+              :description="`价格 ${formatNumber(row.price, 3)} · 均价 ${formatNumber(row.avg_price, 3)}`"
+            >
+              <div class="flex flex-wrap gap-2 text-xs">
+                <span class="metric-chip">成交量 <strong>{{ formatNumber(row.volume, 0) }}</strong></span>
+                <span class="metric-chip">累计成交量 <strong>{{ formatNumber(row.total_volume, 0) }}</strong></span>
+              </div>
+            </InfoCard>
+          </div>
+
+          <DataTable class="hidden lg:block" :columns="minuteColumns" :rows="minuteResult?.items || []" row-key="minute_time" empty-text="暂无分钟线明细" caption="分钟线结果表" aria-label="分钟线结果表">
+            <template #cell-trade_date="{ row }">{{ formatDate(row.trade_date) }}</template>
+            <template #cell-price="{ row }">{{ formatNumber(row.price, 3) }}</template>
+            <template #cell-avg_price="{ row }">{{ formatNumber(row.avg_price, 3) }}</template>
+            <template #cell-volume="{ row }">{{ formatNumber(row.volume, 0) }}</template>
+            <template #cell-total_volume="{ row }">{{ formatNumber(row.total_volume, 0) }}</template>
+          </DataTable>
+        </PageSection>
+      </div>
     </div>
   </AppShell>
 </template>
@@ -97,8 +174,10 @@ import { RouterLink } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
+import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchStockMinline, fetchStockPrices } from '../../services/api/stocks'
 import { formatDate, formatNumber, formatPercent } from '../../shared/utils/format'
+
 const TrendAreaChart = defineAsyncComponent(() => import('../../shared/charts/TrendAreaChart.vue'))
 const MinuteKlineChart = defineAsyncComponent(() => import('../../shared/charts/MinuteKlineChart.vue'))
 
@@ -116,6 +195,7 @@ const queryParams = reactive({
   page_size: 20,
 })
 const hasSearched = ref(false)
+const mobilePanel = ref<'daily' | 'minute'>('daily')
 const minuteFilters = reactive({
   ts_code: '600114.SH',
   trade_date: '',
@@ -187,6 +267,7 @@ function submitSearch() {
   queryParams.page_size = Number(filters.page_size) || 20
   queryParams.page = 1
   hasSearched.value = true
+  mobilePanel.value = 'daily'
 }
 
 function goPrevPage() {
@@ -206,5 +287,6 @@ function submitMinuteSearch() {
   minuteQueryParams.page_size = Number(minuteFilters.page_size) || 500
   minuteQueryParams.page = 1
   hasMinuteSearched.value = true
+  mobilePanel.value = 'minute'
 }
 </script>

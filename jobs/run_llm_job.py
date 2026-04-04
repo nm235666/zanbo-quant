@@ -15,7 +15,11 @@ from jobs.llm_jobs import get_llm_job_target, run_llm_job
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="运行 LLM 节点巡检任务")
-    parser.add_argument("--job-key", required=True, help="任务标识，如 llm_provider_nodes_probe、multi_role_v3_stale_recovery")
+    parser.add_argument(
+        "--job-key",
+        required=True,
+        help="任务标识，如 llm_provider_nodes_probe、multi_role_v3_stale_recovery、multi_role_v3_worker_guard",
+    )
     parser.add_argument("--describe", action="store_true", help="仅输出任务映射，不执行")
     return parser.parse_args()
 

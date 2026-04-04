@@ -26,6 +26,7 @@
           </div>
         </div>
         <div v-if="attemptChain" class="mt-2 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
+        <div v-if="lastAttemptError" class="mt-2 text-sm text-[var(--muted)]">最后错误：{{ lastAttemptError }}</div>
         <div v-if="protocolMetaText" class="mt-2 text-sm text-[var(--muted)]">{{ protocolMetaText }}</div>
         <StatePanel
           v-if="queryError"
@@ -153,6 +154,10 @@ const selectedContent = computed(() => {
   return selectedItem.value?.summary_markdown || selectedItem.value?.summary_text || '请选择左侧一条日报总结查看内容。'
 })
 const attemptChain = computed(() => attempts.value.map((item) => `${item.model || '-'}${item.error ? '×' : '√'}`).join(' -> '))
+const lastAttemptError = computed(() => {
+  const failed = [...attempts.value].reverse().find((item) => String(item?.error || '').trim())
+  return String(failed?.error || '').trim()
+})
 const queryError = computed(() => error.value?.message || '')
 const protocolMetaText = computed(() => {
   const protocol = result.value?.protocol || {}
@@ -181,25 +186,32 @@ const generateMutation = useMutation({
   onSuccess: (payload: Record<string, any>) => {
     const jobId = String(payload.job_id || '')
     attempts.value = Array.isArray(payload.attempts) ? payload.attempts : []
-    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 默认 GPT 优先（可按传参覆盖）`
+    actionMessage.value = `日报总结任务已创建：${payload.summary_date || ''} · 正在尝试日报模型链路`
     if (!jobId) return
     window.clearTimeout(pollTimer)
     const poll = async () => {
       const task = await fetchDailySummaryTask({ job_id: jobId })
       attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
       if (task.status === 'done') {
-        actionMessage.value = `日报总结生成完成${task.used_model ? ` · 实际模型 ${task.used_model}` : ''}`
+        actionMessage.value = task.fallback_used || (task.used_model && task.requested_model && task.used_model !== task.requested_model)
+          ? `日报总结生成完成 · 已自动降级到可用模型 ${task.used_model || '-'}`
+          : `日报总结生成完成${task.used_model ? ` · 实际模型 ${task.used_model}` : ''}`
         latestTaskNotification.value = (task.notification || {}) as Record<string, any>
         await refetch()
         if (task.item) selectedItem.value = task.item
         return
       }
       if (task.status === 'error') {
-        actionMessage.value = `日报总结生成失败：${task.error || task.message || '未知错误'}`
+        const errorDetail = task.error || task.message || '未知错误'
+        actionMessage.value = task.final_error_code === 'rate_limited' || errorDetail.includes('rate_limited')
+          ? `日报总结生成失败：专用通道限流后仍未找到可用模型 · ${errorDetail}`
+          : `日报总结生成失败：${errorDetail}`
         latestTaskNotification.value = (task.notification || {}) as Record<string, any>
         return
       }
-      actionMessage.value = `日报总结生成中：${task.progress || 0}% · ${task.message || task.stage || '运行中'}`
+      actionMessage.value = attempts.value.length
+        ? `日报总结生成中：${task.progress || 0}% · 正在尝试可用模型链路`
+        : `日报总结生成中：${task.progress || 0}% · ${task.message || task.stage || '运行中'}`
       pollTimer = window.setTimeout(poll, 3000)
     }
     poll()
@@ -239,7 +251,7 @@ async function downloadImage() {
 }
 
 function generateTodaySummary() {
-  actionMessage.value = '正在创建日报总结任务...'
+  actionMessage.value = '正在创建日报总结任务，并准备尝试可用模型链路...'
   generateMutation.mutate()
 }
 

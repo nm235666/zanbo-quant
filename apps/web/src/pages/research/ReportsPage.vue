@@ -38,6 +38,12 @@
 
       <PageSection :title="`报告结果 (${result?.total || 0})`" subtitle="列表看摘要，抽屉里看正文、预期层和相关内链。">
         <StatePanel
+          v-if="!queryError && !selectedItem && (result?.items || []).length"
+          class="mb-4"
+          title="点击报告卡片查看详情"
+          description="列表默认不再自动展开右侧抽屉，避免遮挡筛选区；只有主动点击报告卡片后才会打开详情。"
+        />
+        <StatePanel
           v-if="!queryError && !isFetching && !(result?.items || []).length"
           class="mb-4"
           tone="warning"
@@ -165,12 +171,9 @@ watch(
       selectedItem.value = null
       return
     }
-    if (selectedItem.value) {
-      const matched = items.find((item: Record<string, any>) => item.id === selectedItem.value?.id)
-      selectedItem.value = matched || items[0]
-      return
-    }
-    selectedItem.value = items[0]
+    if (!selectedItem.value) return
+    const matched = items.find((item: Record<string, any>) => item.id === selectedItem.value?.id)
+    selectedItem.value = matched || null
   },
   { immediate: true },
 )

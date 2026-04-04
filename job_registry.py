@@ -293,6 +293,16 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         ),
     ),
     JobDefinition(
+        job_key="multi_role_v3_worker_guard",
+        name="多角色 Worker 守护",
+        category="maintenance",
+        schedule_expr="* * * * *",
+        description="每分钟检查并补齐 multi_role_v3 worker 进程数",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_llm_job.py"), "--job-key", "multi_role_v3_worker_guard"),
+        ),
+    ),
+    JobDefinition(
         job_key="daily_postclose_update",
         name="盘后更新流水线",
         category="market_data",

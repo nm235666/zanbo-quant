@@ -157,9 +157,11 @@ def generate_daily_summary(*, root_dir: Path, extract_llm_result_marker, model: 
         "1",
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if proc.returncode != 0:
-        raise RuntimeError(f"日报总结生成失败: {proc.stderr.strip() or proc.stdout.strip()}")
     meta = extract_llm_result_marker(proc.stdout)
+    if proc.returncode != 0:
+        error = RuntimeError(f"日报总结生成失败: {proc.stderr.strip() or proc.stdout.strip()}")
+        setattr(error, "meta", meta)
+        raise error
     return {"stdout": proc.stdout, "stderr": proc.stderr, "meta": meta}
 
 
@@ -190,6 +192,8 @@ def serialize_async_daily_summary_job(job: dict):
         "run_stdout": job.get("run_stdout"),
         "notification": job.get("notification"),
         "error": job.get("error"),
+        "fallback_used": bool(job.get("fallback_used")),
+        "final_error_code": job.get("final_error_code") or "",
     }
 
 
@@ -215,6 +219,8 @@ def create_async_daily_summary_job(*, jobs: dict[str, dict], lock: threading.Loc
         "run_stdout": "",
         "notification": None,
         "error": "",
+        "fallback_used": False,
+        "final_error_code": "",
     }
     with lock:
         jobs[job_id] = job
@@ -269,6 +275,8 @@ def run_async_daily_summary_job(
             job["item"] = item
             job["used_model"] = str((item or {}).get("model") or "")
             job["attempts"] = list((run_info.get("meta") or {}).get("attempts") or [])
+            job["fallback_used"] = bool((run_info.get("meta") or {}).get("fallback_used") or (job.get("used_model") and job.get("used_model") != job.get("requested_model")))
+            job["final_error_code"] = str((run_info.get("meta") or {}).get("final_error_code") or "")
             job["run_stdout"] = run_info.get("stdout", "")
             job["finished_at"] = now
             job["updated_at"] = now
@@ -299,6 +307,7 @@ def run_async_daily_summary_job(
                         job["notification"] = {"ok": False, "error": str(notify_exc)}
     except Exception as e:
         now = datetime.now(timezone.utc).isoformat()
+        meta = getattr(e, "meta", {}) or {}
         with lock:
             job = jobs.get(job_id)
             if not job:
@@ -308,6 +317,9 @@ def run_async_daily_summary_job(
             job["stage"] = "error"
             job["message"] = "日报总结生成失败"
             job["error"] = str(e)
+            job["attempts"] = list(meta.get("attempts") or job.get("attempts") or [])
+            job["fallback_used"] = bool(meta.get("fallback_used") or job.get("fallback_used"))
+            job["final_error_code"] = str(meta.get("final_error_code") or ("rate_limited" if "rate_limited" in str(e) else ""))
             job["finished_at"] = now
             job["updated_at"] = now
             job["updated_at_ts"] = time.time()

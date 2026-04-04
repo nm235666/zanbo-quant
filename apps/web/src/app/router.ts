@@ -48,6 +48,7 @@ export const router = createRouter({
     { path: '/system/source-monitor', component: () => import('../pages/system/SourceMonitorPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/jobs-ops', component: () => import('../pages/system/JobsOpsPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/llm-providers', component: () => import('../pages/system/LlmProvidersPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
+    { path: '/system/permissions', component: () => import('../pages/system/RolePoliciesPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/database-audit', component: () => import('../pages/system/DatabaseAuditPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/system/invites', component: () => import('../pages/system/InviteAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },
     { path: '/system/users', component: () => import('../pages/system/UserAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },

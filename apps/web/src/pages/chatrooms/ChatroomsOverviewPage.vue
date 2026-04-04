@@ -3,42 +3,66 @@
     <div class="space-y-4">
       <PageSection title="筛选条件" subtitle="按分类、风控、监控状态和拉取状态快速定位群聊。">
         <div class="grid gap-3 xl:grid-cols-4 md:grid-cols-2">
-          <input
-            v-model="draftFilters.keyword"
-            class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
-            placeholder="群聊名称 / 标签 / 摘要关键词"
-          />
-          <select v-model="draftFilters.skip_realtime_monitor" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部监控状态</option>
-            <option value="0">监控中</option>
-            <option value="1">已暂停监控</option>
-          </select>
-          <select v-model="draftFilters.fetch_status" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部拉取状态</option>
-            <option value="ok">拉取正常</option>
-            <option value="failed">最近失败</option>
-            <option value="unknown">暂无状态</option>
-          </select>
-          <select v-model="draftFilters.primary_category" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部主分类</option>
-            <option v-for="item in filterOptions.primary_categories" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model="draftFilters.activity_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部活跃度</option>
-            <option v-for="item in filterOptions.activity_levels" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model="draftFilters.risk_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部风险等级</option>
-            <option v-for="item in filterOptions.risk_levels" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-            <option :value="100">100 / 页</option>
-          </select>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            关键词
+            <input
+              v-model="draftFilters.keyword"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3"
+              placeholder="群聊名称 / 标签 / 摘要关键词"
+            />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            监控状态
+            <select v-model="draftFilters.skip_realtime_monitor" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部监控状态</option>
+              <option value="0">监控中</option>
+              <option value="1">已暂停监控</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            拉取状态
+            <select v-model="draftFilters.fetch_status" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部拉取状态</option>
+              <option value="ok">拉取正常</option>
+              <option value="failed">最近失败</option>
+              <option value="unknown">暂无状态</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            主分类
+            <select v-model="draftFilters.primary_category" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部主分类</option>
+              <option v-for="item in filterOptions.primary_categories" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            活跃度
+            <select v-model="draftFilters.activity_level" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部活跃度</option>
+              <option v-for="item in filterOptions.activity_levels" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            风险等级
+            <select v-model="draftFilters.risk_level" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部风险等级</option>
+              <option v-for="item in filterOptions.risk_levels" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            每页条数
+            <select v-model.number="draftFilters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option :value="20">20 / 页</option>
+              <option :value="50">50 / 页</option>
+              <option :value="100">100 / 页</option>
+            </select>
+          </label>
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="handleRefresh">
             {{ isFetching ? '查询中...' : '查询' }}
           </button>
+        </div>
+        <div v-if="fetchActionMessage" class="mt-3">
+          <StatePanel :tone="fetchActionTone" title="群聊动作反馈" :description="fetchActionMessage" />
         </div>
       </PageSection>
 
@@ -50,7 +74,48 @@
       </div>
 
       <PageSection :title="`群聊结果 (${result?.total || 0})`" subtitle="群聊标签、活跃度、风险等级与拉取状态统一展示。">
-        <DataTable :columns="columns" :rows="resultRows" row-key="room_id" empty-text="暂无群聊数据">
+        <div class="grid gap-3 lg:hidden">
+          <InfoCard
+            v-for="row in resultRows"
+            :key="row.room_id"
+            :title="row.display_name"
+            :meta="`${row.monitor_label} · ${fetchLabel(row.last_chatlog_backfill_status)} · 最近消息 ${formatDate(row.last_message_date)}`"
+            :description="`${row.user_count_label} · 群主 ${row.owner_label}`"
+          >
+            <div class="flex flex-wrap gap-2">
+              <StatusBadge :value="activityTone(row.llm_chatroom_activity_level)" :label="row.llm_chatroom_activity_level || '-'" />
+              <StatusBadge :value="riskTone(row.llm_chatroom_risk_level)" :label="row.llm_chatroom_risk_level || '-'" />
+              <span class="metric-chip">消息 {{ formatNumber(row.message_row_count) }}</span>
+              <span class="metric-chip">30天清洗 {{ formatNumber(row.last_30d_clean_message_count) }}</span>
+            </div>
+            <div v-if="row.tag_list.length" class="mt-3 flex flex-wrap gap-2">
+              <span
+                v-for="tag in row.tag_list.slice(0, 4)"
+                :key="`${row.room_id}-${tag}`"
+                class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-2.5 py-1 text-xs text-[var(--muted)]"
+              >
+                {{ tag }}
+              </span>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm font-semibold text-[var(--ink)] disabled:opacity-50"
+                :disabled="fetchingRoomId === row.room_id || row.skip_realtime_monitor === 1"
+                @click="runFetch(row.room_id, 'today')"
+              >
+                {{ fetchingRoomId === row.room_id ? '拉取中...' : '立即拉取' }}
+              </button>
+              <button
+                class="rounded-xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-sm font-semibold text-[var(--muted)] disabled:opacity-50"
+                :disabled="fetchingRoomId === row.room_id || row.skip_realtime_monitor === 1"
+                @click="runFetch(row.room_id, 'yesterday_and_today')"
+              >
+                补抓昨今
+              </button>
+            </div>
+          </InfoCard>
+        </div>
+        <DataTable class="hidden lg:block" :columns="columns" :rows="resultRows" row-key="room_id" empty-text="暂无群聊数据" caption="群聊总览结果表" aria-label="群聊总览结果表">
           <template #cell_display_name="{ row }">
             <div class="min-w-[240px]">
               <div class="font-semibold text-[var(--ink)]">{{ row.display_name }}</div>
@@ -141,11 +206,15 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
+import InfoCard from '../../shared/ui/InfoCard.vue'
+import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchChatrooms, triggerChatroomFetch } from '../../services/api/chatrooms'
 import { formatDate, formatDateTime, formatNumber } from '../../shared/utils/format'
 
 const queryClient = useQueryClient()
 const fetchingRoomId = ref('')
+const fetchActionMessage = ref('')
+const fetchActionTone = ref<'default' | 'warning' | 'danger'>('default')
 
 const queryFilters = reactive({
   keyword: '',
@@ -185,7 +254,13 @@ const {
 const runFetchMutation = useMutation({
   mutationFn: ({ roomId, mode }: { roomId: string; mode: string }) => triggerChatroomFetch(roomId, mode),
   onSuccess: async () => {
+    fetchActionTone.value = 'default'
+    fetchActionMessage.value = '群聊拉取任务已触发，列表会在刷新后显示最新结果。'
     await queryClient.invalidateQueries({ queryKey: ['chatrooms'] })
+  },
+  onError: (error: Error) => {
+    fetchActionTone.value = 'danger'
+    fetchActionMessage.value = `群聊拉取失败：${error.message}`
   },
   onSettled: () => {
     fetchingRoomId.value = ''
@@ -270,6 +345,8 @@ function handleRefresh() {
 
 async function runFetch(roomId: string, mode: string) {
   fetchingRoomId.value = roomId
+  fetchActionTone.value = 'warning'
+  fetchActionMessage.value = mode === 'today' ? '正在触发立即拉取...' : '正在触发补抓昨今...'
   await runFetchMutation.mutateAsync({ roomId, mode })
 }
 </script>

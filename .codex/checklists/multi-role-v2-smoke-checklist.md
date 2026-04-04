@@ -1,6 +1,6 @@
 # Multi-Role V2 Smoke Checklist
 
-适用于 `/api/llm/multi-role/v2/*` 主链路的最小可交付验证。
+适用于 `/api/llm/multi-role/v2/*` 主链路的可交付验证。
 
 ## 启动前
 
@@ -29,7 +29,7 @@
 - 聚合失败时出现“重试汇总”入口
 - 点击“重试汇总”后结果有反馈成功或失败
 
-## 最小验证命令
+## 验证命令
 
 - `python3 -m py_compile backend/server.py backend/routes/stocks.py`
 - `bash run_minimal_regression.sh`

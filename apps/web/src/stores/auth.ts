@@ -13,7 +13,7 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     user: (state) => state.status?.user || null,
-    role: (state) => String(state.status?.user?.role || state.status?.user?.tier || ''),
+    role: (state) => String(state.status?.user?.role || state.status?.user?.tier || '').trim().toLowerCase(),
     effectivePermissions: (state) => (Array.isArray(state.status?.effective_permissions) ? state.status?.effective_permissions || [] : []),
     isAuthenticated: (state) => Boolean(state.status?.token_valid),
     authRequired: (state) => Boolean(state.status?.auth_required),

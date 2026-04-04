@@ -511,6 +511,40 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         handler._send_json({"ok": True, **result})
         return True
 
+    if parsed.path == "/api/auth/role-policies/update":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可更新角色权限策略"}, status=403)
+            return True
+        try:
+            result = deps["update_auth_role_policy"](
+                role=str(payload.get("role", "") or "").strip(),
+                permissions=payload.get("permissions") or [],
+                trend_daily_limit=payload.get("trend_daily_limit"),
+                multi_role_daily_limit=payload.get("multi_role_daily_limit"),
+            )
+        except ValueError as exc:
+            handler._send_json({"ok": False, "error": str(exc)}, status=400)
+            return True
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"更新角色策略失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
+    if parsed.path == "/api/auth/role-policies/reset-default":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可恢复默认角色策略"}, status=403)
+            return True
+        try:
+            result = deps["reset_auth_role_policies_to_default"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"恢复默认策略失败: {exc}"}, status=500)
+            return True
+        handler._send_json(result)
+        return True
+
     if parsed.path == "/api/auth/session/revoke":
         auth_ctx = deps.get("auth_context") or {}
         if not auth_ctx.get("is_admin"):
@@ -645,6 +679,19 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
                 "role": str((user or {}).get("role") or (user or {}).get("tier") or ""),
             }
         )
+        return True
+
+    if parsed.path == "/api/auth/role-policies":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json({"ok": False, "error": "仅管理员可查看角色策略"}, status=403)
+            return True
+        try:
+            payload = deps["get_auth_role_policies"]()
+        except Exception as exc:
+            handler._send_json({"ok": False, "error": f"角色策略查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
         return True
 
     if parsed.path == "/api/auth/users/summary":

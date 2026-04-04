@@ -123,9 +123,9 @@
         "base_url": "https://api.univibe.cc/openai",
         "api_key": "sk-u3UIQYsyUcJrnFQFIMGj4dMFW1u5B2RL",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-03T20:40:12Z",
+        "last_checked_at": "2026-04-04T21:40:21Z",
         "last_http_status": 200,
-        "last_latency_ms": 923,
+        "last_latency_ms": 5477,
         "last_error": "",
         "enabled": true,
         "status": "active",
@@ -134,42 +134,15 @@
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
         "last_probe_model": "gpt-5.4",
-        "last_probe_base_url": "https://api.univibe.cc/openai",
+        "last_probe_base_url": "https://api.univibe.cc/openai/v1",
         "last_probe_attempts": [
           {
             "round": 1,
             "base_url": "https://api.univibe.cc/openai/v1",
             "model": "gpt-5.4",
-            "ok": false,
-            "status_code": 502,
-            "latency_ms": 1474,
-            "error": "{     \"code\": 502,     \"message\": \"Network unstable(s). 网络有点慢，请稍候\",     \"data\": [] }"
-          },
-          {
-            "round": 1,
-            "base_url": "https://api.univibe.cc/openai/v1",
-            "model": "GPT-5.4",
-            "ok": false,
-            "status_code": 502,
-            "latency_ms": 1662,
-            "error": "{     \"code\": 502,     \"message\": \"Network unstable(s). 网络有点慢，请稍候\",     \"data\": [] }"
-          },
-          {
-            "round": 1,
-            "base_url": "https://api.univibe.cc/openai/v1",
-            "model": "Gpt-5.4",
-            "ok": false,
-            "status_code": 502,
-            "latency_ms": 1520,
-            "error": "{     \"code\": 502,     \"message\": \"Network unstable(s). 网络有点慢，请稍候\",     \"data\": [] }"
-          },
-          {
-            "round": 1,
-            "base_url": "https://api.univibe.cc/openai",
-            "model": "gpt-5.4",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 923,
+            "latency_ms": 5477,
             "error": ""
           }
         ],
@@ -181,13 +154,13 @@
         "base_url": "https://ai.ijunze.cn/v1",
         "api_key": "sk-g3bumJwpN8og2caMQmRBQa3qjYmUK6vRFe7Uyaz4KoKr62ev",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-03T20:40:12Z",
-        "last_http_status": 200,
-        "last_latency_ms": 2004,
-        "last_error": "",
+        "last_checked_at": "2026-04-04T21:40:00Z",
+        "last_http_status": 401,
+        "last_latency_ms": 1026,
+        "last_error": "{\"code\":\"INVALID_API_KEY\",\"message\":\"Invalid API key\"}",
         "enabled": true,
         "status": "active",
-        "health_status": "healthy",
+        "health_status": "unhealthy",
         "priority": 2,
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "https://ai.ijunze.cn/v1",
@@ -196,14 +169,59 @@
             "round": 1,
             "base_url": "https://ai.ijunze.cn/v1",
             "model": "gpt-5.4",
-            "ok": true,
+            "ok": false,
+            "status_code": 401,
+            "latency_ms": 1026,
+            "error": "{\"code\":\"INVALID_API_KEY\",\"message\":\"Invalid API key\"}"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 401,
+            "latency_ms": 824,
+            "error": "{\"code\":\"INVALID_API_KEY\",\"message\":\"Invalid API key\"}"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn/v1",
+            "model": "Gpt-5.4",
+            "ok": false,
+            "status_code": 401,
+            "latency_ms": 1091,
+            "error": "{\"code\":\"INVALID_API_KEY\",\"message\":\"Invalid API key\"}"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "gpt-5.4",
+            "ok": false,
             "status_code": 200,
-            "latency_ms": 2004,
-            "error": ""
+            "latency_ms": 1229,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Dooong AI - AI API G"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 1595,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Dooong AI - AI API G"
+          },
+          {
+            "round": 1,
+            "base_url": "https://ai.ijunze.cn",
+            "model": "Gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 1597,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Dooong AI - AI API G"
           }
         ],
-        "consecutive_failures": 0,
-        "health_recommendation": "active",
+        "consecutive_failures": 1,
+        "health_recommendation": "disabled",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000
       },
@@ -212,13 +230,13 @@
         "base_url": "http://192.168.5.43:8087/v1",
         "api_key": "sk-1cefe212ace017b3ba7f4983ee29d60e297ef042f369c868249ad7c4f790583c",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-03T20:40:12Z",
-        "last_http_status": 200,
-        "last_latency_ms": 2378,
-        "last_error": "",
-        "enabled": true,
-        "status": "active",
-        "health_status": "healthy",
+        "last_checked_at": "2026-04-04T21:39:36Z",
+        "last_http_status": 503,
+        "last_latency_ms": 12,
+        "last_error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}",
+        "enabled": false,
+        "status": "disabled",
+        "health_status": "unhealthy",
         "priority": 3,
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "http://192.168.5.43:8087/v1",
@@ -227,14 +245,59 @@
             "round": 1,
             "base_url": "http://192.168.5.43:8087/v1",
             "model": "gpt-5.4",
-            "ok": true,
+            "ok": false,
+            "status_code": 503,
+            "latency_ms": 12,
+            "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 503,
+            "latency_ms": 16,
+            "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087/v1",
+            "model": "Gpt-5.4",
+            "ok": false,
+            "status_code": 503,
+            "latency_ms": 20,
+            "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "gpt-5.4",
+            "ok": false,
             "status_code": 200,
-            "latency_ms": 2378,
-            "error": ""
+            "latency_ms": 2,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "GPT-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 3,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
+          },
+          {
+            "round": 1,
+            "base_url": "http://192.168.5.43:8087",
+            "model": "Gpt-5.4",
+            "ok": false,
+            "status_code": 200,
+            "latency_ms": 3,
+            "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
           }
         ],
-        "consecutive_failures": 0,
-        "health_recommendation": "active",
+        "consecutive_failures": 2,
+        "health_recommendation": "degraded",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000
       },
@@ -386,9 +449,9 @@
     "gpt-5.4-daily-summary": [
       {
         "model": "gpt-5.4",
-        "base_url": "https://api.univibe.cc/openai",
+        "base_url": "https://api.univibe.cc/openai/v1",
         "base_url_env": "GPT54_DAILY_SUMMARY_BASE_URL",
-        "api_key": "sk-u3UIQYsyUcJrnFQFIMGj4dMFW1u5B2RL",
+        "api_key": "sk-rkmHM5GtgHvekqmBbVH0rRBw5GKe6H5t",
         "api_key_env": "GPT54_DAILY_SUMMARY_API_KEY",
         "default_temperature": 0.2,
         "enabled": true,

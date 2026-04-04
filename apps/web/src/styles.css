@@ -204,3 +204,41 @@ button[class*='bg-stone-900']:hover {
 .metric-chip strong {
   color: var(--brand-ink);
 }
+
+.section-anchor-link {
+  border: 1px solid rgba(15, 97, 122, 0.14);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(217, 238, 245, 0.7) 100%);
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.9rem;
+  text-decoration: none;
+}
+
+.section-anchor-link:hover {
+  border-color: rgba(15, 97, 122, 0.28);
+  color: var(--brand);
+}
+
+.loading-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(234, 242, 246, 0.95) 0%, rgba(220, 231, 237, 0.9) 100%);
+}
+
+.loading-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.52) 50%, transparent 100%);
+  animation: skeleton-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-slide {
+  100% {
+    transform: translateX(100%);
+  }
+}

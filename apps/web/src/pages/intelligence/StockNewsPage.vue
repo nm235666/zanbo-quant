@@ -3,24 +3,48 @@
     <div class="space-y-4">
       <PageSection title="查询与采集" subtitle="按股票、来源、日期、重要度和评分状态筛选，也可以直接触发采集或补评分。">
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
-          <input v-model="draftFilters.ts_code" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="ts_code，如 000001.SZ" />
-          <input v-model="draftFilters.company_name" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="公司名" />
-          <input v-model="draftFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新闻关键词" />
-          <select v-model="draftFilters.source" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部来源</option>
-            <option v-for="item in sourceOptions" :key="item" :value="item">{{ sourceLabel(item) }}</option>
-          </select>
-          <input v-model="draftFilters.date_from" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="开始日期 YYYY-MM-DD" />
-          <input v-model="draftFilters.date_to" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="结束日期 YYYY-MM-DD" />
-          <select v-model="draftFilters.scored" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部评分状态</option>
-            <option value="unscored">只看未评分</option>
-            <option value="scored">只看已评分</option>
-          </select>
-          <select v-model.number="draftFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option :value="20">20 / 页</option>
-            <option :value="50">50 / 页</option>
-          </select>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            股票代码
+            <input v-model="draftFilters.ts_code" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 000001.SZ" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            公司名
+            <input v-model="draftFilters.company_name" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="公司名" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            新闻关键词
+            <input v-model="draftFilters.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="新闻关键词" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            来源
+            <select v-model="draftFilters.source" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部来源</option>
+              <option v-for="item in sourceOptions" :key="item" :value="item">{{ sourceLabel(item) }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            开始日期
+            <input v-model="draftFilters.date_from" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="YYYY-MM-DD" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            结束日期
+            <input v-model="draftFilters.date_to" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="YYYY-MM-DD" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            评分状态
+            <select v-model="draftFilters.scored" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部评分状态</option>
+              <option value="unscored">只看未评分</option>
+              <option value="scored">只看已评分</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            每页条数
+            <select v-model.number="draftFilters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option :value="20">20 / 页</option>
+              <option :value="50">50 / 页</option>
+            </select>
+          </label>
           <div class="xl:col-span-2 flex gap-2">
             <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
               {{ isFetching ? '查询中...' : '查询' }}
@@ -44,7 +68,7 @@
             {{ level }}
           </button>
         </div>
-        <div v-if="actionMessage" class="mt-3 text-sm text-[var(--muted)]">{{ actionMessage }}</div>
+        <div v-if="actionMessage" class="mt-3 text-sm text-[var(--muted)]" role="status" aria-live="polite">{{ actionMessage }}</div>
       </PageSection>
 
       <PageSection :title="`个股新闻 (${result?.total || 0})`" subtitle="评分、情绪、影响项和逐条重评分动作都放在这里。">
@@ -60,36 +84,42 @@
               <StatusBadge :value="item.llm_finance_importance || 'muted'" :label="item.llm_finance_importance || '未评级'" />
             </template>
             <div class="mt-3 flex flex-wrap gap-2 text-xs">
-              <span class="metric-chip">系统评分 <strong>{{ item.llm_system_score ?? '-' }}</strong></span>
-              <span class="metric-chip">财经影响 <strong>{{ item.llm_finance_impact_score ?? '-' }}</strong></span>
+              <span class="metric-chip">系统评分 <strong>{{ scoreLabel(item.llm_system_score, item) }}</strong></span>
+              <span class="metric-chip">财经影响 <strong>{{ scoreLabel(item.llm_finance_impact_score, item) }}</strong></span>
               <span class="metric-chip">情绪分 <strong>{{ item.llm_sentiment_score ?? '-' }}</strong></span>
               <span class="metric-chip">情绪标签 <strong>{{ item.llm_sentiment_label || '-' }}</strong></span>
+            </div>
+            <div v-if="zeroScoreHint(item)" class="mt-2 text-xs text-[var(--muted)]">
+              {{ zeroScoreHint(item) }}
             </div>
             <div v-if="impactTags(item).length" class="mt-3 flex flex-wrap gap-2 text-xs">
               <span v-for="tag in impactTags(item)" :key="`${item.id}-${tag.group}-${tag.label}-${tag.direction}`" class="metric-chip">
                 {{ tag.group }} · {{ tag.label }} <strong>{{ tag.direction }}</strong>
               </span>
             </div>
-            <div class="mt-3 grid gap-2 xl:grid-cols-2">
-              <div class="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-3 py-3 text-sm text-[var(--muted)]">
-                <div class="text-xs font-semibold uppercase tracking-[0.14em]">情绪链路</div>
-                <div class="mt-2 leading-7">{{ item.llm_sentiment_reason || '暂无情绪链路。' }}</div>
-              </div>
-              <div class="rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-3 py-3 text-sm text-[var(--muted)]">
-                <div class="text-xs font-semibold uppercase tracking-[0.14em]">操作</div>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" :disabled="rowScoringId === item.id" @click="rescoreRow(item)">
-                    {{ rowScoringId === item.id ? '重评分中...' : '单条重评分' }}
-                  </button>
-                  <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goDetail(item.ts_code)">
-                    打开股票详情
-                  </button>
-                  <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goSignal(item.ts_code, item.company_name)">
-                    查看信号
-                  </button>
+            <details class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-3 py-3">
+              <summary class="cursor-pointer text-sm font-semibold text-[var(--ink)]">展开情绪链路、风险说明与操作</summary>
+              <div class="mt-3 grid gap-2 xl:grid-cols-2">
+                <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-3 py-3 text-sm text-[var(--muted)]">
+                  <div class="text-xs font-semibold uppercase tracking-[0.14em]">情绪链路</div>
+                  <div class="mt-2 leading-7">{{ item.llm_sentiment_reason || '暂无情绪链路。' }}</div>
+                </div>
+                <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-3 py-3 text-sm text-[var(--muted)]">
+                  <div class="text-xs font-semibold uppercase tracking-[0.14em]">操作</div>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" :disabled="rowScoringId === item.id" @click="rescoreRow(item)">
+                      {{ rowScoringId === item.id ? '重评分中...' : '单条重评分' }}
+                    </button>
+                    <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goDetail(item.ts_code)">
+                      打开股票详情
+                    </button>
+                    <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goSignal(item.ts_code, item.company_name)">
+                      查看信号
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </details>
           </InfoCard>
         </div>
         <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
@@ -192,6 +222,28 @@ function toggleLevel(level: string) {
 
 function impactTags(item: Record<string, any>) {
   return parseImpactTags(item.llm_impacts_json).slice(0, 8)
+}
+
+function hasAnalysis(item: Record<string, any>) {
+  return Boolean(String(item.llm_model || '').trim() || String(item.llm_summary || '').trim() || String(item.llm_scored_at || '').trim())
+}
+
+function scoreLabel(value: unknown, item: Record<string, any>) {
+  if (value == null || value === '') return '-'
+  const numberValue = Number(value)
+  if (!Number.isFinite(numberValue)) return String(value)
+  if (numberValue === 0 && hasAnalysis(item)) return '0（已分析）'
+  return String(numberValue)
+}
+
+function zeroScoreHint(item: Record<string, any>) {
+  if (!hasAnalysis(item)) return ''
+  const fields = [
+    Number(item.llm_system_score ?? NaN) === 0 ? '系统评分' : '',
+    Number(item.llm_finance_impact_score ?? NaN) === 0 ? '财经影响' : '',
+  ].filter(Boolean)
+  if (!fields.length) return ''
+  return `${fields.join(' / ')}已完成分析，当前评分为 0，不代表未评分或接口异常。`
 }
 
 function runFetch() {

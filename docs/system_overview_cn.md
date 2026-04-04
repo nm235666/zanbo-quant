@@ -186,6 +186,7 @@
 | `/system/source-monitor` | 数据源与运行进程监控。 |
 | `/system/jobs-ops` | 任务定义、运行记录与告警。 |
 | `/system/llm-providers` | LLM provider 管理。 |
+| `/system/permissions` | 角色权限策略与日配额配置。 |
 | `/system/database-audit` | 数据库质量监控与审计。 |
 | `/system/invites` | 邀请码管理。 |
 | `/system/users` | 用户、会话、配额与审计日志管理。 |
@@ -319,6 +320,7 @@
 | `40 16 * * *` | 数据库健康巡检 |
 | `*/20 * * * *` | LLM 节点全模型巡检 |
 | `*/5 * * * *` | 多角色僵尸任务回收 |
+| `* * * * *` | 多角色 Worker 守护 |
 | `*/30 * * * *` | QuantaAlpha 健康检查 |
 | `20 1 * * *` | QuantaAlpha 因子挖掘 |
 | `45 1 * * *` | QuantaAlpha 回测 |

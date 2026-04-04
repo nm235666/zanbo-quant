@@ -194,6 +194,33 @@ export async function fetchAuthAuditLogs(params: Record<string, any>) {
   return data
 }
 
+export type AuthRolePolicy = {
+  role: 'admin' | 'pro' | 'limited' | string
+  permissions: string[]
+  trend_daily_limit: number | null
+  multi_role_daily_limit: number | null
+}
+
+export async function fetchAuthRolePolicies() {
+  const { data } = await http.get('/api/auth/role-policies')
+  return data as { ok: boolean; roles: AuthRolePolicy[]; effective_source?: string }
+}
+
+export async function updateAuthRolePolicy(payload: {
+  role: string
+  permissions: string[]
+  trend_daily_limit: number | null
+  multi_role_daily_limit: number | null
+}) {
+  const { data } = await http.post('/api/auth/role-policies/update', payload)
+  return data
+}
+
+export async function resetAuthRolePoliciesToDefault() {
+  const { data } = await http.post('/api/auth/role-policies/reset-default', {})
+  return data as { ok: boolean; roles: AuthRolePolicy[] }
+}
+
 export async function fetchLlmProviders() {
   const data = await _callLlmProvidersApi('get')
   return data as {

@@ -28,7 +28,7 @@
 
 优先做法：
 - 先看 `AGENTS.md`
-- 再用 `skills/repo-scan/SKILL.md` 建立最小上下文
+- 再用 `skills/repo-scan/SKILL.md` 建立上下文
 
 如果需要直接给新对话一段启动语，可使用：
 
@@ -49,7 +49,7 @@
    - 你理解的任务
    - 涉及的文件和模块
    - 风险点
-   - 最小实施计划
+   - 实施计划
 ```
 
 ### 2. 开始一个具体任务
@@ -57,7 +57,7 @@
 优先使用：
 - `templates/task-kickoff.md`
 
-如果要拆分最小提交单元：
+如果要拆分提交单元：
 - `templates/minimal-commit-plan.md`
 
 ### 3. 做前端页面类任务
@@ -144,7 +144,7 @@
   新对话第一次进项目，或任务前快速扫模块边界和调用链
 
 - `minimal-fix`
-  明确要求最小改动修复
+  明确要求改动修复
 
 - `frontend-delivery`
   前端展示任务
@@ -164,17 +164,17 @@
 - `data-quality-audit`
   数据质量巡检、缺口定位、修复命令落地
 
-## 最小闭环习惯
+## 闭环习惯
 
 无论做什么任务，尽量维持这个节奏：
 
 1. 先用 `AGENTS.md` 建立主链路认知
 2. 再用 `.codex/templates/` 或对应 skill 明确任务边界
 3. 实施时优先复用现有代码与组件
-4. 完成后至少做最小验证
+4. 完成后至少做验证
 5. push 前检查文档是否最新
 
-## 当前推荐最小验证
+## 当前推荐验证
 
 - 前端改动：
   `cd /home/zanbo/zanbotest/apps/web && npm run build`

@@ -6,7 +6,7 @@ from collectors.news.common import run_python_commands, run_python_script
 def run_macro_series_akshare_refresh() -> dict:
     return run_python_script(
         "backfill_macro_series_akshare.py",
-        timeout_s=1800,
+        timeout_s=5400,
         meta={"kind": "macro_series_akshare_refresh"},
     )
 

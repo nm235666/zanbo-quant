@@ -121,8 +121,8 @@ class MinimalRegressionTest(unittest.TestCase):
         self.assertTrue(body.get("commands"))
 
     def test_core_page_endpoints_smoke(self):
-        # 主页面关键依赖端点最小 smoke：要求路由存在、认证通过。
-        # 对最小测试库已知缺表/缺数据导致的 500，允许按白名单放行。
+        # 主页面关键依赖端点 smoke：要求路由存在、认证通过。
+        # 对测试库已知缺表/缺数据导致的 500，允许按白名单放行。
         targets = (
             "/api/investment-signals?page=1&page_size=1",
             "/api/stock-detail?ts_code=000001.SZ",

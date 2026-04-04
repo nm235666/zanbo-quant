@@ -24,7 +24,7 @@
 - `python3 /home/zanbo/zanbotest/job_orchestrator.py dry-run quantaalpha_mine_daily`
 - `python3 /home/zanbo/zanbotest/job_orchestrator.py dry-run quantaalpha_backtest_daily`
 
-## 4. 最小实跑
+## 4. 实跑
 
 - `python3 /home/zanbo/zanbotest/job_orchestrator.py run quantaalpha_health_check`
 - 观察状态与告警：

@@ -8,7 +8,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from llm_gateway import chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
+from llm_gateway import LLMCallError, chat_completion_with_fallback, normalize_model_name, normalize_temperature_for_model
+from llm_provider_config import get_default_fallback_models
 from realtime_streams import publish_app_event
 from services.reporting import build_report_payload
 DEFAULT_IMPORTANCE = ("极高", "高", "中")
@@ -239,17 +240,14 @@ def call_llm(
     max_retries: int,
     retry_backoff: float,
 ):
-    model_candidates = [normalize_model_name(model)]
-    # 日报专用通道启用严格路由：专线失败时不自动回落到 auto，避免旁路到非专线模型。
-    if model_candidates[0].lower() != "auto" and model_candidates[0].lower() != "gpt-5.4-daily-summary":
-        model_candidates.append("auto")
-
+    model_candidates = build_daily_summary_model_chain(model)
+    attempts: list[dict] = []
     errors: list[str] = []
     for model_candidate in model_candidates:
         last_error = None
         for attempt in range(max_retries + 1):
             try:
-                return chat_completion_with_fallback(
+                result = chat_completion_with_fallback(
                     model=model_candidate,
                     temperature=temperature,
                     timeout_s=max(request_timeout, 30),
@@ -259,15 +257,49 @@ def call_llm(
                         {"role": "user", "content": prompt},
                     ],
                 )
+                attempts.extend(
+                    {"model": item.model, "base_url": item.base_url, "error": item.error}
+                    for item in list(result.attempts or [])
+                )
+                return result, attempts
+            except LLMCallError as exc:
+                last_error = exc
+                attempts.extend(
+                    {"model": item.model, "base_url": item.base_url, "error": item.error}
+                    for item in list(getattr(exc, "attempts", ()) or [])
+                )
             except Exception as exc:
                 last_error = exc
-                if attempt < max_retries:
-                    sleep_s = max(retry_backoff, 0.1) * (2**attempt)
-                    time.sleep(sleep_s)
-                    continue
-                break
+            if attempt < max_retries:
+                sleep_s = max(retry_backoff, 0.1) * (2**attempt)
+                time.sleep(sleep_s)
+                continue
+            break
         errors.append(f"{model_candidate}: {last_error}")
-    raise RuntimeError(f"调用LLM失败: {' | '.join(errors)}")
+    error = RuntimeError(f"调用LLM失败: {' | '.join(errors)}")
+    setattr(error, "attempts", attempts)
+    raise error
+
+
+def build_daily_summary_model_chain(model: str) -> list[str]:
+    requested = normalize_model_name(model or "gpt-5.4-daily-summary")
+    chain: list[str] = []
+    seen: set[str] = set()
+
+    def push(value: str) -> None:
+        normalized = normalize_model_name(value)
+        key = normalized.lower()
+        if not normalized or key in seen:
+            return
+        seen.add(key)
+        chain.append(normalized)
+
+    push(requested)
+    if requested.lower() == "gpt-5.4-daily-summary":
+        push("GPT-5.4")
+    for fallback_model in get_default_fallback_models():
+        push(str(fallback_model or ""))
+    return chain or ["gpt-5.4-daily-summary", "GPT-5.4"]
 
 
 def build_fallback_sizes(total: int, min_news: int) -> list[int]:
@@ -330,6 +362,13 @@ def emit_result_marker(payload: dict) -> None:
         print(f"__LLM_RESULT__={json.dumps(payload, ensure_ascii=False)}")
     except Exception:
         pass
+
+
+def used_fallback_model(requested_model: str, attempts: list[dict], used_model: str = "") -> bool:
+    requested_key = normalize_model_name(requested_model).lower()
+    if used_model and normalize_model_name(used_model).lower() != requested_key:
+        return True
+    return any(normalize_model_name(str(item.get("model") or "")).lower() != requested_key for item in attempts)
 
 
 def main() -> int:
@@ -396,11 +435,12 @@ def main() -> int:
         summary_result = None
         used_rows = compact_rows
         last_exc = None
+        all_attempts: list[dict] = []
         for n in fallback_sizes:
             used_rows = compact_rows[:n]
             prompt = build_prompt(date_ymd=date_ymd, cleaned_rows=used_rows)
             try:
-                summary_result = call_llm(
+                summary_result, call_attempts = call_llm(
                     model=args.model,
                     temperature=args.temperature,
                     prompt=prompt,
@@ -408,14 +448,28 @@ def main() -> int:
                     max_retries=args.max_retries,
                     retry_backoff=args.retry_backoff,
                 )
+                all_attempts.extend(call_attempts)
                 summary = summary_result.text
                 break
             except Exception as exc:  # pragma: no cover
                 last_exc = exc
+                all_attempts.extend(list(getattr(exc, "attempts", []) or []))
                 print(f"使用 {n} 条新闻生成失败，准备降级重试: {exc}")
                 continue
 
         if summary is None:
+            emit_result_marker(
+                {
+                    "summary_id": 0,
+                    "summary_date": date_ymd,
+                    "news_count": len(used_rows),
+                    "requested_model": args.model,
+                    "used_model": "",
+                    "fallback_used": used_fallback_model(args.model, all_attempts),
+                    "final_error_code": "rate_limited" if "rate_limited" in str(last_exc or "") else "llm_failed",
+                    "attempts": all_attempts,
+                }
+            )
             raise RuntimeError(f"日报总结生成失败: {last_exc}")
 
         sid = save_summary(
@@ -449,11 +503,10 @@ def main() -> int:
                 "news_count": len(used_rows),
                 "requested_model": args.model,
                 "used_model": summary_result.used_model if summary_result else args.model,
+                "fallback_used": used_fallback_model(args.model, all_attempts, summary_result.used_model if summary_result else args.model),
+                "final_error_code": "",
                 "export_meta": report_doc.export_meta,
-                "attempts": [
-                    {"model": item.model, "base_url": item.base_url, "error": item.error}
-                    for item in (summary_result.attempts if summary_result else [])
-                ],
+                "attempts": all_attempts,
             }
         )
         publish_app_event(

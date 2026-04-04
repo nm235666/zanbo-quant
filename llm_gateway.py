@@ -76,6 +76,12 @@ class LLMCallResult:
     attempts: tuple[LLMAttempt, ...]
 
 
+class LLMCallError(RuntimeError):
+    def __init__(self, message: str, attempts: tuple[LLMAttempt, ...] = ()) -> None:
+        super().__init__(message)
+        self.attempts = attempts
+
+
 def _normalize_base_url(base_url: str) -> str:
     raw = (base_url or "").strip()
     if not raw:
@@ -828,7 +834,7 @@ def chat_completion_with_fallback(
                 errors.append(f"{route.model}@{route.base_url}: {err}")
                 continue
 
-    raise RuntimeError(" | ".join(errors) or "所有模型调用均失败")
+    raise LLMCallError(" | ".join(errors) or "所有模型调用均失败", tuple(attempts))
 
 
 def chat_completion_text(
