@@ -30,12 +30,15 @@ export const router = createRouter({
 
     { path: '/signals/overview', component: () => import('../pages/signals/SignalsOverviewPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/themes', component: () => import('../pages/signals/ThemesPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
+    { path: '/signals/graph', component: () => import('../pages/signals/SignalChainGraphPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/timeline', component: () => import('../pages/signals/SignalTimelinePage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/audit', component: () => import('../pages/signals/SignalAuditPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/quality-config', component: () => import('../pages/signals/SignalQualityConfigPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/state-timeline', component: () => import('../pages/signals/SignalStateTimelinePage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
 
     { path: '/research/reports', component: () => import('../pages/research/ReportsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/decision', component: () => import('../pages/research/DecisionBoardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/trade-plan', component: () => import('../pages/research/DecisionTradePlanPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/quant-factors', component: () => import('../pages/research/QuantFactorsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/multi-role', component: () => import('../pages/research/MultiRoleResearchPage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/trend', component: () => import('../pages/research/TrendAnalysisPage.vue'), meta: { auth: true, permission: 'trend_analyze' } as RouteMetaAuth },
@@ -81,11 +84,12 @@ router.beforeEach(async (to) => {
   const matchedPattern = String(to.matched[to.matched.length - 1]?.path || to.path || '').trim()
   const routePermissionMap = auth.dynamicRoutePermissions || {}
   const requiredPermission = String(routePermissionMap[matchedPattern] || routePermissionMap[to.path] || '').trim()
-  if (!requiredPermission && auth.rbacDynamicEnforced) {
+  const staticPermission = String(meta.permission || '').trim()
+  if (!requiredPermission && auth.rbacDynamicEnforced && !staticPermission) {
     console.warn(`[rbac-dynamic] missing route permission mapping for path=${to.path}, pattern=${matchedPattern}`)
     return { path: '/upgrade', query: { from: to.fullPath } }
   }
-  const resolvedPermission = String(requiredPermission || meta.permission || '').trim()
+  const resolvedPermission = String(requiredPermission || staticPermission || '').trim()
   if (!resolvedPermission) {
     console.warn(`[rbac] missing permission mapping for protected route path=${to.path}, pattern=${matchedPattern}`)
     return { path: '/upgrade', query: { from: to.fullPath } }

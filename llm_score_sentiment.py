@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import db_compat as sqlite3
@@ -28,6 +28,18 @@ def parse_args():
     parser.add_argument("--force", action="store_true", help="强制重评")
     parser.add_argument("--retry", type=int, default=1, help="失败重试次数")
     parser.add_argument("--sleep", type=float, default=0.1, help="每条间隔秒数")
+    parser.add_argument(
+        "--news-source-mode",
+        choices=["all", "cn", "intl"],
+        default="all",
+        help="仅对 news_feed_items 生效：按 source 过滤（all/cn/intl）",
+    )
+    parser.add_argument(
+        "--skip-recent-minutes",
+        type=int,
+        default=0,
+        help="仅对 news_feed_items 生效：跳过最近 N 分钟内的新闻（避免与实时链争抢）",
+    )
     return parser.parse_args()
 
 
@@ -51,7 +63,14 @@ def ensure_columns(conn: sqlite3.Connection, table_name: str):
     conn.commit()
 
 
-def fetch_rows(conn: sqlite3.Connection, table_name: str, limit: int, force: bool):
+def fetch_rows(
+    conn: sqlite3.Connection,
+    table_name: str,
+    limit: int,
+    force: bool,
+    news_source_mode: str,
+    skip_recent_minutes: int,
+):
     cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
     base_cols = ["id", "title", "summary"]
     if "source" in cols:
@@ -71,8 +90,18 @@ def fetch_rows(conn: sqlite3.Connection, table_name: str, limit: int, force: boo
     if "llm_impacts_json" in cols:
         base_cols.append("llm_impacts_json")
     where = []
+    params = []
     if not force:
         where.append("(llm_sentiment_score IS NULL OR COALESCE(llm_sentiment_label,'')='' OR COALESCE(llm_sentiment_reason,'')='')")
+    if table_name == "news_feed_items":
+        if news_source_mode == "cn":
+            where.append("source LIKE 'cn_%'")
+        elif news_source_mode == "intl":
+            where.append("(source IS NULL OR source NOT LIKE 'cn_%')")
+        if skip_recent_minutes > 0 and "pub_date" in cols:
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=skip_recent_minutes)
+            where.append("pub_date < ?")
+            params.append(cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"))
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
     order_col = "pub_date" if "pub_date" in cols else ("pub_time" if "pub_time" in cols else "id")
     sql = f"""
@@ -82,7 +111,8 @@ def fetch_rows(conn: sqlite3.Connection, table_name: str, limit: int, force: boo
     ORDER BY {order_col} DESC, id DESC
     LIMIT ?
     """
-    return [dict(r) for r in conn.execute(sql, (max(limit, 1),)).fetchall()]
+    params.append(max(limit, 1))
+    return [dict(r) for r in conn.execute(sql, tuple(params)).fetchall()]
 
 
 def build_prompt(item: dict, table_name: str) -> str:
@@ -175,9 +205,27 @@ def update_row(conn: sqlite3.Connection, table_name: str, row_id: int, parsed: d
     )
 
 
-def score_table(conn, table_name: str, model: str, temperature: float, limit: int, force: bool, retry: int, sleep_s: float):
+def score_table(
+    conn,
+    table_name: str,
+    model: str,
+    temperature: float,
+    limit: int,
+    force: bool,
+    retry: int,
+    sleep_s: float,
+    news_source_mode: str,
+    skip_recent_minutes: int,
+):
     ensure_columns(conn, table_name)
-    rows = fetch_rows(conn, table_name, limit=limit, force=force)
+    rows = fetch_rows(
+        conn,
+        table_name,
+        limit=limit,
+        force=force,
+        news_source_mode=news_source_mode,
+        skip_recent_minutes=skip_recent_minutes,
+    )
     ok = 0
     failed = 0
     for row in rows:
@@ -230,6 +278,8 @@ def main():
                 force=args.force,
                 retry=args.retry,
                 sleep_s=args.sleep,
+                news_source_mode=args.news_source_mode,
+                skip_recent_minutes=max(args.skip_recent_minutes, 0),
             )
             summary[table_name] = result
             print(f"{table_name}: ok={result['ok']} failed={result['failed']} total={result['total']}")

@@ -8,6 +8,7 @@
       :filters="filters"
       :show-source="false"
       :load-sources="false"
+      :auto-refresh-ms="20000"
     />
   </AppShell>
 </template>

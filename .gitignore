@@ -14,6 +14,9 @@ __pycache__/
 *.pid
 .minline_fetch_checkpoint.json
 nginx_runtime/
+runtime/quantaalpha_results/
+runtime/qlib_hf_data/
+runtime/*.env
 
 # Local data / databases / exports
 *.db

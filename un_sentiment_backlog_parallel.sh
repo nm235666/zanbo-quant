@@ -7,8 +7,9 @@ LOG_FILE="/tmp/un_sentiment_backlog_parallel.log"
 
 MODE="all"                 # all | intl | cn
 MODEL="auto"               # auto / GPT-5.4 / kimi-k2.5 / deepseek-chat
-PARALLEL=4                 # 并发实例数
-LIMIT_PER_INSTANCE=200     # 每个实例每轮处理条数
+PARALLEL=4                 # 兼容保留：用于计算每轮总处理上限
+LIMIT_PER_INSTANCE=200     # 每实例每轮条数
+SKIP_RECENT_MINUTES=30     # 跳过最近N分钟，避免与实时链争抢
 RETRY=1
 SLEEP=0.05
 ROUND_SLEEP=3
@@ -29,6 +30,7 @@ usage() {
   --sleep <sec>                单条间隔，默认 0.05
   --round-sleep <sec>          轮次间隔，默认 3
   --max-rounds <n>             最大轮数，0=不限
+  --skip-recent-minutes <n>    跳过最近N分钟新闻，默认 30
   --stop-on-error              任一实例失败立即退出
   -h, --help                   显示帮助
 
@@ -47,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --sleep) SLEEP="${2:-}"; shift 2 ;;
     --round-sleep) ROUND_SLEEP="${2:-}"; shift 2 ;;
     --max-rounds) MAX_ROUNDS="${2:-}"; shift 2 ;;
+    --skip-recent-minutes) SKIP_RECENT_MINUTES="${2:-}"; shift 2 ;;
     --stop-on-error) STOP_ON_ERROR=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1"; usage; exit 1 ;;
@@ -96,24 +99,23 @@ PY
 score_instance() {
   local instance_id="$1"
   local status_file="$2"
-  local target_flag=""
-  
-  case "$MODE" in
-    intl) target_flag="--target news" ;;
-    cn) target_flag="--target news" ;;
-    all) target_flag="--target news" ;;
-  esac
-  
+  local effective_limit=$((LIMIT_PER_INSTANCE * PARALLEL))
+  if [[ "$effective_limit" -lt 1 ]]; then
+    effective_limit=1
+  fi
+
   local cmd=(
     python3 -u "$BASE_DIR/llm_score_sentiment.py"
-    $target_flag
+    --target news
+    --news-source-mode "$MODE"
+    --skip-recent-minutes "$SKIP_RECENT_MINUTES"
     --model "$MODEL"
-    --limit "$LIMIT_PER_INSTANCE"
+    --limit "$effective_limit"
     --retry "$RETRY"
     --sleep "$SLEEP"
   )
 
-  echo "[$(date -Iseconds)] [instance=$instance_id] 开始情绪分析" | tee -a "$LOG_FILE"
+  echo "[$(date -Iseconds)] [instance=$instance_id] 开始情绪分析 mode=${MODE} limit=${effective_limit} skip_recent=${SKIP_RECENT_MINUTES}m" | tee -a "$LOG_FILE"
   if "${cmd[@]}" >>"$LOG_FILE" 2>&1; then
     echo "${instance_id}|0" >>"$status_file"
     echo "[$(date -Iseconds)] [instance=$instance_id] 完成" | tee -a "$LOG_FILE"
@@ -125,7 +127,7 @@ score_instance() {
 }
 
 round=0
-echo "[$(date -Iseconds)] ===== un_sentiment_backlog_parallel start mode=${MODE} model=${MODEL} parallel=${PARALLEL} =====" | tee -a "$LOG_FILE"
+echo "[$(date -Iseconds)] ===== un_sentiment_backlog_parallel start mode=${MODE} model=${MODEL} parallel=${PARALLEL} skip_recent=${SKIP_RECENT_MINUTES}m =====" | tee -a "$LOG_FILE"
 
 while true; do
   round=$((round + 1))
@@ -146,11 +148,8 @@ while true; do
   status_file="$(mktemp /tmp/un_sentiment_status.XXXXXX)"
   trap 'rm -f "$status_file"' EXIT
 
-  # 启动并行实例
-  for i in $(seq 1 "$PARALLEL"); do
-    score_instance "$i" "$status_file" &
-  done
-  wait
+  # 单实例执行，避免并发实例抢同一批记录导致重复处理与失败噪音。
+  score_instance "1" "$status_file"
 
   fail_count=$(awk -F'|' '$2 != 0 {c++} END{print c+0}' "$status_file")
   if [[ "$fail_count" -gt 0 ]]; then

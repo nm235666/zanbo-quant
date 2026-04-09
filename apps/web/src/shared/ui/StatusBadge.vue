@@ -13,10 +13,10 @@ const label = computed(() => props.label || props.value || '-')
 const badgeClass = computed(() => {
   const base = 'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold'
   return {
-    success: `${base} border-[rgba(31,122,100,0.28)] bg-[rgba(31,122,100,0.1)] text-[var(--success)]`,
-    warning: `${base} border-[rgba(154,99,34,0.26)] bg-[rgba(154,99,34,0.1)] text-[var(--warning)]`,
-    danger: `${base} border-[rgba(160,67,69,0.24)] bg-[rgba(160,67,69,0.1)] text-[var(--danger)]`,
-    info: `${base} border-[rgba(47,111,140,0.24)] bg-[rgba(47,111,140,0.1)] text-[var(--info)]`,
+    success: `${base} border-emerald-200 bg-emerald-100 text-emerald-800`,
+    warning: `${base} border-amber-200 bg-amber-100 text-amber-800`,
+    danger: `${base} border-rose-200 bg-rose-100 text-rose-800`,
+    info: `${base} border-sky-200 bg-sky-100 text-sky-800`,
     muted: `${base} border-[var(--line)] bg-[var(--panel-soft)] text-[var(--muted)]`,
   }[tone.value]
 })

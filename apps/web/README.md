@@ -41,6 +41,15 @@ sessionStorage.setItem('zanbo_admin_token', '<BACKEND_ADMIN_TOKEN>')
 
 Or provide `VITE_ADMIN_API_TOKEN` during local development.
 
+## Dev API fallback (quant-factors)
+
+默认前端只走 `VITE_API_BASE_URL`（或同源 `/api`）。  
+如需本机多端口调试量化接口，可在前端环境变量中显式开启：
+
+```bash
+VITE_QUANT_API_DEV_FALLBACK=1
+```
+
 ## Current modules
 
 - Dashboard

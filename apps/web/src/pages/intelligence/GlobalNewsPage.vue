@@ -9,6 +9,7 @@
       :show-source="true"
       :load-sources="true"
       :hide-filter-panel="isLimited"
+      :auto-refresh-ms="20000"
     />
   </AppShell>
 </template>

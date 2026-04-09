@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-05",
+  "version": "2026-04-08",
   "source": "repo_default",
   "groups": [
     {
@@ -95,6 +95,12 @@
           "permission": "signals_advanced"
         },
         {
+          "to": "/signals/graph",
+          "label": "产业链图谱",
+          "desc": "主题、行业、股票关系浏览",
+          "permission": "signals_advanced"
+        },
+        {
           "to": "/signals/audit",
           "label": "信号质量审计",
           "desc": "误映射、弱信号与质量问题",
@@ -135,6 +141,18 @@
           "to": "/research/reports",
           "label": "标准报告",
           "desc": "统一投研报告列表",
+          "permission": "research_advanced"
+        },
+        {
+          "to": "/research/decision",
+          "label": "决策看板",
+          "desc": "宏观-行业-个股评分与交易计划",
+          "permission": "research_advanced"
+        },
+        {
+          "to": "/research/trade-plan",
+          "label": "交易计划书",
+          "desc": "每日交易计划、仓位与执行清单",
           "permission": "research_advanced"
         },
         {

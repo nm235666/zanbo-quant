@@ -13,6 +13,17 @@
           关键词
           <input v-model="draftFilters.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="关键词" />
         </label>
+        <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" :aria-expanded="advancedFiltersOpen ? 'true' : 'false'" @click="advancedFiltersOpen = !advancedFiltersOpen">
+          {{ advancedFiltersOpen ? '收起高级筛选' : '展开高级筛选' }}
+        </button>
+        <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
+          {{ isFetching ? '查询中...' : '查询' }}
+        </button>
+        <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="semanticSearching" @click="runSemanticSearch">
+          {{ semanticSearching ? '语义检索中...' : '语义检索' }}
+        </button>
+      </div>
+      <div v-if="advancedFiltersOpen" class="mt-3 grid gap-3 xl:grid-cols-4 md:grid-cols-2">
         <label class="text-sm font-semibold text-[var(--ink)]">
           开始日期
           <input v-model="draftFilters.date_from" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 2026-03-20" />
@@ -28,12 +39,6 @@
             <option :value="50">50 / 页</option>
           </select>
         </label>
-        <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="applyFilters">
-          {{ isFetching ? '查询中...' : '查询' }}
-        </button>
-        <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="semanticSearching" @click="runSemanticSearch">
-          {{ semanticSearching ? '语义检索中...' : '语义检索' }}
-        </button>
       </div>
       <div class="mt-4 flex flex-wrap gap-2">
         <button
@@ -178,6 +183,7 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchNewsSources, searchNewsSemantic } from '../../services/api/news'
 import { importanceOptions, parseImpactTags, parseRelatedStocks, sourceLabel } from '../../shared/utils/finance'
+import { useUiStore } from '../../stores/ui'
 
 const props = defineProps<{
   pageTitle: string
@@ -188,12 +194,15 @@ const props = defineProps<{
   showSource?: boolean
   loadSources?: boolean
   hideFilterPanel?: boolean
+  autoRefreshMs?: number
 }>()
 
 const router = useRouter()
+const ui = useUiStore()
 const localFilters = props.filters as Record<string, any>
 const draftFilters = reactive({ ...localFilters })
 const expandedMap = ref<Record<string, boolean>>({})
+const advancedFiltersOpen = ref(false)
 const semanticSearching = ref(false)
 const semanticHits = ref<Array<Record<string, any>>>([])
 const semanticError = ref('')
@@ -230,7 +239,12 @@ const { data: sourceData } = useQuery({
   enabled: !!props.loadSources,
 })
 
-const { data: result, isFetching, refetch } = useQuery({ queryKey: props.queryKey, queryFn: props.queryFn })
+const { data: result, isFetching, refetch } = useQuery({
+  queryKey: props.queryKey,
+  queryFn: props.queryFn,
+  refetchInterval: Math.max(0, Number(props.autoRefreshMs ?? 0)),
+  refetchIntervalInBackground: true,
+})
 const sourceOptions = computed(() => sourceData.value?.items || [])
 const importanceLevels = importanceOptions()
 const hideFilterPanel = computed(() => Boolean(props.hideFilterPanel))
@@ -248,6 +262,7 @@ function toggleLevel(level: string) {
 function applyFilters() {
   Object.assign(localFilters, { ...draftFilters, page: 1 })
   refetch()
+  ui.showToast('新闻筛选已更新', 'success')
 }
 
 async function runSemanticSearch() {
@@ -255,6 +270,7 @@ async function runSemanticSearch() {
   if (!query) {
     semanticError.value = '请先输入关键词，再执行语义检索。'
     semanticHits.value = []
+    ui.showToast('请输入关键词后再执行语义检索', 'info')
     return
   }
   semanticSearching.value = true
@@ -262,10 +278,16 @@ async function runSemanticSearch() {
   try {
     const payload = await searchNewsSemantic({ query, scene: 'news', top_k: 8 })
     semanticHits.value = Array.isArray(payload?.hits) ? payload.hits : []
+    if (semanticHits.value.length) {
+      ui.showToast(`语义检索完成，共 ${semanticHits.value.length} 条`, 'success')
+    } else {
+      ui.showToast('语义检索无结果', 'info')
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || '未知错误')
     semanticError.value = `语义检索失败：${message}`
     semanticHits.value = []
+    ui.showToast(semanticError.value, 'error')
   } finally {
     semanticSearching.value = false
   }

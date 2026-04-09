@@ -12,11 +12,13 @@
             <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="reload">重新加载</button>
           </template>
         </StatePanel>
-        <StatePanel
-          v-else-if="!dashboard && isFetching"
-          title="总控台正在加载"
-          description="正在拉取系统健康、任务回放和研究优先队列。"
-        />
+        <div v-else-if="!dashboard && isFetching" class="space-y-3">
+          <div class="loading-skeleton h-8 w-1/3 rounded-[var(--radius-sm)]" />
+          <div class="grid gap-3 md:grid-cols-3">
+            <div v-for="idx in 3" :key="`dashboard-skeleton-${idx}`" class="loading-skeleton h-24 rounded-[var(--radius-md)] border border-[var(--line)]" />
+          </div>
+          <div class="loading-skeleton h-40 rounded-[var(--radius-lg)] border border-[var(--line)]" />
+        </div>
         <StatePanel
           v-else-if="!dashboard"
           tone="warning"
@@ -29,15 +31,15 @@
           </template>
         </StatePanel>
         <div v-if="dashboard" class="grid gap-4 2xl:grid-cols-[1.05fr_0.95fr]">
-          <div>
-            <div class="mb-3 text-sm font-bold text-[var(--ink)]">系统核心状态</div>
-            <div class="grid gap-3 xl:grid-cols-3 md:grid-cols-2">
-              <StatCard title="上市股票" :value="dashboard.overview?.listed_total ?? 0" :hint="`总股票 ${dashboard.overview?.stock_total ?? 0}`" />
-              <StatCard title="国际/国内新闻" :value="dashboard.overview?.news_total ?? 0" :hint="`个股新闻 ${dashboard.overview?.stock_news_total ?? 0}`" />
-              <StatCard title="群聊记录" :value="dashboard.overview?.chatlog_total ?? 0" :hint="`群聊 ${dashboard.overview?.chatroom_total ?? 0}`" />
-              <StatCard title="监控群聊" :value="dashboard.overview?.monitored_chatroom_total ?? 0" hint="纳入实时拉取与跨天补抓" />
-              <StatCard title="候选池标的" :value="dashboard.overview?.candidate_total ?? 0" hint="来自群聊与信号聚合" />
-              <StatCard title="日报总结" :value="dashboard.overview?.daily_summary_total ?? 0" :hint="`刷新于 ${formatDateTime(dashboard.generated_at)}`" />
+          <div class="rounded-[24px] border border-[var(--line)] bg-white/78 p-4 shadow-[var(--shadow-soft)]">
+            <div class="mb-3 text-sm font-bold text-[var(--ink)]">系统速览</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span class="metric-chip">上市股票 <strong>{{ dashboard.overview?.listed_total ?? 0 }}</strong></span>
+              <span class="metric-chip">国际/国内新闻 <strong>{{ dashboard.overview?.news_total ?? 0 }}</strong></span>
+              <span class="metric-chip">群聊记录 <strong>{{ dashboard.overview?.chatlog_total ?? 0 }}</strong></span>
+              <span class="metric-chip">候选池 <strong>{{ dashboard.overview?.candidate_total ?? 0 }}</strong></span>
+              <span class="metric-chip">日报 <strong>{{ dashboard.overview?.daily_summary_total ?? 0 }}</strong></span>
+              <span class="metric-chip">刷新 <strong>{{ formatDateTime(dashboard.generated_at) }}</strong></span>
             </div>
           </div>
           <div class="rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(15,97,122,0.08)_0%,rgba(255,255,255,0.82)_100%)] p-4 shadow-[var(--shadow-soft)]">
@@ -63,66 +65,57 @@
       </PageSection>
 
       <div class="grid gap-4 2xl:grid-cols-[1.3fr_0.7fr]">
-        <PageSection title="研究优先队列" subtitle="今天最值得先看的股票、候选池和高重要新闻。">
-          <div class="grid gap-4 xl:grid-cols-3">
-            <div>
-              <div class="mb-2 text-sm font-bold">评分领先股票</div>
-              <div class="space-y-2">
-                <InfoCard v-for="item in dashboard?.top_scores || []" :key="item.ts_code" :title="item.name || item.ts_code" :meta="`${item.ts_code || '-'} · ${item.industry || '-'} · ${item.market || '-'}`" class="cursor-pointer" @click="goStockDetail(item.ts_code)">
-                  <template #badge>
-                    <StatusBadge value="brand" :label="`总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`" />
-                  </template>
-                </InfoCard>
-              </div>
-            </div>
-            <div>
-              <div class="mb-2 text-sm font-bold">群聊候选池</div>
-              <div class="space-y-2">
-                <InfoCard v-for="item in dashboard?.candidate_pool_top || []" :key="item.candidate_name" :title="item.candidate_name || '-'" :meta="`${item.candidate_type || '-'} · 净分 ${item.net_score ?? 0} · 群数 ${item.room_count ?? 0}`" class="cursor-pointer" @click="goCandidate(item)">
-                  <template #badge>
-                    <StatusBadge :value="item.dominant_bias" :label="item.dominant_bias || '-'" />
-                  </template>
-                </InfoCard>
-              </div>
-            </div>
-            <div>
-              <div class="mb-2 text-sm font-bold">高重要新闻</div>
-              <div class="space-y-2">
-                <InfoCard v-for="item in dashboard?.important_news || []" :key="item.id" :title="item.title || '-'" :meta="`${item.source || '-'} · ${formatDateTime(item.pub_date)}`">
-                  <template #badge>
-                    <StatusBadge :value="item.llm_finance_importance || 'muted'" :label="item.llm_finance_importance || '未评级'" />
-                  </template>
-                </InfoCard>
-              </div>
-            </div>
+        <PageSection title="研究优先队列" subtitle="通过 Tab 聚焦单一队列，降低首屏滚动与视觉负担。">
+          <div class="mb-3 flex flex-wrap gap-2">
+            <button class="rounded-full border px-3 py-2 text-xs font-semibold transition" :class="queueTab==='scores' ? 'border-[var(--brand)] bg-[rgba(15,97,122,0.1)] text-[var(--brand)]' : 'border-[var(--line)] bg-white text-[var(--muted)]'" @click="queueTab='scores'">评分领先</button>
+            <button class="rounded-full border px-3 py-2 text-xs font-semibold transition" :class="queueTab==='candidates' ? 'border-[var(--brand)] bg-[rgba(15,97,122,0.1)] text-[var(--brand)]' : 'border-[var(--line)] bg-white text-[var(--muted)]'" @click="queueTab='candidates'">候选池</button>
+            <button class="rounded-full border px-3 py-2 text-xs font-semibold transition" :class="queueTab==='news' ? 'border-[var(--brand)] bg-[rgba(15,97,122,0.1)] text-[var(--brand)]' : 'border-[var(--line)] bg-white text-[var(--muted)]'" @click="queueTab='news'">高重要新闻</button>
+          </div>
+          <div class="space-y-2">
+            <InfoCard
+              v-for="item in activeQueueItems"
+              :key="item.key"
+              :title="item.title"
+              :meta="item.meta"
+              :description="item.description"
+              class="cursor-pointer"
+              @click="item.onClick?.()"
+            >
+              <template #badge>
+                <StatusBadge :value="item.badgeValue" :label="item.badgeLabel" />
+              </template>
+            </InfoCard>
           </div>
         </PageSection>
 
         <PageSection title="任务编排回放" subtitle="直接看最近任务状态，而不是只看抽象计数。">
-          <div v-if="(dashboard?.orchestrator_alerts || []).length" class="mb-3 space-y-2">
-            <InfoCard
-              v-for="item in dashboard?.orchestrator_alerts || []"
-              :key="`alert-${item.id}`"
-              :title="item.message || item.job_key || '-'"
-              :meta="`任务 ${item.job_key || '-'} · run_id ${item.run_id ?? '-'} · ${formatDateTime(item.created_at)}`"
-            >
-              <template #badge>
-                <StatusBadge :value="item.severity || 'error'" :label="item.severity || 'error'" />
-              </template>
-            </InfoCard>
-          </div>
-          <div class="space-y-2">
-            <InfoCard
-              v-for="item in dashboard?.orchestrator_jobs || []"
-              :key="item.id"
-              :title="item.job_key || '-'"
-              :meta="`开始 ${formatDateTime(item.started_at)} · 耗时 ${item.duration_seconds ?? '-'} 秒 · 退出码 ${item.exit_code ?? '-'}`"
-            >
-              <template #badge>
-                <StatusBadge :value="item.status" :label="item.status || '-'" />
-              </template>
-            </InfoCard>
-          </div>
+          <details>
+            <summary class="mb-3 cursor-pointer rounded-[14px] border border-[var(--line)] bg-white px-3 py-2 text-sm font-semibold text-[var(--ink)]">展开任务明细</summary>
+            <div v-if="(dashboard?.orchestrator_alerts || []).length" class="mb-3 space-y-2">
+              <InfoCard
+                v-for="item in dashboard?.orchestrator_alerts || []"
+                :key="`alert-${item.id}`"
+                :title="item.message || item.job_key || '-'"
+                :meta="`任务 ${item.job_key || '-'} · run_id ${item.run_id ?? '-'} · ${formatDateTime(item.created_at)}`"
+              >
+                <template #badge>
+                  <StatusBadge :value="item.severity || 'error'" :label="item.severity || 'error'" />
+                </template>
+              </InfoCard>
+            </div>
+            <div class="space-y-2">
+              <InfoCard
+                v-for="item in dashboard?.orchestrator_jobs || []"
+                :key="item.id"
+                :title="item.job_key || '-'"
+                :meta="`开始 ${formatDateTime(item.started_at)} · 耗时 ${item.duration_seconds ?? '-'} 秒 · 退出码 ${item.exit_code ?? '-'}`"
+              >
+                <template #badge>
+                  <StatusBadge :value="item.status" :label="item.status || '-'" />
+                </template>
+              </InfoCard>
+            </div>
+          </details>
         </PageSection>
       </div>
 
@@ -219,7 +212,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { RouterLink, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -230,8 +223,11 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchDashboard } from '../../services/api/dashboard'
 import { formatDate, formatDateTime } from '../../shared/utils/format'
+import { useUiStore } from '../../stores/ui'
 
 const router = useRouter()
+const ui = useUiStore()
+const queueTab = ref<'scores' | 'candidates' | 'news'>('scores')
 const { data, error, isFetching, refetch } = useQuery({
   queryKey: ['dashboard'],
   queryFn: fetchDashboard,
@@ -289,8 +285,51 @@ const priorityCards = computed(() => {
   ]
 })
 
-function reload() {
-  refetch()
+const activeQueueItems = computed(() => {
+  if (queueTab.value === 'scores') {
+    return (dashboard.value?.top_scores || []).map((item: Record<string, any>) => ({
+      key: `score-${item.ts_code || item.name}`,
+      title: item.name || item.ts_code || '-',
+      meta: `${item.ts_code || '-'} · ${item.industry || '-'} · ${item.market || '-'}`,
+      description: `行业内总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`,
+      badgeValue: 'info',
+      badgeLabel: `总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`,
+      onClick: item.ts_code ? () => goStockDetail(item.ts_code) : undefined,
+    }))
+  }
+  if (queueTab.value === 'candidates') {
+    return (dashboard.value?.candidate_pool_top || []).map((item: Record<string, any>) => ({
+      key: `candidate-${item.candidate_name}`,
+      title: item.candidate_name || '-',
+      meta: `${item.candidate_type || '-'} · 群数 ${item.room_count ?? 0}`,
+      description: `净分 ${item.net_score ?? 0}`,
+      badgeValue: item.dominant_bias || 'muted',
+      badgeLabel: item.dominant_bias || '-',
+      onClick: () => goCandidate(item),
+    }))
+  }
+  return (dashboard.value?.important_news || []).map((item: Record<string, any>) => ({
+    key: `news-${item.id}`,
+    title: item.title || '-',
+    meta: `${item.source || '-'} · ${formatDateTime(item.pub_date)}`,
+    description: '优先判断是否影响今日研究路径。',
+    badgeValue: item.llm_finance_importance || 'muted',
+    badgeLabel: item.llm_finance_importance || '未评级',
+    onClick: () => router.push('/intelligence/stock-news'),
+  }))
+})
+
+async function reload() {
+  try {
+    const result = await refetch()
+    if (result.error) {
+      ui.showToast('总控台刷新失败，请稍后重试', 'error')
+      return
+    }
+    ui.showToast('总控台已刷新', 'success')
+  } catch (err: any) {
+    ui.showToast(err?.message || '总控台刷新失败', 'error')
+  }
 }
 
 function goStockDetail(tsCode: unknown) {

@@ -2,9 +2,25 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs
 
+_LEGACY_PATH_HITS = 0
+
+
+def _normalize_path(path: str) -> str:
+    global _LEGACY_PATH_HITS
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.rstrip("/")
+    if normalized.startswith("/api/ai_retrieval/"):
+        _LEGACY_PATH_HITS += 1
+        print(f"[ai-retrieval] legacy_path_hits={_LEGACY_PATH_HITS} raw={normalized}")
+        normalized = normalized.replace("/api/ai_retrieval/", "/api/ai-retrieval/", 1)
+    return normalized
+
 
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
-    if parsed.path == "/api/ai-retrieval/search":
+    path = _normalize_path(parsed.path)
+    if path == "/api/ai-retrieval/search":
         query = str((payload or {}).get("query") or "").strip()
         scene = str((payload or {}).get("scene") or "news").strip()
         requested_model = str((payload or {}).get("requested_model") or "").strip()
@@ -28,7 +44,7 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         handler._send_json(data)
         return True
 
-    if parsed.path == "/api/ai-retrieval/context":
+    if path == "/api/ai-retrieval/context":
         query = str((payload or {}).get("query") or "").strip()
         scene = str((payload or {}).get("scene") or "news").strip()
         requested_model = str((payload or {}).get("requested_model") or "").strip()
@@ -57,7 +73,7 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         handler._send_json(data)
         return True
 
-    if parsed.path == "/api/ai-retrieval/sync":
+    if path == "/api/ai-retrieval/sync":
         scene = str((payload or {}).get("scene") or "news").strip()
         try:
             limit = int((payload or {}).get("limit") or 300)
@@ -75,7 +91,8 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
 
 
 def dispatch_get(handler, parsed, deps: dict) -> bool:
-    if parsed.path == "/api/ai-retrieval/metrics":
+    path = _normalize_path(parsed.path)
+    if path == "/api/ai-retrieval/metrics":
         params = parse_qs(parsed.query)
         try:
             days = int(params.get("days", ["1"])[0])

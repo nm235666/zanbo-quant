@@ -1,6 +1,6 @@
 # 项目命令行命令总表
 
-更新时间：2026-04-03
+更新时间：2026-04-07
 
 本文件汇总当前项目主要命令行入口，包括：
 
@@ -74,6 +74,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `bash /home/zanbo/zanbotest/install_monitored_chatlog_cron.sh "*/3 * * * *"` | 安装监控群聊天记录增量抓取 cron |
 | `bash /home/zanbo/zanbotest/install_monitored_chatlog_midnight_cron.sh "10 0 * * *"` | 安装监控群跨天补抓 cron |
 | `python3 /home/zanbo/zanbotest/scripts/scheduler/check_cron_sync.py` | 校验 `job_definitions` 与 crontab 一致性，并输出下次触发 UTC/CST |
+| `bash /home/zanbo/zanbotest/run_scheduler_consistency_check.sh` | 统一入口执行调度一致性巡检（输出 missing/extra/drift 摘要） |
 
 ## 任务编排器
 
@@ -87,10 +88,19 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py runs --job-key <job_key> --limit 20` | 查看任务运行记录 |
 | `python3 /home/zanbo/zanbotest/job_orchestrator.py alerts --job-key <job_key> --limit 20` | 查看任务失败告警（默认仅未确认） |
 
+## 回归与 Smoke
+
+| 命令 | 作用 |
+| --- | --- |
+| `bash /home/zanbo/zanbotest/run_minimal_regression.sh` | 运行后端最小回归 + 前端 API smoke |
+| `bash /home/zanbo/zanbotest/run_frontend_api_smoke.sh` | 运行前端 API/路由协议 smoke（无 UI 框架） |
+
 常见 `job_key`：
 
 - `intl_news_pipeline`
 - `cn_news_pipeline`
+- `cn_news_score_refresh`
+- `intl_news_score_refresh`
 - `news_stock_map_refresh`
 - `news_sentiment_refresh`
 - `news_daily_summary_refresh`
@@ -104,6 +114,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 - `signal_state_refresh`
 - `research_reports_refresh`
 - `daily_postclose_update`
+- `decision_daily_snapshot`
 
 ## 一次性 cron 包装脚本
 
@@ -115,6 +126,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | --- | --- |
 | `bash /home/zanbo/zanbotest/run_job_always.sh <job_key>` | 总是执行指定编排任务 |
 | `bash /home/zanbo/zanbotest/run_job_if_trade_day.sh <job_key>` | 交易日才执行，非交易日写入 `skipped_non_trading_day` |
+| `python3 /home/zanbo/zanbotest/jobs/run_decision_job.py --job-key decision_daily_snapshot` | 手工运行投研决策快照任务 |
 
 | 命令 | 作用 |
 | --- | --- |
@@ -235,6 +247,7 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `python3 /home/zanbo/zanbotest/llm_score_chatroom_sentiment.py` | 群聊情绪分析 |
 | `python3 /home/zanbo/zanbotest/llm_resolve_stock_aliases.py` | 群聊股票别名归一 |
 | `python3 /home/zanbo/zanbotest/loop_score_unscored_news.py` | 循环补评分未评新闻 |
+| `bash /home/zanbo/zanbotest/un_news_score_backlog_parallel.sh --mode cn --parallel 4 --limit-per-source 100` | 并行清理国内新闻未评分积压 |
 
 常用示例：
 

@@ -84,10 +84,11 @@ from services.chatrooms_service import (
     query_chatroom_overview as chatrooms_query_overview,
     query_wechat_chatlog as chatrooms_query_wechat_chatlog,
 )
-from services.signals_service import build_signals_runtime_deps
+from services.signals_service import build_signals_runtime_deps, query_signal_chain_graph
 from services.notifications import build_notification_payload, notify_with_wecom
 from services.agent_service.outputs.markdown_report import build_portfolio_view, build_risk_review, infer_decision_confidence
-from services.quantaalpha_service import build_quantaalpha_service_runtime_deps
+from services.quantaalpha_service import build_quantaalpha_service_runtime_deps, get_quantaalpha_runtime_health
+from services.decision_service import build_decision_runtime_deps as build_decision_service_runtime_deps
 from services.stock_detail_service import (
     build_capital_flow_summary as stock_detail_build_capital_flow_summary,
     build_financial_summary as stock_detail_build_financial_summary,
@@ -133,6 +134,7 @@ from backend.routes import chatrooms as chatroom_routes
 from backend.routes import ai_retrieval as ai_retrieval_routes
 from backend.routes import news as news_routes
 from backend.routes import quant_factors as quant_factor_routes
+from backend.routes import decision as decision_routes
 from backend.routes import signals as signal_routes
 from backend.routes import stocks as stock_routes
 from backend.routes import system as system_routes
@@ -341,6 +343,8 @@ PERMISSION_CATALOG_FALLBACK: list[dict[str, object]] = [
     {"code": "admin_system", "label": "系统管理", "group": "system", "system_reserved": True},
 ]
 ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
+    "/login": "public",
+    "/upgrade": "public",
     "/dashboard": "admin_system",
     "/stocks/list": "stocks_advanced",
     "/stocks/scores": "stocks_advanced",
@@ -353,6 +357,7 @@ ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
     "/intelligence/daily-summaries": "daily_summary_read",
     "/signals/overview": "signals_advanced",
     "/signals/themes": "signals_advanced",
+    "/signals/graph": "signals_advanced",
     "/signals/timeline": "signals_advanced",
     "/signals/audit": "signals_advanced",
     "/signals/quality-config": "signals_advanced",
@@ -411,6 +416,7 @@ NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
         "items": [
             {"to": "/signals/overview", "label": "投资信号", "desc": "股票与主题信号总览", "permission": "signals_advanced"},
             {"to": "/signals/themes", "label": "主题热点", "desc": "主题强度、方向、预期与证据链", "permission": "signals_advanced"},
+            {"to": "/signals/graph", "label": "产业链图谱", "desc": "主题、行业、股票关系浏览", "permission": "signals_advanced"},
             {"to": "/signals/audit", "label": "信号质量审计", "desc": "误映射、弱信号与质量问题", "permission": "signals_advanced"},
             {"to": "/signals/quality-config", "label": "信号质量配置", "desc": "规则参数与映射黑名单", "permission": "signals_advanced"},
             {"to": "/signals/state-timeline", "label": "状态时间线", "desc": "状态机迁移与市场预期层", "permission": "signals_advanced"},
@@ -424,7 +430,7 @@ NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
             {"to": "/macro", "label": "宏观看板", "desc": "宏观指标查询与序列趋势", "permission": "macro_advanced"},
             {"to": "/research/trend", "label": "走势分析", "desc": "LLM 股票走势分析工作台", "permission": "trend_analyze"},
             {"to": "/research/reports", "label": "标准报告", "desc": "统一投研报告列表", "permission": "research_advanced"},
-            {"to": "/research/quant-factors", "label": "因子挖掘", "desc": "QuantaAlpha 旁路因子挖掘与回测", "permission": "research_advanced"},
+            {"to": "/research/quant-factors", "label": "因子挖掘", "desc": "双引擎因子挖掘与回测（business/research）", "permission": "research_advanced"},
             {"to": "/research/multi-role", "label": "多角色分析", "desc": "LLM 多角色公司分析工作台", "permission": "multi_role_analyze"},
         ],
     },
@@ -455,7 +461,11 @@ NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
     },
 ]
 RBAC_DYNAMIC_CONFIG_PATH = ROOT_DIR / "config" / "rbac_dynamic.config.json"
-RBAC_DYNAMIC_SCHEMA_VERSION = "2026-04-05.dynamic-rbac.v1"
+RBAC_DYNAMIC_SCHEMA_VERSION = "2026-04-08.dynamic-rbac.v1"
+REQUIRED_PUBLIC_ROUTE_PERMISSIONS: dict[str, str] = {
+    "/login": "public",
+    "/upgrade": "public",
+}
 
 
 def _normalize_permission_catalog(raw_catalog: object) -> tuple[list[dict[str, object]], int]:
@@ -498,6 +508,18 @@ def _normalize_route_permissions(raw_map: object, permission_allowlist: set[str]
             continue
         normalized[path] = permission
     return normalized, invalid
+
+
+def _ensure_required_public_routes(route_permissions: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    normalized = dict(route_permissions or {})
+    fixed: list[str] = []
+    for path, required in REQUIRED_PUBLIC_ROUTE_PERMISSIONS.items():
+        current = str(normalized.get(path) or "").strip()
+        if current == required:
+            continue
+        fixed.append(path if not current else f"{path}({current}->{required})")
+        normalized[path] = required
+    return normalized, fixed
 
 
 def _normalize_navigation_groups(raw_groups: object, permission_allowlist: set[str]) -> tuple[list[dict[str, object]], int, int]:
@@ -556,6 +578,7 @@ def _build_fallback_dynamic_rbac() -> dict[str, object]:
             "invalid_route_items": 0,
             "invalid_nav_groups": 0,
             "invalid_nav_items": 0,
+            "fixed_public_route_items": 0,
         },
     }
 
@@ -576,7 +599,10 @@ def _load_dynamic_rbac_config() -> dict[str, object]:
         return fallback
     allowlist = {str(item.get("code") or "").strip() for item in catalog if str(item.get("code") or "").strip()}
     route_permissions, invalid_route_items = _normalize_route_permissions(payload.get("route_permissions"), allowlist)
+    route_permissions, fixed_public_routes = _ensure_required_public_routes(route_permissions)
     nav_groups, invalid_nav_groups, invalid_nav_items = _normalize_navigation_groups(payload.get("navigation_groups"), allowlist)
+    if fixed_public_routes:
+        print(f"[rbac-dynamic] patched required public route mappings: {', '.join(fixed_public_routes)}")
     if not route_permissions or not nav_groups:
         print("[rbac-dynamic] route_permissions/navigation_groups invalid; use fallback")
         return fallback
@@ -592,6 +618,7 @@ def _load_dynamic_rbac_config() -> dict[str, object]:
             "invalid_route_items": invalid_route_items,
             "invalid_nav_groups": invalid_nav_groups,
             "invalid_nav_items": invalid_nav_items,
+            "fixed_public_route_items": len(fixed_public_routes),
         },
     }
 
@@ -857,6 +884,7 @@ API_ENDPOINTS_CATALOG = {
     "quant_factors_backtest_start": "/api/quant-factors/backtest/start",
     "quant_factors_task": "/api/quant-factors/task?task_id=<task_id>",
     "quant_factors_results": "/api/quant-factors/results?task_type=&status=&page=1&page_size=20",
+    "quant_factors_health": "/api/quant-factors/health",
 }
 
 
@@ -2917,6 +2945,10 @@ def query_source_monitor():
         warn_within=3 * 3600,
     )
     ws_health = _fetch_local_json("http://127.0.0.1:8010/health", timeout_s=2)
+    try:
+        quant_health = get_quantaalpha_runtime_health(sqlite3_module=sqlite3, db_path=DB_PATH)
+    except Exception:
+        quant_health = {}
     redis_client = get_redis_client()
     latest_ws_broadcast = ""
     if redis_client is not None:
@@ -3084,6 +3116,15 @@ def query_source_monitor():
             "detail": "北向/南向等市场流向",
             "rows": None,
         },
+        {
+            "key": "quant_research_stack",
+            "name": "因子研究栈(Qlib)",
+            "category": "量化",
+            "status": ("ok" if ((quant_health or {}).get("research_stack") or {}).get("status") == "ok" else "warn"),
+            "last_update": (((quant_health or {}).get("worker") or {}).get("heartbeat") or {}).get("ts") or "",
+            "detail": f"reason={(((quant_health or {}).get('research_stack') or {}).get('reason') or '-')}",
+            "rows": None,
+        },
     ]
 
     counts_conn = sqlite3.connect(DB_PATH)
@@ -3140,6 +3181,16 @@ def query_source_monitor():
             "status": "ok" if ws_health else "error",
             "detail": f"clients={((ws_health or {}).get('clients')) if ws_health else '-'}",
             "last_update": ((ws_health or {}).get("ts")) or _iso_from_mtime(TMP_DIR / "ws_realtime.log"),
+        },
+        {
+            "key": "quant_research_worker",
+            "name": "因子研究 Worker",
+            "status": "ok" if (((quant_health or {}).get("worker") or {}).get("alive")) else "warn",
+            "detail": (
+                f"mode={(((quant_health or {}).get('worker') or {}).get('execution_mode') or '-')}, "
+                f"pending={(((quant_health or {}).get('queue') or {}).get('pending') or 0)}"
+            ),
+            "last_update": ((((quant_health or {}).get("worker") or {}).get("heartbeat") or {}).get("ts") or ""),
         },
     ]
 
@@ -7544,11 +7595,19 @@ def build_signals_service_runtime_deps() -> dict:
         query_research_reports_fn=query_research_reports,
         query_macro_indicators_fn=query_macro_indicators,
         query_macro_series_fn=query_macro_series,
+        query_signal_chain_graph_fn=query_signal_chain_graph,
     )
 
 
 def build_quantaalpha_runtime_deps() -> dict:
     return build_quantaalpha_service_runtime_deps(
+        sqlite3_module=sqlite3,
+        db_path=str(DB_PATH),
+    )
+
+
+def build_decision_runtime_deps() -> dict:
+    return build_decision_service_runtime_deps(
         sqlite3_module=sqlite3,
         db_path=str(DB_PATH),
     )
@@ -7906,6 +7965,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             "/api/signal-quality/blocklist/save",
         }:
             return _has("signals_advanced")
+        if path.startswith("/api/decision"):
+            return _has("research_advanced") or _has("signals_advanced") or _has("stocks_advanced")
         if path.startswith("/api/chatrooms") or path.startswith("/api/wechat-chatlog"):
             return _has("chatrooms_advanced")
         if path in {"/api/reports", "/api/research-reports"} or path.startswith("/api/research/"):
@@ -8051,6 +8112,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             **build_chatrooms_service_runtime_deps(),
             **build_signals_service_runtime_deps(),
             **build_quantaalpha_runtime_deps(),
+            **build_decision_runtime_deps(),
             "quant_factors_enabled": ENABLE_QUANT_FACTORS,
             "build_info": _build_info_payload,
             "permission_matrix": _role_permission_matrix,
@@ -8113,6 +8175,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if quant_factor_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if decision_routes.dispatch_post(self, parsed, payload, deps):
+            return
         if ai_retrieval_routes.dispatch_post(self, parsed, payload, deps):
             return
 
@@ -8148,6 +8212,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if news_routes.dispatch_get(self, parsed, deps):
             return
         if quant_factor_routes.dispatch_get(self, parsed, deps):
+            return
+        if decision_routes.dispatch_get(self, parsed, deps):
             return
         if chatroom_routes.dispatch_get(self, parsed, deps):
             return

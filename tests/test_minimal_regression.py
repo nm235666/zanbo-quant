@@ -9,6 +9,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import urllib.parse
 
 
 class MinimalRegressionTest(unittest.TestCase):
@@ -49,6 +50,7 @@ class MinimalRegressionTest(unittest.TestCase):
         env = os.environ.copy()
         env.setdefault("USE_POSTGRES", "0")
         env.setdefault("BACKEND_ADMIN_TOKEN", cls.admin_token)
+        env.setdefault("DECISION_STRATEGY_LLM_ENABLED", "0")
         env["PORT"] = str(cls.port)
         cls.proc = subprocess.Popen(
             [
@@ -128,8 +130,15 @@ class MinimalRegressionTest(unittest.TestCase):
             "/api/stock-detail?ts_code=000001.SZ",
             "/api/chatrooms/candidate-pool?page=1&page_size=1",
             "/api/news/daily-summaries?page=1&page_size=1",
+            f"/api/signals/graph?center_type=theme&center_key={urllib.parse.quote('AI算力')}&depth=2&limit=12",
             "/api/research-reports?page=1&page_size=1",
-            "/api/dashboard",
+            "/api/decision/board?page=1&page_size=5",
+            "/api/decision/plan?page=1&page_size=5",
+            "/api/decision/strategies?page=1&page_size=5",
+            "/api/decision/strategy-runs?page=1&page_size=5",
+            "/api/decision/history?page=1&page_size=5",
+            "/api/decision/actions?page=1&page_size=5",
+            "/api/decision/kill-switch",
         )
         headers = {"X-Admin-Token": self.admin_token}
         for path in targets:
@@ -140,8 +149,13 @@ class MinimalRegressionTest(unittest.TestCase):
                     message = str(body.get("error", ""))
                     allow_known_fixture_error = (
                         (path.startswith("/api/stock-detail") and "未找到股票" in message)
-                        or (path == "/api/dashboard" and "no such table: stock_daily_prices" in message)
-                    )
+                    or (path.startswith("/api/decision/board") and "no such table" in message)
+                    or (path.startswith("/api/decision/plan") and "no such table" in message)
+                    or (path.startswith("/api/decision/strategies") and "no such table" in message)
+                    or (path.startswith("/api/decision/strategy-runs") and "no such table" in message)
+                    or (path.startswith("/api/decision/history") and "no such table" in message)
+                    or (path.startswith("/api/decision/actions") and "no such table" in message)
+                )
                     self.assertTrue(allow_known_fixture_error, f"{path}: {body}")
 
 

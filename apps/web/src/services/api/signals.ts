@@ -15,6 +15,11 @@ export async function fetchThemeHotspots(params: Record<string, any>) {
   return data
 }
 
+export async function fetchSignalChainGraph(params: Record<string, any>) {
+  const { data } = await http.get('/api/signals/graph', { params })
+  return data
+}
+
 export async function fetchSignalStateTimeline(params: Record<string, any>) {
   const { data } = await http.get('/api/signal-state/timeline', { params })
   return data

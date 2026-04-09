@@ -8,6 +8,13 @@ def _normalize_profile(value: str, *, default: str) -> str:
     return text or default
 
 
+def _normalize_engine_profile(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"business", "research", "auto"}:
+        return text
+    return "auto"
+
+
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
     if parsed.path.startswith("/api/quant-factors") and not bool(deps.get("quant_factors_enabled", True)):
         handler._send_json({"ok": False, "error": "quant_factors_enabled 已关闭"}, status=503)
@@ -30,10 +37,33 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
                 lookback=lookback,
                 config_profile=_normalize_profile(str(payload.get("config_profile", "") or ""), default="default"),
                 llm_profile=_normalize_profile(str(payload.get("llm_profile", "") or ""), default="auto"),
+                engine_profile=_normalize_engine_profile(payload.get("engine_profile")),
                 extra_args=payload.get("extra_args") or [],
             )
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"启动因子挖掘失败: {exc}"}, status=500)
+            return True
+        handler._send_json(task)
+        return True
+
+    if parsed.path == "/api/quant-factors/auto-research/start":
+        try:
+            lookback = int(payload.get("lookback", 120) or 120)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "lookback 必须是整数"}, status=400)
+            return True
+        try:
+            task = deps["start_quantaalpha_auto_research_task"](
+                direction=str(payload.get("direction", "") or "").strip(),
+                market_scope=_normalize_profile(str(payload.get("market_scope", "") or ""), default="A_share"),
+                lookback=lookback,
+                config_profile=_normalize_profile(str(payload.get("config_profile", "") or ""), default="default"),
+                llm_profile=_normalize_profile(str(payload.get("llm_profile", "") or ""), default="auto"),
+                engine_profile="research",
+                extra_args=payload.get("extra_args") or [],
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"启动自动研究失败: {exc}"}, status=500)
             return True
         handler._send_json(task)
         return True
@@ -55,6 +85,7 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
                 lookback=lookback,
                 config_profile=_normalize_profile(str(payload.get("config_profile", "") or ""), default="default"),
                 llm_profile=_normalize_profile(str(payload.get("llm_profile", "") or ""), default="auto"),
+                engine_profile=_normalize_engine_profile(payload.get("engine_profile")),
                 extra_args=payload.get("extra_args") or [],
             )
         except Exception as exc:  # pragma: no cover
@@ -109,6 +140,15 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             handler._send_json({"ok": False, "error": f"结果查询失败: {exc}"}, status=500)
             return True
         handler._send_json({"ok": True, **payload})
+        return True
+
+    if parsed.path == "/api/quant-factors/health":
+        try:
+            payload = deps["get_quantaalpha_runtime_health"]()
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"健康检查失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
         return True
 
     return False

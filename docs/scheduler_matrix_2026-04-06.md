@@ -1,6 +1,6 @@
 # 定时任务调度矩阵（UTC/CST 双时区）
 
-更新时间：2026-04-06
+更新时间：2026-04-08
 
 调度原则：
 
@@ -17,6 +17,8 @@
 | --- | --- | --- |
 | `cn_news_pipeline` | `*/2 * * * *` | 每 2 分钟 |
 | `intl_news_pipeline` | `1-59/5 * * * *` | 每小时第 1,6,11... 分 |
+| `cn_news_score_refresh` | `*/2 * * * *` | 每 2 分钟 |
+| `intl_news_score_refresh` | `*/5 * * * *` | 每 5 分钟 |
 | `news_stock_map_refresh` | `2-59/5 * * * *` | 每小时第 2,7,12... 分 |
 | `news_sentiment_refresh` | `3-59/5 * * * *` | 每小时第 3,8,13... 分 |
 | `stock_news_score_refresh` | `*/10 * * * *` | 每 10 分钟 |
@@ -75,8 +77,10 @@
 - `quantaalpha_health_check`
 - `quantaalpha_mine_daily`
 - `quantaalpha_backtest_daily`
+- `jobs/run_quantaalpha_worker.py`（独立 worker 常驻进程）
 
-上述三项默认 `enabled=0`，不进入常规 cron，按手动/API 触发。
+上述三项默认 `enabled=0`，不进入常规 cron，按手动/API 触发。  
+研究栈生产模式建议额外常驻 `run_quantaalpha_worker.py`，由 API 入队、worker 执行。
 
 ## 验证命令
 

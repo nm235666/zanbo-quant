@@ -4,7 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 from collectors.news import (
     run_cn_news_pipeline,
+    run_cn_news_score_refresh,
     run_daily_summary_refresh,
+    run_intl_news_score_refresh,
     run_international_news_pipeline,
     run_news_sentiment_refresh,
     run_news_stock_map_refresh,
@@ -41,6 +43,18 @@ def get_news_job_target(job_key: str) -> dict:
             "runner_type": "collector",
             "target": "collectors.news.run_news_sentiment_refresh",
         },
+        "cn_news_score_refresh": {
+            "job_key": "cn_news_score_refresh",
+            "category": "news",
+            "runner_type": "collector",
+            "target": "collectors.news.run_cn_news_score_refresh",
+        },
+        "intl_news_score_refresh": {
+            "job_key": "intl_news_score_refresh",
+            "category": "news",
+            "runner_type": "collector",
+            "target": "collectors.news.run_intl_news_score_refresh",
+        },
         "news_daily_summary_refresh": {
             "job_key": "news_daily_summary_refresh",
             "category": "reports",
@@ -62,6 +76,10 @@ def run_news_job(job_key: str) -> dict:
         return run_news_stock_map_refresh()
     if job_key == "news_sentiment_refresh":
         return run_news_sentiment_refresh()
+    if job_key == "cn_news_score_refresh":
+        return run_cn_news_score_refresh()
+    if job_key == "intl_news_score_refresh":
+        return run_intl_news_score_refresh()
     if job_key == "news_daily_summary_refresh":
         return run_daily_summary_refresh(summary_date=cn_today(), model="gpt-5.4-daily-summary")
     raise KeyError(job_key)

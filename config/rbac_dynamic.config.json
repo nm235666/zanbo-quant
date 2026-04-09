@@ -1,6 +1,6 @@
 {
-  "schema_version": "2026-04-05.dynamic-rbac.v1",
-  "version": "2026-04-05",
+  "schema_version": "2026-04-08.dynamic-rbac.v1",
+  "version": "2026-04-08",
   "source": "repo_dynamic_config",
   "permission_catalog": [
     { "code": "public", "label": "公开访问", "group": "workspace", "system_reserved": false },
@@ -18,6 +18,8 @@
     { "code": "admin_system", "label": "系统管理", "group": "system", "system_reserved": true }
   ],
   "route_permissions": {
+    "/login": "public",
+    "/upgrade": "public",
     "/dashboard": "admin_system",
     "/stocks/list": "stocks_advanced",
     "/stocks/scores": "stocks_advanced",
@@ -30,6 +32,7 @@
     "/intelligence/daily-summaries": "daily_summary_read",
     "/signals/overview": "signals_advanced",
     "/signals/themes": "signals_advanced",
+    "/signals/graph": "signals_advanced",
     "/signals/timeline": "signals_advanced",
     "/signals/audit": "signals_advanced",
     "/signals/quality-config": "signals_advanced",
@@ -88,6 +91,7 @@
       "items": [
         { "to": "/signals/overview", "label": "投资信号", "desc": "股票与主题信号总览", "permission": "signals_advanced" },
         { "to": "/signals/themes", "label": "主题热点", "desc": "主题强度、方向、预期与证据链", "permission": "signals_advanced" },
+        { "to": "/signals/graph", "label": "产业链图谱", "desc": "主题、行业、股票关系浏览", "permission": "signals_advanced" },
         { "to": "/signals/audit", "label": "信号质量审计", "desc": "误映射、弱信号与质量问题", "permission": "signals_advanced" },
         { "to": "/signals/quality-config", "label": "信号质量配置", "desc": "规则参数与映射黑名单", "permission": "signals_advanced" },
         { "to": "/signals/state-timeline", "label": "状态时间线", "desc": "状态机迁移与市场预期层", "permission": "signals_advanced" }

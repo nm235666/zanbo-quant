@@ -138,6 +138,39 @@
         </PageSection>
       </div>
 
+      <PageSection title="决策视角" subtitle="把现有评分、财务、估值、趋势和风险结果压成可执行语言。">
+        <div class="grid gap-4 xl:grid-cols-2">
+          <InfoCard
+            :title="decisionScore.position_label || '暂未进入决策池'"
+            :meta="joinParts([`总分 ${formatNumber(decisionScore.total_score, 2)}`, `行业分 ${formatNumber(decisionScore.industry_total_score, 2)}`])"
+            :description="decisionData.reason || '暂无决策解释'"
+          >
+            <template #badge>
+              <StatusBadge :value="decisionScore.position_label || 'muted'" :label="decisionScore.position_label || '-'" />
+            </template>
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+              <span class="metric-chip">允许入场 <strong>{{ decisionTradePlan.allow_entry ? '是' : '否' }}</strong></span>
+              <span class="metric-chip">建议位置 <strong>{{ decisionTradePlan.suggestion || '-' }}</strong></span>
+              <span class="metric-chip">风险提示 <strong>{{ decisionData.risk || '-' }}</strong></span>
+            </div>
+          </InfoCard>
+          <InfoCard
+            :title="focusDecisionStock?.profile?.name || resolvedName || resolvedTsCode || '股票决策详情'"
+            :meta="joinParts([focusDecisionStock?.profile?.industry, focusDecisionStock?.profile?.market, focusDecisionStock?.profile?.area])"
+            :description="decisionData.keyword ? `聚焦关键词：${decisionData.keyword}` : '决策板以单票视角解释当前结论。'"
+          >
+            <div class="mt-3 flex flex-wrap gap-2">
+              <RouterLink v-if="resolvedTsCode" :to="`/research/decision?ts_code=${encodeURIComponent(resolvedTsCode)}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                打开决策板
+              </RouterLink>
+              <RouterLink v-if="resolvedTsCode" :to="`/stocks/detail/${resolvedTsCode}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                仅看股票详情
+              </RouterLink>
+            </div>
+          </InfoCard>
+        </div>
+      </PageSection>
+
       <PageSection id="company-panels" title="公司深度面板" subtitle="按模块切换查看，避免评分、财务、治理、风险信息堆在一起。">
         <div class="flex flex-wrap gap-2">
           <button
@@ -295,6 +328,7 @@ import {
   triggerStockNewsFetch,
   triggerTrendAnalysis,
 } from '../../services/api/stocks'
+import { fetchDecisionStock } from '../../services/api/decision'
 import { formatDate, formatDateTime, formatNumber, formatPercent, listStatusLabel } from '../../shared/utils/format'
 import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
 import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
@@ -375,7 +409,7 @@ const detailTabs = [
 ] as const
 const activeDetailTab = ref<(typeof detailTabs)[number]['key']>('score')
 let multiRoleTimer = 0
-const multiRoleTaskScopeKey = computed(() => buildTaskScopeKey(String(route.name || 'stock-detail'), resolvedTsCode.value || activeTsCode.value || 'default'))
+const multiRoleTaskScopeKey = computed(() => buildTaskScopeKey(String(route.name || 'stock-detail'), activeTsCode.value || 'default'))
 const {
   restoredHint: restoredMultiRoleHint,
   noticeMessage: multiRolePersistenceNotice,
@@ -411,6 +445,16 @@ const { data: detail, refetch, isFetching, error } = useQuery({
   }),
 })
 
+const { data: decision } = useQuery({
+  queryKey: computed(() => ['decision-stock', activeTsCode.value || activeKeyword.value]),
+  queryFn: () => fetchDecisionStock({
+    ts_code: activeTsCode.value,
+    keyword: activeKeyword.value,
+  }),
+  enabled: computed(() => Boolean(activeTsCode.value || activeKeyword.value)),
+  refetchInterval: 60_000,
+})
+
 const detailData = computed<DetailRow>(() => (detail.value ?? {}) as DetailRow)
 const detailError = computed(() => error.value?.message || '')
 const profile = computed<DetailRow>(() => (detailData.value.profile ?? {}) as DetailRow)
@@ -428,6 +472,10 @@ const chatroomMentions = computed<DetailRow[]>(() => (detailData.value.chatroom_
 const stockNewsItems = computed<DetailRow[]>(() => (((detailData.value.stock_news_summary ?? {}) as DetailRow).recent_items ?? []) as DetailRow[])
 const eventItems = computed<DetailRow[]>(() => (((detailData.value.event_summary ?? {}) as DetailRow).recent_events ?? []).slice(0, 6) as DetailRow[])
 const riskItems = computed<DetailRow[]>(() => (((riskSummary.value.items ?? []) as DetailRow[]).slice(0, 6)))
+const decisionData = computed<DetailRow>(() => (decision.value ?? {}) as DetailRow)
+const decisionScore = computed<DetailRow>(() => (decisionData.value.score ?? {}) as DetailRow)
+const decisionTradePlan = computed<DetailRow>(() => (decisionData.value.trade_plan ?? {}) as DetailRow)
+const focusDecisionStock = computed<DetailRow>(() => (decisionData.value.detail ?? {}) as DetailRow)
 
 const resolvedTsCode = computed(() => String(profile.value.ts_code || activeTsCode.value || '').trim())
 const resolvedName = computed(() => String(profile.value.name || activeKeyword.value || '').trim())

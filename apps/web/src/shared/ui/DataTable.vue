@@ -1,9 +1,9 @@
 <template>
-  <div class="overflow-auto rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(245,249,251,0.92)_100%)] shadow-[var(--shadow-soft)]">
+  <div class="overflow-auto rounded-[var(--radius-lg)] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(247,251,252,0.94)_100%)] shadow-[var(--shadow-soft)]">
     <table class="min-w-full border-collapse text-sm" :aria-label="ariaLabel || caption || undefined">
       <caption v-if="caption" class="sr-only">{{ caption }}</caption>
       <thead>
-        <tr class="bg-[linear-gradient(180deg,rgba(238,244,247,0.96)_0%,rgba(220,231,237,0.96)_100%)] text-left text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
+        <tr class="bg-[linear-gradient(180deg,rgba(241,247,250,0.96)_0%,rgba(233,241,246,0.96)_100%)] text-left text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
           <th v-for="column in columns" :key="column.key" scope="col" class="px-4 py-3 font-semibold">{{ column.label }}</th>
         </tr>
       </thead>

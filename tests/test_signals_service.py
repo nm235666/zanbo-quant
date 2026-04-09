@@ -12,11 +12,13 @@ class SignalsServiceTest(unittest.TestCase):
             query_investment_signals_fn=lambda **kwargs: {"items": [], "page": kwargs.get("page", 1)},
             query_theme_hotspots_fn=lambda **kwargs: {"items": []},
             query_signal_state_timeline_fn=lambda **kwargs: {"events": []},
+            query_signal_chain_graph_fn=lambda **kwargs: {"nodes": [], "edges": []},
             query_research_reports_fn=lambda **kwargs: {"items": []},
             query_investment_signal_timeline_fn=lambda **kwargs: {"events": []},
             query_macro_indicators_fn=lambda **kwargs: {"items": []},
             query_macro_series_fn=lambda **kwargs: {"items": []},
         )
         self.assertIn("query_investment_signals", deps)
+        self.assertIn("query_signal_chain_graph", deps)
         self.assertIn("query_research_reports", deps)
         self.assertIn("query_macro_series", deps)

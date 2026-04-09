@@ -63,6 +63,12 @@ cd /home/zanbo/zanbotest
 nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; python3 jobs/run_multi_role_v3_worker.py' >/tmp/multi_role_v3_worker.log 2>&1 &
 ```
 
+### 信号研究与图谱
+
+- 信号总览、主题热点、信号时间线、状态时间线、信号审计都在 `/signals/*`
+- 新增 `/signals/graph` 产业链图谱页，用于浏览 `主题 / 行业 / 股票` 的关系并下钻到详情页
+- 图谱页与主题热点页、股票评分页互相跳转，便于从关系浏览直接进入单点研究
+
 ### 后端重启（不依赖 ripgrep）
 
 ```bash
@@ -77,22 +83,101 @@ nohup bash -lc '. /home/zanbo/zanbotest/runtime_env.sh; PORT=8006 python3 backen
 ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 ```
 
-### 因子挖掘运行环境（QuantaAlpha）
+### 因子挖掘运行环境（自研 AI 引擎 / 自研等价适配层）
 
-首次部署或迁移机器时，先初始化 QuantaAlpha 专用运行环境：
+`/api/quant-factors/*` 已切换为内置自研 AI 因子挖掘执行器，不再依赖 `external/quantaalpha/launcher.py`。
+
+运行要求：
+
+- PostgreSQL 中需具备 `stock_daily_prices` 与 `stock_daily_price_rollups` 数据。
+- 若 `market_scope` 非 `A_share`，当前 V1 会直接拒绝（仅支持 A 股日频）。
+- `research_engine` 不再依赖 `QLIB_DATA_DIR` 与 `daily_pv.h5`，改为读取库内行情并构建自研等价特征。
+
+任务可观测字段（`/api/quant-factors/task`）：
+
+- `engine`（当前为 `ai_factor_v1`）
+- `engine_profile`（`auto|business|research`）
+- `engine_used`（`business_engine|research_engine`）
+- `worker_state`
+- `stage`
+- `progress_pct`
+- `status_message`
+- `output_tail`
+- `troubleshooting`（排障摘要：task_id/stage/engine/duration/last_error/output_tail）
+
+自动研究入口：
+
+- `POST /api/quant-factors/auto-research/start`
+  - 自动生成研究方向 -> 自动验证 -> 自动沉淀优质因子
+  - 输出仍复用 `task/results` 主结构，前端无需改协议
+
+运行开关：
+
+- `FACTOR_ENGINE_SWITCH_MODE=legacy|dual|research`
+  - `legacy`：默认业务栈
+  - `dual`：业务栈主跑 + 研究栈 shadow
+  - `research`：研究栈主跑（硬切，不自动回退）
+
+- `QUANTAALPHA_EXECUTION_MODE=hybrid|worker|inline`
+  - `hybrid`：默认生产模式，任务入队并由独立 worker 执行
+  - `worker`：仅 worker 执行（与 `hybrid` 同队列执行语义）
+  - `inline`：直接本地线程执行
+
+- `VITE_QUANT_API_DEV_FALLBACK=1`（仅前端开发模式可选）
+  - 默认不启用，多端口兜底关闭
+  - 开启后会尝试 `:8077`、`:8002` 的 quant-factors 调试回退
+
+- `FACTOR_RESEARCH_UNIVERSE_MAX_SYMBOLS=<int>`
+  - research 默认流动性优先分层计算（默认 `1800`），用于控制全A计算时延
+
+- `FACTOR_RESEARCH_PIPELINE_TIMEOUT_SECONDS=<int>`
+  - research 单次执行超时阈值（默认 `180` 秒），超时会返回明确错误而不是长期 running
+
+独立 worker 启动：
 
 ```bash
 cd /home/zanbo/zanbotest
-bash scripts/setup_quantaalpha_runtime.sh
+. /home/zanbo/zanbotest/runtime_env.sh
+python3 /home/zanbo/zanbotest/jobs/run_quantaalpha_worker.py
 ```
 
-`runtime_env.sh` 会自动优先使用 `runtime/quantaalpha_venv/bin/python` 作为 `QUANTAALPHA_PYTHON_BIN`。  
-可手工自检：
+健康检查：
 
 ```bash
-. /home/zanbo/zanbotest/runtime_env.sh
-"$QUANTAALPHA_PYTHON_BIN" -c "import dotenv; import quantaalpha; print('ok')"
+curl -s http://127.0.0.1:8002/api/quant-factors/health
 ```
+
+### 投研决策板（宏观-行业-个股闭环）
+
+- 前端页面：`/research/decision`
+- 前端页面：`/research/trade-plan`
+- 核心接口：
+  - `GET /api/decision/board`
+  - `GET /api/decision/stock`
+  - `GET /api/decision/plan`
+  - `GET /api/decision/strategies`
+  - `GET /api/decision/strategy-runs`
+  - `GET /api/decision/history`
+  - `GET /api/decision/actions`
+  - `GET /api/decision/kill-switch`
+  - `POST /api/decision/strategy-runs/run`
+  - `POST /api/decision/kill-switch`
+  - `POST /api/decision/actions`
+  - `POST /api/decision/snapshot/run`
+- 目标：
+  - 把股票综合评分、交易计划、验证结果和人工开关统一到同一决策板里
+  - 把“每日交易计划书”独立出来，方便直接阅读今日执行清单、日内分段和审批状态
+  - 把“策略实验台”独立出来，支持策略批次生成、历史版本切换、LLM 辅助可行性评分和候选复盘
+  - 把人工确认、拒绝、暂缓等操作留痕，并在计划书页里展示审批流，便于复盘和追踪
+  - 股票详情页可以直接引用单票决策解释，辅助“为什么能买它”的展示
+- 定时任务：
+  - `decision_daily_snapshot`：每日生成决策快照，用于回看和复盘
+
+### AI 检索协议（统一口径）
+
+- 标准路径：`/api/ai-retrieval/*`（连字符）
+- 兼容路径：`/api/ai_retrieval/*`（下划线，仅后端临时兼容）
+- 前端已统一使用连字符路径；下划线路径进入退役观察期。
 
 ## SQLite 退役
 

@@ -114,6 +114,29 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
+    if parsed.path == "/api/signals/graph":
+        params = parse_qs(parsed.query)
+        center_type = params.get("center_type", ["theme"])[0]
+        center_key = params.get("center_key", [""])[0] or params.get("keyword", [""])[0]
+        try:
+            depth = int(params.get("depth", ["2"])[0])
+            limit = int(params.get("limit", ["12"])[0])
+        except ValueError:
+            handler._send_json({"error": "depth/limit 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_signal_chain_graph"](
+                center_type=center_type,
+                center_key=center_key,
+                depth=depth,
+                limit=limit,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"error": f"图谱查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
     if parsed.path == "/api/investment-signals/timeline":
         params = parse_qs(parsed.query)
         signal_key = params.get("signal_key", [""])[0]

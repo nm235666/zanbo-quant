@@ -46,9 +46,29 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="国内新闻采集评分映射",
         category="news",
         schedule_expr="*/2 * * * *",
-        description="抓取新浪国内财经新闻并快速入库；评分与映射由独立任务补做",
+        description="抓取国内财经新闻并在主链路入即评，降低未评分积压",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "cn_news_pipeline"),
+        ),
+    ),
+    JobDefinition(
+        job_key="cn_news_score_refresh",
+        name="国内新闻评分补做",
+        category="news",
+        schedule_expr="*/2 * * * *",
+        description="国内新闻专用评分补做（cn_sina_7x24 / cn_eastmoney_fastnews）",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "cn_news_score_refresh"),
+        ),
+    ),
+    JobDefinition(
+        job_key="intl_news_score_refresh",
+        name="国际新闻评分补做",
+        category="news",
+        schedule_expr="*/5 * * * *",
+        description="国际新闻专用评分补做，避免与国内评分队列互相阻塞",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "intl_news_score_refresh"),
         ),
     ),
     JobDefinition(
@@ -66,7 +86,7 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         name="新闻情绪刷新",
         category="news",
         schedule_expr="3-59/5 * * * *",
-        description="小批次高频补做国际与国内新闻统一情绪标签",
+        description="统一补做新闻情绪标签（评分与情绪分离调度）",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_news_job.py"), "--job-key", "news_sentiment_refresh"),
         ),
@@ -236,6 +256,16 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         description="A股回测旁路任务",
         commands=(
             py_cmd(str(ROOT_DIR / "jobs" / "run_quantaalpha_job.py"), "--job-key", "quantaalpha_backtest_daily"),
+        ),
+    ),
+    JobDefinition(
+        job_key="decision_daily_snapshot",
+        name="投研决策快照",
+        category="research",
+        schedule_expr="15 1 * * 1-5",
+        description="生成宏观-行业-个股-计划书的每日决策快照",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_decision_job.py"), "--job-key", "decision_daily_snapshot"),
         ),
     ),
     JobDefinition(

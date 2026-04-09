@@ -60,6 +60,7 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { to: '/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced' },
       { to: '/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced' },
+      { to: '/signals/graph', label: '产业链图谱', desc: '主题、行业、股票关系浏览', permission: 'signals_advanced' },
       { to: '/signals/audit', label: '信号质量审计', desc: '误映射、弱信号与质量问题', permission: 'signals_advanced' },
       { to: '/signals/quality-config', label: '信号质量配置', desc: '规则参数与映射黑名单', permission: 'signals_advanced' },
       { to: '/signals/state-timeline', label: '状态时间线', desc: '状态机迁移与市场预期层', permission: 'signals_advanced' },
@@ -73,6 +74,8 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势', permission: 'macro_advanced' },
       { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台', permission: 'trend_analyze' },
       { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表', permission: 'research_advanced' },
+      { to: '/research/decision', label: '决策看板', desc: '宏观-行业-个股评分与交易计划', permission: 'research_advanced' },
+      { to: '/research/trade-plan', label: '交易计划书', desc: '每日交易计划、仓位与执行清单', permission: 'research_advanced' },
       { to: '/research/quant-factors', label: '因子挖掘', desc: 'QuantaAlpha 旁路因子挖掘与回测', permission: 'research_advanced' },
       { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台', permission: 'multi_role_analyze' },
     ],

@@ -5,15 +5,12 @@
     </a>
     <div class="mx-auto flex min-h-screen max-w-[1600px] gap-4 px-3 py-3 md:px-4">
       <aside :class="sidebarClasses">
-        <div class="relative overflow-hidden rounded-[30px] border border-white/12 bg-[linear-gradient(180deg,#0d1720_0%,#12384a_58%,#0c6977_100%)] p-4 text-white shadow-2xl shadow-[rgba(10,32,44,0.22)]">
-          <div class="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.34)_50%,transparent_100%)]" />
-          <div class="absolute -left-10 top-20 h-44 w-44 rounded-full bg-[rgba(255,255,255,0.08)] blur-3xl" />
-          <div class="absolute bottom-2 right-2 h-40 w-40 rounded-full bg-[rgba(214,134,72,0.18)] blur-3xl" />
-          <div class="absolute inset-y-0 right-0 w-px bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.16)_50%,transparent_100%)]" />
+        <div class="relative overflow-hidden rounded-[var(--radius-lg)] border border-white/10 bg-[#0f172a] p-4 text-white shadow-[var(--shadow-float)]">
+          <div class="absolute inset-y-0 right-0 w-px bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.14)_50%,transparent_100%)]" />
           <div class="relative mb-5">
-            <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/82">Zanbo Quant</div>
+            <div class="inline-flex rounded-full border border-white/16 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/80">Zanbo Quant</div>
             <div class="mt-3 text-xl font-extrabold">研究终端</div>
-            <div class="mt-2 text-sm leading-6 text-white/72">统一股票、新闻、信号</div>
+            <div class="mt-2 text-sm leading-6 text-white/66">统一股票、新闻、信号</div>
           </div>
           <nav class="relative space-y-5">
             <div v-for="group in navGroups" :key="group.title" class="space-y-2">
@@ -22,8 +19,8 @@
                 v-for="item in group.items"
                 :key="item.to"
                 :to="item.to"
-                class="block rounded-[22px] border px-3 py-3 text-sm transition"
-                :class="isNavActive(item.to) ? 'border-white/14 bg-white/18 text-white shadow-lg ring-1 ring-white/18 backdrop-blur-sm' : 'border-white/8 bg-white/[0.05] text-white/84 hover:border-white/14 hover:bg-white/10 hover:text-white'"
+                class="block rounded-[var(--radius-md)] border-l-2 border-transparent px-3 py-3 text-sm transition"
+                :class="isNavActive(item.to) ? 'border-l-cyan-300 bg-white/14 text-white' : 'bg-white/[0.03] text-white/82 hover:bg-white/10 hover:text-white'"
               >
                 <div class="font-semibold">{{ item.label }}</div>
                 <div class="mt-1 text-xs text-white/55">{{ item.desc }}</div>
@@ -34,12 +31,12 @@
       </aside>
 
       <div class="min-w-0 flex-1">
-        <header class="mb-4 rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.72)_100%)] px-4 py-4 shadow-[var(--shadow)] backdrop-blur-xl">
+        <header class="mb-4 rounded-[var(--radius-lg)] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(248,251,252,0.9)_100%)] px-4 py-4 shadow-[var(--shadow-card)]">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div class="mb-3 flex items-center gap-2 xl:hidden">
                 <button
-                  class="rounded-[18px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-2 text-sm font-semibold text-white"
+                  class="rounded-[var(--radius-md)] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-2 text-sm font-semibold text-white"
                   :aria-expanded="ui.mobileNavOpen ? 'true' : 'false'"
                   aria-controls="mobile-app-nav"
                   aria-label="打开导航菜单"
@@ -47,7 +44,7 @@
                 >
                   {{ ui.mobileNavOpen ? '关闭菜单' : '导航菜单' }}
                 </button>
-                <div class="rounded-[18px] border border-[var(--line)] bg-white/80 px-3 py-2 text-xs text-[var(--muted)]">
+                <div class="rounded-[var(--radius-md)] border border-[var(--line)] bg-white/[0.88] px-3 py-2 text-xs text-[var(--muted)]">
                   <div class="font-semibold text-[var(--ink)]">最近事件</div>
                   <div class="mt-1 max-w-[180px] truncate">{{ realtime.lastEvent || '暂无' }}</div>
                 </div>
@@ -57,23 +54,23 @@
               <div class="mt-1 text-sm text-[var(--muted)]">{{ subtitle }}</div>
             </div>
             <div class="flex flex-wrap items-center gap-3">
-              <div class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)]">
+              <div class="rounded-[var(--radius-md)] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(245,249,251,0.9)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)]">
                 <div class="text-xs uppercase tracking-[0.13em] text-[var(--muted)]">实时连接</div>
                 <div class="mt-1 flex items-center gap-2 font-semibold">
                   <span :class="['inline-block size-2.5 rounded-full', realtime.connected ? 'bg-emerald-500' : 'bg-amber-500']" />
                   {{ realtime.connected ? '在线' : '重连中' }}
                 </div>
               </div>
-              <div class="hidden rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92)_0%,rgba(238,244,247,0.88)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)] md:block">
+              <div class="hidden rounded-[var(--radius-md)] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(245,249,251,0.9)_100%)] px-3 py-2 text-sm shadow-[var(--shadow-soft)] md:block">
                 <div class="text-xs uppercase tracking-[0.13em] text-[var(--muted)]">最近事件</div>
                 <div class="mt-1 max-w-[300px] truncate font-semibold">{{ realtime.lastEvent || '暂无' }}</div>
               </div>
-              <button class="hidden rounded-[20px] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white xl:block" @click="ui.toggleSidebar()">
+              <button class="hidden rounded-[var(--radius-md)] bg-[linear-gradient(135deg,var(--brand)_0%,var(--brand-ink)_100%)] px-4 py-3 text-sm font-semibold text-white xl:block" @click="ui.toggleSidebar()">
                 {{ ui.sidebarOpen ? '收起导航' : '展开导航' }}
               </button>
               <button
                 v-if="hasAdminToken"
-                class="rounded-[20px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]"
+                class="rounded-[var(--radius-md)] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]"
                 @click="logout"
               >
                 退出登录
@@ -96,7 +93,7 @@
         <button class="absolute inset-0 bg-[rgba(8,17,26,0.52)]" aria-label="关闭导航菜单" @click="ui.closeMobileNav()" />
         <aside
           id="mobile-app-nav"
-          class="absolute inset-y-0 left-0 w-[min(88vw,340px)] overflow-y-auto border-r border-white/12 bg-[linear-gradient(180deg,#0d1720_0%,#12384a_58%,#0c6977_100%)] p-4 text-white shadow-2xl"
+          class="absolute inset-y-0 left-0 w-[min(88vw,340px)] overflow-y-auto border-r border-white/12 bg-[#0f172a] p-4 text-white shadow-[var(--shadow-float)]"
           role="dialog"
           aria-modal="true"
           aria-label="主导航"
@@ -115,8 +112,8 @@
                 v-for="item in group.items"
                 :key="`mobile-${item.to}`"
                 :to="item.to"
-                class="block rounded-[22px] border px-3 py-3 text-sm transition"
-                :class="isNavActive(item.to) ? 'border-white/14 bg-white/18 text-white shadow-lg ring-1 ring-white/18 backdrop-blur-sm' : 'border-white/8 bg-white/[0.05] text-white/84 hover:border-white/14 hover:bg-white/10 hover:text-white'"
+                class="block rounded-[var(--radius-md)] border-l-2 border-transparent px-3 py-3 text-sm transition"
+                :class="isNavActive(item.to) ? 'border-l-cyan-300 bg-white/14 text-white' : 'bg-white/[0.03] text-white/84 hover:bg-white/10 hover:text-white'"
                 @click="ui.closeMobileNav()"
               >
                 <div class="font-semibold">{{ item.label }}</div>
