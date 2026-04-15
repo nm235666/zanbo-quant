@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-08",
+  "version": "2026-04-09",
   "source": "repo_default",
   "groups": [
     {
@@ -144,15 +144,15 @@
           "permission": "research_advanced"
         },
         {
-          "to": "/research/decision",
-          "label": "决策看板",
-          "desc": "宏观-行业-个股评分与交易计划",
+          "to": "/research/scoreboard",
+          "label": "评分总览",
+          "desc": "宏观-行业-个股评分与自动短名单",
           "permission": "research_advanced"
         },
         {
-          "to": "/research/trade-plan",
-          "label": "交易计划书",
-          "desc": "每日交易计划、仓位与执行清单",
+          "to": "/research/decision",
+          "label": "决策看板",
+          "desc": "宏观-行业-个股评分与执行参考",
           "permission": "research_advanced"
         },
         {

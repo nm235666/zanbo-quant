@@ -1,25 +1,70 @@
 <template>
   <AppShell title="主题热点引擎" subtitle="主题热度、方向、预期、股票映射和状态机时间线统一收束。">
     <div class="space-y-4">
+      <div class="page-hero-grid">
+        <div class="page-hero-card">
+          <div class="page-insight-label">Theme Radar</div>
+          <div class="page-hero-title">先判断主题值不值得继续追，再下钻证据和映射股票。</div>
+          <div class="page-hero-copy">
+            主题页更适合做“方向确认”和“热度筛查”。先用状态、热度和方向缩小范围，再打开单个主题核对证据链、预期层和股票映射。
+          </div>
+          <div class="page-action-cluster">
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+              {{ isFetching ? '查询中...' : '刷新主题池' }}
+            </button>
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/signals/graph">
+              打开产业链图谱
+            </RouterLink>
+          </div>
+        </div>
+        <div class="page-insight-list">
+          <div class="page-insight-item">
+            <div class="page-insight-label">当前观察重点</div>
+            <div class="page-insight-value">{{ filters.keyword || filters.theme_group || '全主题扫描' }}</div>
+            <div class="page-insight-note">建议优先关注高热度且状态机已进入明确信号阶段的主题。</div>
+          </div>
+          <div class="page-insight-item">
+            <div class="page-insight-label">研究动作</div>
+            <div class="page-insight-value">{{ result?.items?.length ? '展开主题详情' : '放宽筛选' }}</div>
+            <div class="page-insight-note">命中 {{ result?.items?.length || 0 }} 个主题；点击卡片可直接进入证据链和股票映射。</div>
+          </div>
+        </div>
+      </div>
+
       <PageSection title="主题筛选" subtitle="先按热度和状态筛，再下钻到单个主题。">
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
-          <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="主题关键词" />
-          <select v-model="filters.theme_group" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部分组</option>
-            <option v-for="item in groupOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model="filters.direction" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部方向</option>
-            <option v-for="item in directionOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model="filters.heat_level" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部热度</option>
-            <option v-for="item in heatOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
-          <select v-model="filters.state" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-            <option value="">全部状态</option>
-            <option v-for="item in stateOptions" :key="item" :value="item">{{ item }}</option>
-          </select>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            主题关键词
+            <input v-model="filters.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="主题关键词" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            分组
+            <select v-model="filters.theme_group" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部分组</option>
+              <option v-for="item in groupOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            方向
+            <select v-model="filters.direction" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部方向</option>
+              <option v-for="item in directionOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            热度
+            <select v-model="filters.heat_level" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部热度</option>
+              <option v-for="item in heatOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            状态机
+            <select v-model="filters.state" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="">全部状态</option>
+              <option v-for="item in stateOptions" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </label>
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
             {{ isFetching ? '查询中...' : '刷新' }}
           </button>
@@ -34,7 +79,15 @@
       </div>
 
       <PageSection title="主题结果" subtitle="优先用结果列表定位重点，再展开单个主题详情。">
-        <div class="space-y-3">
+        <div class="table-lead">
+          <div class="table-lead-copy">先看方向、热度和当前状态是否一致，再决定是否进入详情。状态明确、证据新鲜、股票映射清楚的主题优先级更高。</div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <span class="metric-chip">分组 {{ filters.theme_group || '全部' }}</span>
+            <span class="metric-chip">方向 {{ filters.direction || '全部' }}</span>
+            <span class="metric-chip">热度 {{ filters.heat_level || '全部' }}</span>
+          </div>
+        </div>
+        <div class="info-card-grid">
           <InfoCard
             v-for="item in result?.items || []"
             :key="item.theme_name"
@@ -133,7 +186,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'

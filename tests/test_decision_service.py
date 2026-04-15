@@ -60,6 +60,47 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             source TEXT,
             update_time TEXT
         );
+        CREATE TABLE stock_news_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_code TEXT,
+            pub_time TEXT,
+            title TEXT,
+            summary TEXT,
+            link TEXT,
+            llm_finance_importance TEXT,
+            llm_summary TEXT
+        );
+        CREATE TABLE chatroom_stock_candidate_pool (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_name TEXT,
+            candidate_type TEXT,
+            bullish_room_count INTEGER,
+            bearish_room_count INTEGER,
+            net_score REAL,
+            dominant_bias TEXT,
+            mention_count INTEGER,
+            room_count INTEGER,
+            latest_analysis_date TEXT,
+            ts_code TEXT,
+            sample_reasons_json TEXT
+        );
+        CREATE TABLE investment_signal_tracker_7d (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_key TEXT,
+            signal_type TEXT,
+            subject_name TEXT,
+            ts_code TEXT,
+            direction TEXT,
+            signal_strength REAL,
+            confidence REAL,
+            evidence_count INTEGER,
+            news_count INTEGER,
+            stock_news_count INTEGER,
+            chatroom_count INTEGER,
+            signal_status TEXT,
+            latest_signal_date TEXT,
+            source_summary_json TEXT
+        );
         """
     )
     conn.commit()
@@ -121,6 +162,53 @@ class DecisionServiceTest(unittest.TestCase):
                 self.assertEqual(board["summary"]["top_score"], 91.5)
                 self.assertEqual(board["shortlist"][0]["ts_code"], "000001.SZ")
                 self.assertEqual(board["trade_plan"]["mode"], "aggressive")
+
+                conn = sqlite3.connect(db_path)
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO stock_news_items (ts_code, pub_time, title, summary, link, llm_finance_importance, llm_summary)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        ("000001.SZ", "2026-04-08 11:00:00", "平安银行获资金关注", "news", "https://example.com/news", "高", "资金面改善"),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO chatroom_stock_candidate_pool (
+                            candidate_name, candidate_type, bullish_room_count, bearish_room_count, net_score,
+                            dominant_bias, mention_count, room_count, latest_analysis_date, ts_code, sample_reasons_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        ("平安银行", "股票", 3, 0, 8.5, "看多", 5, 3, "2026-04-08", "000001.SZ", "[]"),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO investment_signal_tracker_7d (
+                            signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                            evidence_count, news_count, stock_news_count, chatroom_count, signal_status,
+                            latest_signal_date, source_summary_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "stock:000001.SZ",
+                            "stock",
+                            "平安银行",
+                            "000001.SZ",
+                            "看多",
+                            85.0,
+                            78.0,
+                            4,
+                            2,
+                            1,
+                            1,
+                            "活跃",
+                            "2026-04-08",
+                            json.dumps({"stock_news": 1, "chatroom": 1}, ensure_ascii=False),
+                        ),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
 
                 plan = decision_service.query_decision_trade_plan(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=5)
                 self.assertEqual(plan["mode"], "aggressive")
@@ -213,6 +301,16 @@ class DecisionServiceTest(unittest.TestCase):
                 plan_with_action = decision_service.query_decision_trade_plan(sqlite3_module=sqlite3, db_path=db_path, page=1, page_size=5, ts_code="000001.SZ")
                 self.assertEqual(plan_with_action["approval_flow"]["state"], "approved")
                 self.assertGreaterEqual(len(plan_with_action["approval_flow"]["recent_actions"]), 1)
+
+                scoreboard = decision_service.query_decision_scoreboard(sqlite3_module=sqlite3, db_path=db_path, page_size=5)
+                self.assertEqual(scoreboard["macro_regime"]["mode"], "aggressive")
+                self.assertGreaterEqual(len(scoreboard["stock_shortlist"]), 1)
+                packet = scoreboard["reason_packets"]["000001.SZ"]
+                self.assertEqual(packet["score"]["total_score"], 91.5)
+                self.assertEqual(packet["news"]["count"], 1)
+                self.assertEqual(packet["signals"]["count"], 1)
+                self.assertEqual(packet["candidate_pool"]["dominant_bias"], "看多")
+                self.assertEqual(packet["status"], "ok")
 
     def test_scheduled_job_uses_cn_date(self):
         db_path = self._mk_db()

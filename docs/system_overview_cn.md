@@ -1,6 +1,6 @@
 # 系统全景总览
 
-- 更新时间：`2026-04-08 UTC`
+- 更新时间：`2026-04-10 UTC`
 - 数据库：`PostgreSQL 主库`
 - 文档定位：这是一份“项目全景图”，重点回答“我们现在有什么、这些数据怎么流转、系统每天自动在做什么”。
 
@@ -94,12 +94,14 @@
 - 投研决策板
   - 宏观-行业-个股统一评分
   - 候选短名单
-  - 交易计划与仓位建议
+  - 执行提示与风险验证
   - 验证结果与人工 Kill Switch
   - 人工确认动作留痕
-- 每日交易计划书
-  - 独立计划页展示执行清单、重点行业、重点个股和风险说明
-  - 内嵌版本化策略实验台，支持策略批次生成、历史版本切换和 LLM 辅助可行性评分
+- 评分总览
+  - 宏观评分卡
+  - 行业评分榜
+  - 自动短名单
+  - 入选理由包（评分 / 新闻 / 信号 / 候选池）
 - 产业链图谱
   - 主题 / 行业 / 股票关系浏览
   - 支持中心切换、节点下钻和关系筛选
@@ -171,7 +173,7 @@
 | --- | --- |
 | `/login` | 登录、注册、重置密码入口。 |
 | `/upgrade` | 权限不足时的升级/引导页。 |
-| `/dashboard` | 首页总控台与系统入口。 |
+| `/dashboard` | Admin 轻量首页，聚合研究优先队列、热点对象、关键健康摘要与系统页面快捷入口。 |
 | `/stocks/list` | 股票列表查询。 |
 | `/stocks/scores` | 股票综合评分列表。 |
 | `/stocks/detail/:tsCode?` | 单只股票详情页。 |
@@ -181,8 +183,8 @@
 | `/intelligence/cn-news` | 国内财经资讯。 |
 | `/intelligence/daily-summaries` | 新闻日报总结。 |
 | `/research/reports` | 标准投研报告查询。 |
-| `/research/decision` | 投研决策板，聚合评分、短名单、交易计划、验证和开关。 |
-| `/research/trade-plan` | 每日交易计划书，聚焦执行清单、仓位、日内执行、审批状态和版本化策略实验台。 |
+| `/research/scoreboard` | 评分总览，聚合宏观模式、行业评分、自动短名单和入选理由。 |
+| `/research/decision` | 投研决策板，聚合评分、短名单、执行提示、验证和开关。 |
 | `/research/quant-factors` | 自研双引擎 AI 因子挖掘与回测工作台（business/research，A 股日频）。 |
 | `/research/trend` | LLM 股票走势分析。 |
 | `/research/multi-role` | LLM 多角色公司分析。 |
@@ -252,20 +254,21 @@
 
 1. 复用 `stock_scores_daily`、股票详情和验证快照等现有数据
 2. 聚合宏观模式、行业排序和个股短名单
-3. 生成交易计划与仓位建议
+3. 生成执行提示与风险说明
 4. 读取 / 写入决策快照与 Kill Switch 状态
 5. 记录人工确认、拒绝、暂缓等动作留痕
 6. 在前端 `/research/decision` 和 `/stocks/detail/:tsCode?` 中展示可解释决策结果
 7. 作为后续策略验证、淘汰和人工确认的统一入口
 
-### 4.6 每日交易计划书
+### 4.7 页面 smoke 线
 
-1. 复用决策板数据，提炼成更适合日常阅读的计划页
-2. 展示今日模式、仓位、执行清单、重点行业和重点个股
-3. 保留计划说明、风险提示、验证层状态和策略候选，便于次日复盘
-4. 作为决策板之外的第二入口，降低阅读成本
+1. 保留 `tests/test_frontend_api_smoke.py` 与 `run_minimal_regression.sh` 做静态/接口回归
+2. 新增 `apps/web/tests/e2e/smoke.spec.ts` 做浏览器级主流程 smoke
+3. 覆盖登录、默认落点、升级页权限展示、评分总览和关键研究页首屏渲染
+4. 默认通过 `cd apps/web && npm run smoke:e2e` 运行，目标地址由 `PLAYWRIGHT_BASE_URL` 指定
+5. 分层 smoke：`smoke:e2e:core`（主链路）/ `smoke:e2e:write-boundary`（写操作与边界）/ `smoke:e2e:all`（全量）
 
-### 4.7 LLM 分析线（走势 + 多角色）
+### 4.6 LLM 分析线（走势 + 多角色）
 
 1. 前端在 `/research/trend` 或 `/research/multi-role` 发起分析
 2. 后端创建异步任务并轮询状态

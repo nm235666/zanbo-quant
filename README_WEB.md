@@ -9,9 +9,17 @@
 - `init_postgres_schema.py`：仅初始化 PostgreSQL 表结构
 - `db_compat.py`：SQLite/PostgreSQL 兼容访问层
 
+## 文档导航（主链）
+
+- 系统全景：`docs/system_overview_cn.md`
+- 调度矩阵：`docs/scheduler_matrix_2026-04-06.md`
+- 命令参考：`docs/command_line_reference.md`
+- 数据字典：`docs/database_dictionary.md`
+- 归档目录：`docs/archive/`（阶段性报告、历史分析、过期计划）
+
 ## 启动方式
 
-1. 一键启动（推荐，默认新版前端）：
+1. 一键启动（推荐，统一入口同源）：
 
 ```bash
 cd /home/zanbo/zanbotest
@@ -31,7 +39,7 @@ cd /home/zanbo/zanbotest
 - `REDIS_URL=redis://127.0.0.1:6379/0`
 - `TUSHARE_TOKEN=<你的 Tushare token>`
 - `BACKEND_ADMIN_TOKEN=<受保护接口令牌>`
-- `BACKEND_ALLOWED_ORIGINS=http://127.0.0.1:8077,http://localhost:8077,...`
+- `BACKEND_ALLOWED_ORIGINS=http://127.0.0.1:8002,http://localhost:8002,...`
 
 说明：
 
@@ -41,6 +49,7 @@ cd /home/zanbo/zanbotest
 - 任务触发、立即抓取、评分、日报生成、配置保存等受保护接口现在要求 `BACKEND_ADMIN_TOKEN`
 - 新版前端会自动从 `localStorage['zanbo_admin_token']` / `sessionStorage['zanbo_admin_token']` / `VITE_ADMIN_API_TOKEN` 读取令牌
 - `apps/web/` 是当前唯一主力前端；旧版 `frontend/` 已退场，不再作为开发或部署目标
+- 生产/联调入口由 `backend/server.py` 同源托管前端静态资源与 `/api`，推荐通过 `./start_all.sh` 或 `./start_frontend.sh` 启动
 
 ### 多角色分析 v3（当前主链路，v4 引擎）
 
@@ -149,12 +158,13 @@ curl -s http://127.0.0.1:8002/api/quant-factors/health
 
 ### 投研决策板（宏观-行业-个股闭环）
 
+- 前端页面：
+  - `/research/scoreboard`：评分总览，聚合宏观模式、行业评分榜、自动短名单和入选理由
 - 前端页面：`/research/decision`
-- 前端页面：`/research/trade-plan`
 - 核心接口：
+  - `GET /api/decision/scores`
   - `GET /api/decision/board`
   - `GET /api/decision/stock`
-  - `GET /api/decision/plan`
   - `GET /api/decision/strategies`
   - `GET /api/decision/strategy-runs`
   - `GET /api/decision/history`
@@ -165,10 +175,10 @@ curl -s http://127.0.0.1:8002/api/quant-factors/health
   - `POST /api/decision/actions`
   - `POST /api/decision/snapshot/run`
 - 目标：
-  - 把股票综合评分、交易计划、验证结果和人工开关统一到同一决策板里
-  - 把“每日交易计划书”独立出来，方便直接阅读今日执行清单、日内分段和审批状态
+  - 把股票综合评分、验证结果和人工开关统一到同一决策板里
+  - 把评分总览页作为研究主入口，先看宏观/行业/短名单，再决定是否进入执行视角
   - 把“策略实验台”独立出来，支持策略批次生成、历史版本切换、LLM 辅助可行性评分和候选复盘
-  - 把人工确认、拒绝、暂缓等操作留痕，并在计划书页里展示审批流，便于复盘和追踪
+  - 把人工确认、拒绝、暂缓等操作留痕，便于复盘和追踪
   - 股票详情页可以直接引用单票决策解释，辅助“为什么能买它”的展示
 - 定时任务：
   - `decision_daily_snapshot`：每日生成决策快照，用于回看和复盘
@@ -199,7 +209,7 @@ bash /home/zanbo/zanbotest/retire_sqlite.sh --execute
 - 运行链路以 PostgreSQL + Redis 为准；若主目录仍有 SQLite 文件，不改变这一事实
 - 退役说明会写入 [SQLITE_RETIRED.md](/home/zanbo/zanbotest/SQLITE_RETIRED.md)
 
-3. 新开一个终端，单独启动前端（默认新版构建产物）：
+3. 新开一个终端，单独启动前端/联调入口（同源）：
 
 ```bash
 cd /home/zanbo/zanbotest
@@ -213,6 +223,34 @@ cd /home/zanbo/zanbotest/apps/web
 npm run dev
 ```
 
+## 验证命令
+
+- 静态 / 接口 smoke：
+
+```bash
+cd /home/zanbo/zanbotest
+python3 -m unittest tests/test_frontend_api_smoke.py
+bash run_minimal_regression.sh
+```
+
+- 浏览器级 smoke（默认打到 `http://127.0.0.1:8002`）：
+
+```bash
+cd /home/zanbo/zanbotest/apps/web
+npm run smoke:e2e
+# 分层执行：
+npm run smoke:e2e:core            # 主链路
+npm run smoke:e2e:write-boundary  # 写操作 + 边界输入
+npm run smoke:e2e:all             # 全量
+```
+
+可选环境变量：
+
+- `PLAYWRIGHT_BASE_URL`
+- `SMOKE_ADMIN_USERNAME` / `SMOKE_ADMIN_PASSWORD`
+- `SMOKE_PRO_USERNAME` / `SMOKE_PRO_PASSWORD`
+- `SMOKE_LIMITED_USERNAME` / `SMOKE_LIMITED_PASSWORD`
+
 ## 局域网访问
 
 在服务机器上查看本机 IP（示例）：
@@ -223,9 +261,10 @@ hostname -I
 
 假设 IP 是 `192.168.1.23`，则局域网内其他设备访问：
 
-- 前端页面：`http://192.168.1.23:8080`
-- 后端健康检查：`http://192.168.1.23:8002/api/health`
+- 统一入口：`http://192.168.1.23:8002/`
+- API 健康检查：`http://192.168.1.23:8002/api/health`
 - 后端查询接口：`http://192.168.1.23:8002/api/stocks?page=1&page_size=20`
+- 实时 WS：`ws://192.168.1.23:8010/ws/realtime`
 
 ## 数据迁移
 

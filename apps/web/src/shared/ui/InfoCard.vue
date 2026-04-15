@@ -2,19 +2,19 @@
   <component
     :is="isInteractive ? 'button' : 'div'"
     v-bind="boundAttrs"
-    class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(247,251,253,0.9)_100%)] p-4 shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-card)]"
+    class="relative w-full overflow-hidden rounded-[var(--radius-card)] border border-[var(--line)] bg-white/96 p-4 text-left shadow-[var(--shadow-soft)] transition-all duration-200 hover:shadow-[var(--shadow-card)] active:scale-[0.99]"
+    :class="{ 'cursor-pointer': isInteractive, 'hover:-translate-y-0.5': isInteractive }"
   >
-    <div class="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent_0%,rgba(15,97,122,0.14)_40%,transparent_100%)]" />
     <div class="flex items-start justify-between gap-3">
-      <div>
-        <div class="text-base font-bold text-[var(--ink)]">
+      <div class="min-w-0 flex-1">
+        <div class="text-[15px] font-bold text-[var(--ink)] truncate">
           <slot name="title">{{ title }}</slot>
         </div>
-        <div v-if="meta" class="mt-1 text-sm text-[var(--muted)]">{{ meta }}</div>
+        <div v-if="meta" class="mt-1 text-[12px] text-[var(--muted)] truncate">{{ meta }}</div>
       </div>
       <slot name="badge" />
     </div>
-    <div v-if="description" class="mt-3 text-sm leading-7 text-[var(--muted)]">{{ description }}</div>
+    <div v-if="description" class="mt-2.5 text-[13px] leading-6 text-[var(--muted)] line-clamp-3">{{ description }}</div>
     <div v-if="$slots.default" class="mt-3"><slot /></div>
   </component>
 </template>
@@ -26,16 +26,22 @@ defineOptions({
   inheritAttrs: false,
 })
 
-defineProps<{ title: string; meta?: string; description?: string }>()
+interface Props {
+  title: string
+  meta?: string
+  description?: string
+}
+
+defineProps<Props>()
 
 const attrs = useAttrs()
 const isInteractive = computed(() => Boolean(attrs.onClick))
+
 const boundAttrs = computed(() => {
   if (!isInteractive.value) return attrs
   return {
     ...attrs,
     type: 'button',
-    class: ['interactive-card', attrs.class || ''],
   }
 })
 </script>

@@ -24,7 +24,7 @@ export function useRealtimeBus() {
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.hostname || '127.0.0.1'
     return [...new Set([
-      `${scheme}://${host}:8077/ws/realtime`,
+      `${scheme}://${host}:8010/ws/realtime`,
       `${scheme}://${window.location.host}/ws/realtime`,
     ])]
   })()

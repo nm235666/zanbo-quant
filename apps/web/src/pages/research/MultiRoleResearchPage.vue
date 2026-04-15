@@ -60,6 +60,53 @@
         <div v-if="taskStatus" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.78)] px-4 py-3 text-sm text-[var(--muted)]">
           当前阶段：{{ taskStage || taskStatus }} · {{ statusSummary }}
           <span v-if="taskUpdatedAt" class="ml-2">· 最近更新 {{ taskUpdatedAt }}</span>
+          <div class="mt-3">
+            <div class="mb-1 flex items-center justify-between text-xs text-[var(--muted)]">
+              <span>任务进度</span>
+              <span>{{ taskProgressPct }}%</span>
+            </div>
+            <div class="h-2 w-full rounded-full bg-[var(--panel-soft)]">
+              <div class="h-2 rounded-full bg-[var(--brand)] transition-all duration-300" :style="{ width: `${taskProgressPct}%` }" />
+            </div>
+          </div>
+          <div v-if="stageTimeoutWarning" class="mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            当前阶段已运行 {{ stageElapsedSeconds }} 秒，超过预期阈值。系统会继续轮询，你也可以稍后重试汇总或重新发起任务。
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection v-if="chiefVerdictVisible" title="首席裁决" subtitle="Portfolio Manager 在多轮辩论后给出的明确方向判断，禁止模糊、必须表态。">
+        <div class="rounded-2xl border-2 p-5 transition-all"
+          :class="chiefVerdictBorderClass">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">方向判断</div>
+              <div class="mt-1 text-2xl font-bold" :class="chiefVerdictTextClass">{{ chiefVerdictLabel }}</div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span class="rounded-full px-3 py-1 text-sm font-semibold text-white" :class="chiefVerdictBadgeClass">
+                {{ chiefVerdictLabel }}
+              </span>
+              <span class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-sm font-semibold text-[var(--ink)]">
+                置信度 {{ chiefConfidenceLabel }}
+              </span>
+              <span class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-sm font-semibold text-[var(--ink)]">
+                {{ portfolioReview.decision || 'defer' }}
+              </span>
+            </div>
+          </div>
+          <div v-if="chiefCoreClaim" class="mt-4 rounded-xl bg-white/80 px-4 py-3 text-sm font-medium text-[var(--ink)]">
+            {{ chiefCoreClaim }}
+          </div>
+          <div v-if="chiefInvalidation" class="mt-3 flex items-start gap-2 text-sm text-[var(--muted)]">
+            <span class="mt-0.5 shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">失效条件</span>
+            <span>{{ chiefInvalidation }}</span>
+          </div>
+          <div v-if="chiefRisks.length" class="mt-3 flex flex-wrap gap-2">
+            <span v-for="risk in chiefRisks" :key="risk" class="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs text-red-700">
+              {{ risk }}
+            </span>
+          </div>
         </div>
       </PageSection>
 
@@ -200,6 +247,7 @@ import {
 import { fetchAuthStatus } from '../../services/api/auth'
 import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
 import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
+import { useUiStore } from '../../stores/ui'
 
 function looksLikeTsCode(value: string) {
   return /^[0-9A-Z]{6}\.(SZ|SH|BJ)$/i.test(value.trim())
@@ -248,8 +296,14 @@ const aggregateRetryPending = ref(false)
 const pollRetryCount = ref(0)
 const pollMaxRetries = 5
 const fullMarkdownExpanded = ref(false)
+const taskProgress = ref(0)
+const stageStartedAtMs = ref(0)
+const clockTick = ref(Date.now())
+const terminalToastKey = ref('')
 let timer = 0
 let streamController: AbortController | null = null
+let clockTimer = 0
+const ui = useUiStore()
 const taskScopeKey = computed(() => buildTaskScopeKey('multi-role-research', 'active-task'))
 const {
   restoredHint: restoredTaskHint,
@@ -287,6 +341,17 @@ const notificationMeta = computed(() => {
 })
 const pendingDecision = computed(() => taskStatus.value === 'pending_user_decision')
 const taskStatusLabel = computed(() => taskStatus.value || 'idle')
+const taskProgressPct = computed(() => {
+  const value = Number(taskProgress.value || 0)
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, Math.round(value)))
+})
+const stageElapsedSeconds = computed(() => {
+  if (!stageStartedAtMs.value || taskStatus.value !== 'running') return 0
+  const elapsedMs = Math.max(0, clockTick.value - stageStartedAtMs.value)
+  return Math.floor(elapsedMs / 1000)
+})
+const stageTimeoutWarning = computed(() => taskStatus.value === 'running' && stageElapsedSeconds.value >= 240)
 const taskStatusTone = computed(() => {
   if (pendingDecision.value) return 'warning'
   if (taskStatus.value === 'running' && taskStage.value) return 'info'
@@ -348,6 +413,56 @@ const aggregatorPanelMarkdown = computed(() => {
   return '暂无汇总正文，可先查看各角色原文。'
 })
 const aggregatorPanelHtml = computed(() => markdown.render(aggregatorPanelMarkdown.value))
+
+// 首席裁决卡
+const TERMINAL_TASK_STATUSES = ['done', 'done_with_warnings', 'approved', 'rejected', 'deferred']
+const chiefVerdictVisible = computed(() =>
+  TERMINAL_TASK_STATUSES.includes(taskStatus.value) && Boolean(portfolioReview.value?.claim || portfolioReview.value?.decision),
+)
+const chiefDirection = computed(() => {
+  const d = String(portfolioReview.value?.direction || '').trim().toLowerCase()
+  if (d === 'bullish') return 'bullish'
+  if (d === 'bearish') return 'bearish'
+  const dec = String(portfolioReview.value?.decision || '').trim().toLowerCase()
+  if (dec === 'approve') return 'bullish'
+  if (dec === 'reject') return 'bearish'
+  return 'neutral'
+})
+const chiefVerdictLabel = computed(() => {
+  if (chiefDirection.value === 'bullish') return '看多'
+  if (chiefDirection.value === 'bearish') return '看空'
+  return '中性'
+})
+const chiefVerdictBorderClass = computed(() => {
+  if (chiefDirection.value === 'bullish') return 'border-emerald-400 bg-emerald-50/60'
+  if (chiefDirection.value === 'bearish') return 'border-red-400 bg-red-50/60'
+  return 'border-[var(--line)] bg-white/60'
+})
+const chiefVerdictTextClass = computed(() => {
+  if (chiefDirection.value === 'bullish') return 'text-emerald-700'
+  if (chiefDirection.value === 'bearish') return 'text-red-700'
+  return 'text-[var(--ink)]'
+})
+const chiefVerdictBadgeClass = computed(() => {
+  if (chiefDirection.value === 'bullish') return 'bg-emerald-700'
+  if (chiefDirection.value === 'bearish') return 'bg-red-700'
+  return 'bg-stone-600'
+})
+const chiefConfidenceLabel = computed(() => {
+  const c = Number(portfolioReview.value?.confidence ?? -1)
+  if (c >= 70) return '高'
+  if (c >= 40) return '中'
+  if (c >= 0) return '低'
+  return String(portfolioReview.value?.confidence || '-')
+})
+const chiefCoreClaim = computed(() => String(portfolioReview.value?.claim || '').trim())
+const chiefInvalidation = computed(() => String(portfolioReview.value?.invalidation || '').trim())
+const chiefRisks = computed(() => {
+  const r = portfolioReview.value?.risk
+  if (Array.isArray(r)) return (r as unknown[]).map((x) => String(x).trim()).filter(Boolean).slice(0, 3)
+  return []
+})
+
 const researchDebateRounds = computed(() => Number((researchDebate.value?.rounds || []).length || 0))
 const riskDebateRounds = computed(() => Number((riskDebate.value?.rounds || []).length || 0))
 const researchDebateText = computed(() => {
@@ -400,6 +515,11 @@ function clearTimer() {
   timer = 0
 }
 
+function clearClockTimer() {
+  window.clearInterval(clockTimer)
+  clockTimer = 0
+}
+
 function pollRetryDelayMs(retryCount: number) {
   return Math.min(8000, 1000 * (2 ** Math.max(0, retryCount - 1)))
 }
@@ -429,6 +549,9 @@ function resetResultViews() {
   portfolioReview.value = {}
   taskStage.value = ''
   taskUpdatedAt.value = ''
+  taskProgress.value = 0
+  stageStartedAtMs.value = 0
+  terminalToastKey.value = ''
 }
 
 function persistCurrentTaskSnapshot(task: Record<string, any> = {}) {
@@ -454,9 +577,18 @@ function persistCurrentTaskSnapshot(task: Record<string, any> = {}) {
 }
 
 function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: string; name: string }) {
+  const prevStage = taskStage.value
+  const prevStatus = taskStatus.value
   taskStatus.value = String(task.status || '')
   taskStage.value = String(task.stage || task.status || '')
   taskUpdatedAt.value = String(task.updated_at || taskUpdatedAt.value || '')
+  taskProgress.value = Number(task.progress || taskProgress.value || 0)
+  if (taskStatus.value === 'running' && taskStage.value && (taskStage.value !== prevStage || prevStatus !== 'running')) {
+    stageStartedAtMs.value = Date.now()
+  }
+  if (taskStatus.value !== 'running') {
+    stageStartedAtMs.value = 0
+  }
   stageTimeline.value = Array.isArray(task.v3_stage_timeline) ? task.v3_stage_timeline : stageTimeline.value
   researchDebate.value = (task.v3_research_debate || {}) as Record<string, any>
   riskDebate.value = (task.v3_risk_debate || {}) as Record<string, any>
@@ -466,6 +598,7 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
   attempts.value = Array.isArray(task.attempts) ? task.attempts : attempts.value
 
   if (task.status === 'done' || task.status === 'done_with_warnings' || task.status === 'approved' || task.status === 'rejected' || task.status === 'deferred') {
+    taskProgress.value = 100
     usedModel.value = String(task.used_model || task.model || usedModel.value || '')
     fullMarkdown.value = task.analysis_markdown || task.analysis || task.result || fullMarkdown.value || '分析完成，但未返回正文。'
     roleSections.value = Array.isArray(task.role_outputs) ? task.role_outputs : (Array.isArray(task.role_sections) ? task.role_sections : roleSections.value)
@@ -479,6 +612,11 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     commonSectionsMarkdown.value = String(task.common_sections_markdown || '')
     const statusLabel = String(task.status || '').toUpperCase()
     actionMessage.value = `分析完成：${task.name || resolved?.name || resolved?.ts_code || resolvedStock.value.name || resolvedStock.value.ts_code} · ${statusLabel}${task.status === 'done_with_warnings' ? '（含降级告警）' : ''}${usedModel.value ? ` · 实际模型 ${usedModel.value}` : ''}`
+    const toastKey = `${currentJobId.value}:${task.status}`
+    if (terminalToastKey.value !== toastKey) {
+      ui.showToast(actionMessage.value, task.status === 'done_with_warnings' ? 'info' : 'success')
+      terminalToastKey.value = toastKey
+    }
     persistCurrentTaskSnapshot(task)
     return true
   }
@@ -488,8 +626,14 @@ function applyTaskSnapshot(task: Record<string, any>, resolved?: { ts_code: stri
     return true
   }
   if (task.status === 'error') {
+    taskProgress.value = 100
     actionMessage.value = `分析失败：${task.error || task.message || '未知错误'}`
     fullMarkdown.value = `分析失败：${task.error || task.message || '未知错误'}`
+    const toastKey = `${currentJobId.value}:error`
+    if (terminalToastKey.value !== toastKey) {
+      ui.showToast(actionMessage.value, 'error')
+      terminalToastKey.value = toastKey
+    }
     resetResultViews()
     persistCurrentTaskSnapshot(task)
     return true
@@ -575,7 +719,7 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
   })
 }
 
-const mutation = useMutation({
+  const mutation = useMutation({
   mutationFn: async () => {
     const raw = form.keyword.trim()
     if (!raw) throw new Error('请输入股票代码或简称')
@@ -607,7 +751,9 @@ const mutation = useMutation({
     })
     const jobId = String(payload.job_id || '')
     currentJobId.value = jobId
+    terminalToastKey.value = ''
     fullMarkdown.value = '任务已创建，正在后台生成分析...'
+    ui.showToast(`多角色任务已创建：${resolved.name || resolved.ts_code}`, 'info')
     persistCurrentTaskSnapshot({
       status: String(payload.status || 'queued'),
       stage: String(payload.stage || 'queued'),
@@ -623,6 +769,7 @@ const mutation = useMutation({
     stopLiveStream()
     clearTimer()
     actionMessage.value = `分析失败：${error.message}`
+    ui.showToast(actionMessage.value, 'error')
     fullMarkdown.value = `分析失败：${error.message}`
     resetResultViews()
     roleRuns.value = []
@@ -648,14 +795,17 @@ async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
     if (action === 'abort' || res.status === 'error') {
       actionMessage.value = `任务已终止：${res.error || '用户终止'}`
       fullMarkdown.value = `任务已终止：${res.error || '用户终止'}`
+      ui.showToast(actionMessage.value, 'error')
       persistCurrentTaskSnapshot(res as Record<string, any>)
       return
     }
     actionMessage.value = action === 'degrade' ? '正在按降级策略收口汇总...' : '正在执行补重试，请稍候...'
+    ui.showToast(actionMessage.value, 'info')
     persistCurrentTaskSnapshot(res as Record<string, any>)
     if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `决策提交失败：${error?.message || String(error)}`
+    ui.showToast(actionMessage.value, 'error')
     persistCurrentTaskSnapshot({ status: taskStatus.value || '', stage: taskStage.value || '', error: String(error?.message || error) })
   } finally {
     decisionPending.value = false
@@ -671,10 +821,12 @@ async function retryAggregate() {
     const terminal = applyTaskSnapshot(res as Record<string, any>, resolvedStock.value)
     const aggStatus = String((res.aggregator_run || {}).status || '')
     actionMessage.value = aggStatus === 'done' ? '汇总重试成功。' : '汇总重试失败，已保留角色原文。'
+    ui.showToast(actionMessage.value, aggStatus === 'done' ? 'success' : 'error')
     persistCurrentTaskSnapshot(res as Record<string, any>)
     if (!terminal && currentJobId.value) startLiveStream(currentJobId.value, resolvedStock.value)
   } catch (error: any) {
     actionMessage.value = `重试汇总失败：${error?.message || String(error)}`
+    ui.showToast(actionMessage.value, 'error')
     persistCurrentTaskSnapshot({ status: taskStatus.value || '', stage: taskStage.value || '', error: String(error?.message || error) })
   } finally {
     aggregateRetryPending.value = false
@@ -705,6 +857,10 @@ function clearCurrentTaskTracking() {
 }
 
 onMounted(async () => {
+  clearClockTimer()
+  clockTimer = window.setInterval(() => {
+    clockTick.value = Date.now()
+  }, 1000)
   const restored = restoreTaskSnapshot()
   if (!restored) return
   currentJobId.value = String(restored.jobId || '')
@@ -742,6 +898,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopLiveStream()
   clearTimer()
+  clearClockTimer()
 })
 </script>
 

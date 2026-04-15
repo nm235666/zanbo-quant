@@ -122,6 +122,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { resolveDefaultLandingPath } from '../../app/navigation'
 import {
   clearAuthStatusCache,
   fetchAuthStatus,
@@ -150,8 +151,13 @@ const message = ref('')
 const status = ref<AuthStatus | null>(null)
 
 function redirectToTarget() {
-  const target = String(route.query.redirect || '/intelligence/global-news')
-  router.replace(target.startsWith('/') ? target : '/intelligence/global-news')
+  const fallback = resolveDefaultLandingPath({
+    role: authStore.role,
+    effectivePermissions: authStore.effectivePermissions,
+    dynamicNavigationGroups: authStore.dynamicNavigationGroups,
+  })
+  const target = String(route.query.redirect || fallback)
+  router.replace(target.startsWith('/') ? target : fallback)
 }
 
 async function submit() {

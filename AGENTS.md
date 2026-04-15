@@ -33,8 +33,8 @@
 
 ### 当前最高优先级
 
-1. 第一核心目标：把前端展示业务做好。
-2. 第二核心目标：保证测试可用性。
+1. 第一核心目标：把前端展示业务功能做好。
+2. 第二核心目标：保证前后端的可用性。
 3. 其他目标（重构、抽象优化、旁路能力扩展、历史清理）只有在明确服务上述两项目标时才优先执行。
 
 执行要求：
@@ -166,6 +166,7 @@
 ### 文档新鲜度原则
 
 - `AGENTS.md` 只维护长期有效的主链路规则；动态细节应更新到对应参考文件。
+- 文档入口与生命周期统一参考 `docs/DOCS_INDEX.md`（主链 / 归档 / 提案实验分层）。
 - 凡是影响当前真实状态的改动，都必须检查并更新对应文档，例如：
   - 系统能力、页面和主链路：`docs/system_overview_cn.md`
   - 运行与部署：`README_WEB.md`
@@ -191,6 +192,15 @@
 ## 参考文件
 
 以下信息不在本文件重复维护，需以对应文件为准：
+
+### 文档入口与生命周期
+
+- `docs/DOCS_INDEX.md`
+
+用于查看：
+- 当前主链路文档清单
+- 已归档文档位置
+- 提案/实验文档边界
 
 ### 系统全景与业务能力
 
@@ -332,6 +342,7 @@
 ### 其他重要文档
 
 - `SQLITE_RETIRED.md`
+- `docs/DOCS_INDEX.md`
 - `docs/database_audit_report.md`
 - `docs/job_observability_baseline_2026-04-02.md`
 - `docs/reporting_protocol_retirement_plan_2026-04-02.md`
@@ -341,8 +352,9 @@
 如果不确定该看哪里，默认顺序是：
 
 1. 先看本文件的“主链路”
-2. 再看 `docs/system_overview_cn.md`
-3. 涉及前端时看 `apps/web/src/app/router.ts` 和 `apps/web/src/services/api/`
-4. 涉及后端时看 `backend/server.py` 和 `backend/routes/`
-5. 涉及任务时看 `job_registry.py`
-6. 涉及验证时看 `tests/`、`run_minimal_regression.sh`、`apps/web/package.json`
+2. 再看 `docs/DOCS_INDEX.md`
+3. 再看 `docs/system_overview_cn.md`
+4. 涉及前端时看 `apps/web/src/app/router.ts` 和 `apps/web/src/services/api/`
+5. 涉及后端时看 `backend/server.py` 和 `backend/routes/`
+6. 涉及任务时看 `job_registry.py`
+7. 涉及验证时看 `tests/`、`run_minimal_regression.sh`、`apps/web/package.json`

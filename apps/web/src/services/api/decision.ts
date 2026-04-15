@@ -1,7 +1,13 @@
 import { http } from '../http'
+import type { DecisionScoreboardPayload } from '../../shared/types/api'
 
 export async function fetchDecisionBoard(params: Record<string, any> = {}) {
   const { data } = await http.get('/api/decision/board', { params })
+  return data
+}
+
+export async function fetchDecisionScoreboard(params: Record<string, any> = {}) {
+  const { data } = await http.get<DecisionScoreboardPayload>('/api/decision/scores', { params })
   return data
 }
 

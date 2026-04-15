@@ -1,6 +1,8 @@
 # 项目命令行命令总表
 
-更新时间：2026-04-07
+更新时间：2026-04-10
+
+> 文档治理说明：2026-04-10 起，阶段性全量测试/分析报告统一迁移到 `docs/archive/`，本文件仅维护当前可执行命令。
 
 本文件汇总当前项目主要命令行入口，包括：
 
@@ -39,8 +41,8 @@ bash /home/zanbo/zanbotest/<script>.sh
 | `bash /home/zanbo/zanbotest/start_backend_llm2.sh` | 启动后端 `8004` |
 | `bash /home/zanbo/zanbotest/start_backend_macro.sh` | 启动后端 `8005` |
 | `bash /home/zanbo/zanbotest/start_backend_multi_role.sh` | 启动后端 `8006` |
-| `bash /home/zanbo/zanbotest/start_frontend.sh` | 启动新版前端构建产物 `8080` |
-| `python3 /home/zanbo/zanbotest/serve_spa.py --host 0.0.0.0 --port 8080 --root /home/zanbo/zanbotest/apps/web/dist` | 直接托管 SPA（含 fallback） |
+| `bash /home/zanbo/zanbotest/start_frontend.sh` | 启动新版前端构建产物与主后端同源入口 `8002` |
+| `python3 /home/zanbo/zanbotest/serve_spa.py --host 0.0.0.0 --port 8080 --root /home/zanbo/zanbotest/apps/web/dist` | 旧版静态托管入口（历史兼容，不作为正式部署推荐） |
 | `bash /home/zanbo/zanbotest/start_frontend_nextgen_dev.sh` | 启动主前端开发环境（兼容旧脚本名） |
 | `bash /home/zanbo/zanbotest/start_frontend_nextgen_preview.sh` | 启动主前端预览环境（兼容旧脚本名） |
 | `bash /home/zanbo/zanbotest/start_nginx_8077.sh` | 启动 Nginx 统一入口 `8077` |

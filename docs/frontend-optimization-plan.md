@@ -10,6 +10,11 @@
 > - 已落地主链可用性第一批：`AppShell` 小屏导航、核心页面显式标签、表格基础语义、股票详情/多角色页状态前置、价格中心/信号/群聊移动端可读方案。
 > - 已落地部分第二阶段优化：首页首屏研究优先对象强化、股票详情锚点与折叠区、新闻卡与群聊页的信息分层。
 > - 第三阶段仅部分落地：股票详情/价格中心图表 skeleton、`dashboard` 后台降频；其余轮询与轻量设计约束仍待继续推进。
+>
+> `2026-04-11` 增量进展：
+> - P0：`/research/multi-role` 增加统一任务进度条、阶段耗时与超时提示、终态与重试反馈；`/stocks/list`、`/signals/themes`、`/intelligence/stock-news`、`/stocks/prices` 筛选区完成显式标签与基础日期格式错误提示。
+> - P1：`/system/jobs-ops` 增加失败趋势摘要、排障命令快捷复制、触发动作统一 toast 反馈。
+> - P2：`/research/quant-factors`、`/research/decision-board`、`/research/scoreboard`、`/stocks/detail`、`/system/source-monitor` 统一采用前台高频/后台降频轮询策略。
 
 ## 1. 审计范围与依据
 

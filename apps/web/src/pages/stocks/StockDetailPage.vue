@@ -452,7 +452,7 @@ const { data: decision } = useQuery({
     keyword: activeKeyword.value,
   }),
   enabled: computed(() => Boolean(activeTsCode.value || activeKeyword.value)),
-  refetchInterval: 60_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
 const detailData = computed<DetailRow>(() => (detail.value ?? {}) as DetailRow)

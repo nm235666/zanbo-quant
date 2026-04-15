@@ -624,12 +624,25 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
-    if parsed.path in {"/", "/api"}:
+    if parsed.path == "/api":
         handler._send_json(
             {
                 "service": "stock-codes-api",
                 "message": "这是后端 API 服务，不是前端页面。",
-                "frontend_url": f"http://{host}:8080/",
+                "frontend_url": str(deps.get("frontend_url") or f"http://{host}:{deps['build_info']().get('port')}/"),
+                "endpoints": deps["api_endpoints_catalog"],
+            }
+        )
+        return True
+
+    if parsed.path == "/":
+        if bool(deps.get("frontend_dist_exists")):
+            return False
+        handler._send_json(
+            {
+                "service": "stock-codes-api",
+                "message": "这是后端 API 服务，不是前端页面。",
+                "frontend_url": str(deps.get("frontend_url") or f"http://{host}:{deps['build_info']().get('port')}/"),
                 "endpoints": deps["api_endpoints_catalog"],
             }
         )

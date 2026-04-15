@@ -1034,7 +1034,14 @@ def _build_manager_prompt(kind: str, payload: dict[str, Any]) -> str:
     schema = "claim,evidence,confidence,risk,actions,conflicts"
     extra = ""
     if kind == "portfolio_manager":
-        extra = "，并新增 decision 字段（approve/reject/defer）"
+        extra = (
+            "，并必须新增以下字段："
+            "direction（bullish/bearish/neutral 三选一，必须明确，禁止模糊）、"
+            "decision（approve/reject/defer）、"
+            "invalidation（失效条件，一句话：什么情况下本判断需要推翻）。"
+            "你的职责是裁决，不是平衡各方观点。"
+            "claim 字段必须是一句话的核心押注，不超过50字，禁止使用"一方面…另一方面"句式。"
+        )
     return (
         f"你是{kind}。请完成该阶段最终裁决。"
         f"只输出 JSON，字段必须包含 {schema}{extra}。\n"

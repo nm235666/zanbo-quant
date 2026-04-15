@@ -107,7 +107,11 @@ import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchSourceMonitor } from '../../services/api/dashboard'
 import { formatDateTime } from '../../shared/utils/format'
 
-const { data: monitor, error, refetch } = useQuery({ queryKey: ['source-monitor'], queryFn: fetchSourceMonitor, refetchInterval: 60_000 })
+const { data: monitor, error, refetch } = useQuery({
+  queryKey: ['source-monitor'],
+  queryFn: fetchSourceMonitor,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
+})
 
 const effectiveSummary = computed(() => {
   const sourceItems = monitor.value?.sources || []

@@ -3,15 +3,15 @@
     <div
       v-for="item in items"
       :key="`${item.label}-${item.value}`"
-      class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(238,244,247,0.86)_100%)] p-4 shadow-[var(--shadow-soft)]"
+      class="rounded-[var(--radius-md)] border border-[var(--line)] bg-white p-4 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-card)]"
     >
       <div class="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">{{ item.label }}</div>
       <div class="mt-2 text-lg font-bold text-[var(--ink)]">{{ item.value || '-' }}</div>
-      <div v-if="item.hint" class="mt-2 text-sm leading-6 text-[var(--muted)]">{{ item.hint }}</div>
+      <div v-if="item.hint" class="mt-2 text-sm leading-6 text-[var(--muted)] line-clamp-2">{{ item.hint }}</div>
     </div>
     <div
       v-if="!items.length"
-      class="rounded-[20px] border border-dashed border-[var(--line)] bg-[rgba(255,255,255,0.52)] px-4 py-8 text-center text-sm text-[var(--muted)]"
+      class="rounded-[var(--radius-md)] border border-dashed border-[var(--line)] bg-gray-50/50 px-4 py-8 text-center text-sm text-[var(--muted)]"
     >
       {{ emptyText }}
     </div>
@@ -25,11 +25,13 @@ export interface MetricGridItem {
   hint?: string
 }
 
-withDefaults(defineProps<{
+interface Props {
   items: MetricGridItem[]
   emptyText?: string
   columnsClass?: string
-}>(), {
+}
+
+withDefaults(defineProps<Props>(), {
   emptyText: '暂无数据',
   columnsClass: 'xl:grid-cols-4 md:grid-cols-2',
 })

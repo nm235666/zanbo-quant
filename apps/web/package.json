@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 4173"
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "smoke:e2e": "npm run smoke:e2e:core",
+    "smoke:e2e:core": "playwright test tests/e2e/auth.spec.ts tests/e2e/navigation.spec.ts tests/e2e/stocks.spec.ts tests/e2e/signals.spec.ts tests/e2e/intelligence.spec.ts tests/e2e/research.spec.ts tests/e2e/chatrooms.spec.ts tests/e2e/system.spec.ts tests/e2e/responsive.spec.ts tests/e2e/smoke.spec.ts --config ./playwright.smoke.config.ts",
+    "smoke:e2e:write-boundary": "playwright test tests/e2e/write-boundary.spec.ts --config ./playwright.smoke.config.ts",
+    "smoke:e2e:all": "playwright test --config ./playwright.smoke.config.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -17,12 +21,15 @@
     "lightweight-charts": "^5.1.0",
     "markdown-it": "^14.1.1",
     "pinia": "^3.0.4",
+    "relation-graph": "^2.2.11",
+    "relation-graph-vue3": "^2.2.11",
     "tailwindcss": "^4.2.2",
     "vue": "^3.5.30",
     "vue-router": "^4.6.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.12.0",
     "@vitejs/plugin-vue": "^6.0.5",

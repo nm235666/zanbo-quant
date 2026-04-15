@@ -1,11 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { hasPermissionByEffective, type AppPermission } from './permissions'
+import { resolveDefaultLandingPath } from './navigation'
 import { useAuthStore } from '../stores/auth'
 
 type RouteMetaAuth = {
   auth?: boolean
   guest?: boolean
   permission?: AppPermission
+  resolveLanding?: boolean
+}
+
+const RoutePlaceholder = {
+  render: () => null,
 }
 
 export const router = createRouter({
@@ -13,7 +19,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: () => import('../pages/auth/LoginPage.vue'), meta: { guest: true } as RouteMetaAuth },
     { path: '/upgrade', component: () => import('../pages/auth/UpgradePage.vue'), meta: { auth: true, permission: 'public' } as RouteMetaAuth },
-    { path: '/', redirect: '/dashboard' },
+    { path: '/', component: RoutePlaceholder, meta: { resolveLanding: true } as RouteMetaAuth },
 
     { path: '/dashboard', component: () => import('../pages/dashboard/DashboardPage.vue'), meta: { auth: true, permission: 'admin_system' } as RouteMetaAuth },
     { path: '/stocks/list', component: () => import('../pages/stocks/StocksListPage.vue'), meta: { auth: true, permission: 'stocks_advanced' } as RouteMetaAuth },
@@ -37,8 +43,8 @@ export const router = createRouter({
     { path: '/signals/state-timeline', component: () => import('../pages/signals/SignalStateTimelinePage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
 
     { path: '/research/reports', component: () => import('../pages/research/ReportsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/scoreboard', component: () => import('../pages/research/ScoreboardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/decision', component: () => import('../pages/research/DecisionBoardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
-    { path: '/research/trade-plan', component: () => import('../pages/research/DecisionTradePlanPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/quant-factors', component: () => import('../pages/research/QuantFactorsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/multi-role', component: () => import('../pages/research/MultiRoleResearchPage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/trend', component: () => import('../pages/research/TrendAnalysisPage.vue'), meta: { auth: true, permission: 'trend_analyze' } as RouteMetaAuth },
@@ -56,7 +62,7 @@ export const router = createRouter({
     { path: '/system/invites', component: () => import('../pages/system/InviteAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },
     { path: '/system/users', component: () => import('../pages/system/UserAdminPage.vue'), meta: { auth: true, permission: 'admin_users' } as RouteMetaAuth },
 
-    { path: '/:pathMatch(.*)*', redirect: '/dashboard' },
+    { path: '/:pathMatch(.*)*', component: RoutePlaceholder, meta: { resolveLanding: true } as RouteMetaAuth },
   ],
 })
 
@@ -70,9 +76,24 @@ router.beforeEach(async (to) => {
       auth.loaded = true
     }
   }
+  if ((to.meta as RouteMetaAuth | undefined)?.resolveLanding) {
+    return {
+      path: resolveDefaultLandingPath({
+        role: auth.role,
+        effectivePermissions: auth.effectivePermissions,
+        dynamicNavigationGroups: auth.dynamicNavigationGroups,
+      }),
+    }
+  }
   if (meta.guest) {
     if (auth.authRequired && auth.isAuthenticated) {
-      return { path: '/dashboard' }
+      return {
+        path: resolveDefaultLandingPath({
+          role: auth.role,
+          effectivePermissions: auth.effectivePermissions,
+          dynamicNavigationGroups: auth.dynamicNavigationGroups,
+        }),
+      }
     }
     return true
   }

@@ -1,7 +1,58 @@
 <template>
   <AppShell title="投研决策板" subtitle="宏观-行业-个股评分、短名单、交易计划与验证结果统一闭环。">
     <div class="space-y-4">
+      <div class="page-hero-grid">
+        <div class="page-hero-card">
+          <div class="page-insight-label">Decision Loop</div>
+          <div class="page-hero-title">把市场模式、短名单和人工动作放到一张可执行面板里。</div>
+          <div class="page-hero-copy">
+            这页的目标不是展示更多配置，而是帮助我们更快判断“现在该不该做、该先做哪只、风险在哪里”。聚焦股代码可直接收敛到单票。
+          </div>
+          <div class="page-action-cluster">
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isBoardFetching" @click="applyFilters">
+              {{ isBoardFetching ? '刷新中...' : '刷新决策板' }}
+            </button>
+            <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isSnapshotPending" @click="runSnapshot">
+              {{ isSnapshotPending ? '生成中...' : '生成快照' }}
+            </button>
+          </div>
+        </div>
+        <div class="page-insight-list">
+          <div class="page-insight-item">
+            <div class="page-insight-label">当前市场模式</div>
+            <div class="page-insight-value">{{ marketRegime.label || '数据不足' }}</div>
+            <div class="page-insight-note">评分 {{ formatNumber(marketRegime.score, 1) }}，建议先按模式理解仓位语言，再看个股执行。</div>
+          </div>
+          <div class="page-insight-item">
+            <div class="page-insight-label">最值得先看</div>
+            <div class="page-insight-value">{{ focusStock?.name || shortlist[0]?.name || '短名单为空' }}</div>
+            <div class="page-insight-note">短名单 {{ shortlist.length }} 只；优先检查总分高且风险提示较少的标的。</div>
+          </div>
+        </div>
+      </div>
+
       <PageSection title="决策输入" subtitle="输入单票聚焦代码，或直接刷新全局决策板。">
+        <div
+          v-if="hasDecisionContext"
+          class="mb-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.8)] px-4 py-3 text-sm text-[var(--muted)]"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="font-semibold text-[var(--ink)]">当前研究上下文</div>
+            <button
+              type="button"
+              class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)]"
+              @click="clearDecisionContext"
+            >
+              清空上下文
+            </button>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+            <span v-if="decisionContext.industry" class="metric-chip">行业 {{ decisionContext.industry }}</span>
+            <span v-if="decisionContext.keyword" class="metric-chip">关键词 {{ decisionContext.keyword }}</span>
+            <span v-if="decisionContext.score_date" class="metric-chip">评分日期 {{ decisionContext.score_date }}</span>
+          </div>
+          <div class="mt-2 text-xs text-[var(--muted)]">作用范围：仅用于决策板默认查询条件，不会修改底层评分数据。</div>
+        </div>
         <div class="grid gap-3 xl:grid-cols-[1fr_180px_180px_180px] md:grid-cols-2">
           <input v-model.trim="focusTsCode" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="聚焦股票，如 000001.SZ" @keydown.enter="applyFilters" />
           <select v-model.number="pageSize" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
@@ -17,9 +68,6 @@
             <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isSnapshotPending" @click="runSnapshot">
               {{ isSnapshotPending ? '生成中...' : '生成快照' }}
             </button>
-            <RouterLink to="/research/trade-plan" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]">
-              打开交易计划书
-            </RouterLink>
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
@@ -30,6 +78,28 @@
         </div>
         <div v-if="message" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
           {{ message }}
+        </div>
+        <div
+          v-if="snapshotStatus !== 'idle'"
+          class="mt-3 rounded-[18px] border px-4 py-3 text-sm"
+          :class="snapshotStatus === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : snapshotStatus === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-blue-200 bg-blue-50 text-blue-800'"
+        >
+          <div class="font-semibold">
+            {{
+              snapshotStatus === 'pending'
+                ? '快照生成中...'
+                : snapshotStatus === 'success'
+                  ? '快照已生成'
+                  : '快照生成失败'
+            }}
+          </div>
+          <div class="mt-1">
+            {{
+              snapshotStatus === 'pending'
+                ? '系统正在生成决策快照，请稍候。'
+                : snapshotStatusText
+            }}
+          </div>
         </div>
         <div v-if="boardErrorText" class="mt-3 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {{ boardErrorText }}
@@ -114,6 +184,13 @@
 
       <div class="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PageSection title="行业排序" subtitle="按最新行业评分从高到低排列。">
+          <div class="table-lead">
+            <div class="table-lead-copy">行业排序用于判断资金和评分正在向哪里集中，适合作为短名单排序前的方向性参考。</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span class="metric-chip">行业数 {{ industries.length }}</span>
+              <span class="metric-chip">Top 行业 {{ topIndustryName || '-' }}</span>
+            </div>
+          </div>
           <DataTable :columns="industryColumns" :rows="industries" row-key="industry" empty-text="暂无行业评分数据" caption="行业排序">
             <template #cell-score="{ row }">{{ formatNumber(row.score, 2) }}</template>
             <template #cell-top_stocks="{ row }">
@@ -127,6 +204,13 @@
         </PageSection>
 
         <PageSection title="股票短名单" subtitle="先看高分样本，再决定要不要下钻股票详情。">
+          <div class="table-lead">
+            <div class="table-lead-copy">短名单是本页最接近执行的一层。优先点击股票详情核对理由，再做确认、暂缓或拒绝动作。</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <span class="metric-chip">短名单 {{ shortlist.length }}</span>
+              <span class="metric-chip">验证 {{ validation.status || 'idle' }}</span>
+            </div>
+          </div>
           <DataTable :columns="stockColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无短名单股票" caption="股票短名单">
             <template #cell-ts_code="{ row }">
               <RouterLink :to="`/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
@@ -210,9 +294,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMutation, useQuery } from '@tanstack/vue-query'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
@@ -221,30 +305,56 @@ import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
 import { formatNumber } from '../../shared/utils/format'
+import { buildCleanQuery, readQueryString } from '../../shared/utils/urlState'
+
+type ActionStatus = 'idle' | 'pending' | 'success' | 'error'
+type DecisionContext = {
+  from: string
+  industry: string
+  keyword: string
+  score_date: string
+}
+type SnapshotFeedback = {
+  run_id?: string
+  snapshot_id?: string
+  job_id?: string
+}
+
+const route = useRoute()
+const router = useRouter()
 
 const focusTsCode = ref('')
+const keywordFilter = ref('')
 const pageSize = ref(12)
 const killReasonDraft = ref('手动切换')
 const actionTsCodeDraft = ref('000001.SZ')
 const actionNoteDraft = ref('已确认')
 const message = ref('')
+const snapshotStatus = ref<ActionStatus>('idle')
+const snapshotStatusText = ref('')
+const decisionContext = ref<DecisionContext>({ from: '', industry: '', keyword: '', score_date: '' })
 
 const boardQuery = useQuery({
-  queryKey: computed(() => ['decision-board', focusTsCode.value, pageSize.value]),
-  queryFn: () => fetchDecisionBoard({ ts_code: focusTsCode.value, page: 1, page_size: pageSize.value }),
-  refetchInterval: 30_000,
+  queryKey: computed(() => ['decision-board', focusTsCode.value, keywordFilter.value, pageSize.value]),
+  queryFn: () => fetchDecisionBoard({
+    ts_code: focusTsCode.value,
+    keyword: keywordFilter.value,
+    page: 1,
+    page_size: pageSize.value,
+  }),
+  refetchInterval: () => (document.visibilityState === 'visible' ? 30_000 : 120_000),
 })
 
 const historyQuery = useQuery({
   queryKey: ['decision-history'],
   queryFn: () => fetchDecisionHistory({ page: 1, page_size: 10 }),
-  refetchInterval: 60_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
 const actionsQuery = useQuery({
   queryKey: computed(() => ['decision-actions', focusTsCode.value]),
   queryFn: () => fetchDecisionActions({ page: 1, page_size: 10, ts_code: focusTsCode.value }),
-  refetchInterval: 60_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
 const toggleKillSwitchMutation = useMutation({
@@ -260,11 +370,19 @@ const toggleKillSwitchMutation = useMutation({
 
 const runSnapshotMutation = useMutation({
   mutationFn: () => runDecisionSnapshot(),
-  onSuccess: async () => {
-    message.value = '决策快照已生成。'
+  onSuccess: async (payload: SnapshotFeedback) => {
+    snapshotStatus.value = 'success'
+    const ts = new Date().toLocaleString('zh-CN', { hour12: false })
+    const runId = String(payload?.run_id || payload?.snapshot_id || payload?.job_id || '').trim()
+    snapshotStatusText.value = runId
+      ? `状态 success · 生成时间 ${ts} · 结果标识 ${runId}`
+      : `状态 success · 生成时间 ${ts} · 结果标识：无（后端未返回）`
+    message.value = runId ? `决策快照已生成（${runId}）。` : '决策快照已生成，但后端未返回标识。'
     await refreshAll()
   },
   onError: (error: Error) => {
+    snapshotStatus.value = 'error'
+    snapshotStatusText.value = error.message || '未知错误'
     message.value = `快照生成失败：${error.message}`
   },
 })
@@ -348,6 +466,10 @@ function applyFilters() {
 }
 
 function runSnapshot() {
+  if (runSnapshotMutation.isPending.value) return
+  snapshotStatus.value = 'pending'
+  snapshotStatusText.value = ''
+  message.value = '正在生成决策快照，请稍候。'
   runSnapshotMutation.mutate()
 }
 
@@ -379,4 +501,69 @@ function joinActionTitle(item: Record<string, any>) {
 function joinActionMeta(item: Record<string, any>) {
   return [item.ts_code || '-', item.actor || '-', item.created_at || '-'].filter(Boolean).join(' · ')
 }
+
+const hasDecisionContext = computed(() =>
+  Boolean(
+    decisionContext.value.industry ||
+    decisionContext.value.keyword ||
+    decisionContext.value.score_date,
+  ),
+)
+
+function looksLikeTsCode(value: string) {
+  return /^[0-9]{6}\.(SZ|SH|BJ)$/i.test(String(value || '').trim())
+}
+
+function syncContextFromRoute() {
+  const q = route.query as Record<string, unknown>
+  const next: DecisionContext = {
+    from: readQueryString(q, 'from', ''),
+    industry: readQueryString(q, 'industry', ''),
+    keyword: readQueryString(q, 'keyword', ''),
+    score_date: readQueryString(q, 'score_date', ''),
+  }
+  const changed = JSON.stringify(next) !== JSON.stringify(decisionContext.value)
+  decisionContext.value = next
+  if (!changed) return
+  if (next.keyword) {
+    const keyword = next.keyword.trim()
+    if (looksLikeTsCode(keyword)) {
+      focusTsCode.value = keyword.toUpperCase()
+      keywordFilter.value = ''
+    } else {
+      keywordFilter.value = keyword
+      focusTsCode.value = ''
+    }
+    message.value = '已按评分页上下文同步决策板筛选。'
+  } else if (next.industry) {
+    keywordFilter.value = next.industry.trim()
+    focusTsCode.value = ''
+    message.value = '已按行业上下文同步决策板筛选。'
+  }
+}
+
+function clearDecisionContext() {
+  decisionContext.value = { from: '', industry: '', keyword: '', score_date: '' }
+  keywordFilter.value = ''
+  focusTsCode.value = ''
+  message.value = '已清空研究上下文，回到默认决策板视图。'
+  const q = route.query as Record<string, unknown>
+  router.replace({
+    query: buildCleanQuery({
+      ...q,
+      from: '',
+      industry: '',
+      keyword: '',
+      score_date: '',
+    }),
+  })
+}
+
+watch(
+  () => route.query,
+  () => {
+    syncContextFromRoute()
+  },
+  { immediate: true },
+)
 </script>

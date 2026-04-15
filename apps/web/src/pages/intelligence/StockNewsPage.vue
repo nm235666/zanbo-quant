@@ -69,6 +69,7 @@
           </button>
         </div>
         <div v-if="actionMessage" class="mt-3 text-sm text-[var(--muted)]" role="status" aria-live="polite">{{ actionMessage }}</div>
+        <div v-if="filterError" class="mt-2 text-sm text-[var(--danger)]">{{ filterError }}</div>
       </PageSection>
 
       <PageSection :title="`个股新闻 (${result?.total || 0})`" subtitle="评分、情绪、影响项和逐条重评分动作都放在这里。">
@@ -147,10 +148,12 @@ import { triggerStockNewsFetch } from '../../services/api/stocks'
 import { formatDateTime } from '../../shared/utils/format'
 import { importanceOptions, parseImpactTags, sourceLabel } from '../../shared/utils/finance'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+import { useUiStore } from '../../stores/ui'
 
 const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()
+const ui = useUiStore()
 
 const queryFilters = reactive({
   ts_code: '',
@@ -173,6 +176,7 @@ const selectedFinanceLevels = ref(
     .filter(Boolean),
 )
 const actionMessage = ref('')
+const filterError = ref('')
 const rowScoringId = ref(0)
 const importanceLevels = importanceOptions()
 const isFetchPending = computed(() => fetchMutation.isPending.value)
@@ -200,10 +204,12 @@ const fetchMutation = useMutation({
   mutationFn: () => triggerStockNewsFetch({ ...draftFilters, score: 1 }),
   onSuccess: async (payload) => {
     actionMessage.value = `采集完成${payload.used_model ? ` · 实际模型 ${payload.used_model}` : ''}`
+    ui.showToast(actionMessage.value, 'success')
     await queryClient.invalidateQueries({ queryKey: ['stock-news'] })
   },
   onError: (error: Error) => {
     actionMessage.value = `采集失败：${error.message}`
+    ui.showToast(actionMessage.value, 'error')
   },
 })
 
@@ -211,12 +217,23 @@ const scoreMutation = useMutation({
   mutationFn: () => triggerStockNewsScore({ ts_code: currentScoreTarget.value, limit: Math.max(Number(draftFilters.page_size || 20), 20), force: draftFilters.scored === 'scored' ? 1 : 0 }),
   onSuccess: async (payload) => {
     actionMessage.value = `补评分完成${payload.used_model ? ` · 实际模型 ${payload.used_model}` : ''}`
+    ui.showToast(actionMessage.value, 'success')
     await refetch()
   },
   onError: (error: Error) => {
     actionMessage.value = `补评分失败：${error.message}`
+    ui.showToast(actionMessage.value, 'error')
   },
 })
+
+function isIsoDate(value: string) {
+  const text = String(value || '').trim()
+  if (!text) return true
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false
+  const parsed = new Date(`${text}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return false
+  return parsed.toISOString().slice(0, 10) === text
+}
 
 function toggleLevel(level: string) {
   if (selectedFinanceLevels.value.includes(level)) {
@@ -253,14 +270,31 @@ function zeroScoreHint(item: Record<string, any>) {
 }
 
 function runFetch() {
+  const dateFrom = String(draftFilters.date_from || '').trim()
+  const dateTo = String(draftFilters.date_to || '').trim()
+  if (!isIsoDate(dateFrom) || !isIsoDate(dateTo)) {
+    filterError.value = '日期格式错误，请使用 YYYY-MM-DD。'
+    ui.showToast(filterError.value, 'error')
+    return
+  }
+  filterError.value = ''
   fetchMutation.mutate()
 }
 
 function runScoreCurrent() {
+  filterError.value = ''
   scoreMutation.mutate()
 }
 
 function applyFilters() {
+  const dateFrom = String(draftFilters.date_from || '').trim()
+  const dateTo = String(draftFilters.date_to || '').trim()
+  if (!isIsoDate(dateFrom) || !isIsoDate(dateTo)) {
+    filterError.value = '日期格式错误，请使用 YYYY-MM-DD。'
+    ui.showToast(filterError.value, 'error')
+    return
+  }
+  filterError.value = ''
   Object.assign(queryFilters, { ...draftFilters, page: 1 })
   syncRouteFromQuery()
 }
@@ -271,9 +305,11 @@ async function rescoreRow(item: Record<string, any>) {
   try {
     const payload = await triggerStockNewsScore({ row_id: item.id, limit: 1, force: 1 })
     actionMessage.value = `单条重评分完成${payload.used_model ? ` · 实际模型 ${payload.used_model}` : ''}`
+    ui.showToast(actionMessage.value, 'success')
     await refetch()
   } catch (error) {
     actionMessage.value = `单条重评分失败：${(error as Error).message}`
+    ui.showToast(actionMessage.value, 'error')
   } finally {
     rowScoringId.value = 0
   }

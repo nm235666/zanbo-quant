@@ -1,6 +1,43 @@
 <template>
   <AppShell title="股票综合评分" subtitle="统一看行业内评分、核心分项与估值/趋势维度，不再散落在旧页面里。">
     <div class="space-y-4">
+      <div class="page-hero-grid">
+        <div class="page-hero-card">
+          <div class="page-insight-label">Scoreboard</div>
+          <div class="page-hero-title">先看谁值得研究，不要一上来就进详情页。</div>
+          <div class="page-hero-copy">
+            综合评分页负责做优先级排序。建议先按行业和评分日期收敛，再把高分样本送到详情页、价格中心和投研决策板。
+          </div>
+          <div class="page-action-cluster">
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
+              {{ isFetching ? '查询中...' : '更新评分看板' }}
+            </button>
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" :to="decisionEntryTo">
+              打开决策板
+            </RouterLink>
+          </div>
+        </div>
+        <div class="page-insight-list">
+          <div class="page-insight-item">
+            <div class="page-insight-label">当前主视角</div>
+            <div class="page-insight-value">{{ filters.industry || '全行业排序' }}</div>
+            <div class="page-insight-note">按行业筛选时更适合做板块内部比较，不筛选时适合看全市场分布。</div>
+          </div>
+          <div class="page-insight-item">
+            <div class="page-insight-label">行动建议</div>
+            <div class="page-insight-value">{{ scores?.items?.length ? '查看高分样本' : '检查筛选条件' }}</div>
+            <div class="page-insight-note">优先关注总分、行业内总分和趋势分同时高的标的。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <StatCard title="评分总量" :value="scores?.total ?? 0" hint="当前筛选命中评分条数" />
+        <StatCard title="行业筛选" :value="filters.industry || '全部'" hint="当前行业维度" />
+        <StatCard title="市场筛选" :value="filters.market || '全部'" hint="当前市场维度" />
+        <StatCard title="评分日期" :value="filters.score_date || '最新'" hint="为空则按最新快照" />
+      </div>
+
       <PageSection title="筛选器" subtitle="按行业、市场、关键词与日期筛选评分结果。">
         <div class="grid gap-3 xl:grid-cols-5 md:grid-cols-2">
           <input v-model="filters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="代码或简称" />
@@ -20,6 +57,16 @@
       </PageSection>
 
       <PageSection :title="`评分结果 (${scores?.total || 0})`" subtitle="点击股票名进入详情页做进一步研究。">
+        <div class="table-lead">
+          <div class="table-lead-copy">
+            这张表是“研究优先级排序”，不是最终买卖结论。优先看 `总分 + 行业内总分 + 趋势分` 的组合，再进入详情页做定性判断。
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <span class="metric-chip">行业 {{ filters.industry || '全部' }}</span>
+            <span class="metric-chip">市场 {{ filters.market || '全部' }}</span>
+            <span class="metric-chip">评分日期 {{ filters.score_date || '最新' }}</span>
+          </div>
+        </div>
         <div class="grid gap-3 lg:hidden">
           <InfoCard
             v-for="row in scores?.items || []"
@@ -61,6 +108,7 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
+import StatCard from '../../shared/ui/StatCard.vue'
 import { fetchStockScoreFilters, fetchStockScores } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
@@ -87,6 +135,15 @@ const { data: scores, isFetching } = useQuery({
   queryFn: () => fetchStockScores({ ...queryFilters }),
   placeholderData: keepPreviousData,
 })
+const decisionEntryTo = computed(() => ({
+  path: '/research/decision',
+  query: buildCleanQuery({
+    from: '/stocks/scores',
+    industry: queryFilters.industry || filters.industry,
+    keyword: queryFilters.keyword || filters.keyword,
+    score_date: queryFilters.score_date || filters.score_date,
+  }),
+}))
 
 function applyFilters() {
   queryFilters.keyword = (filters.keyword || '').trim()

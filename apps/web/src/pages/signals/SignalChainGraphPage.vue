@@ -47,6 +47,26 @@
                 </button>
               </div>
             </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-45"
+                :class="showSecondary ? 'border-[var(--line)] bg-white text-[var(--ink)]' : 'border-[var(--brand)] bg-[var(--brand)] text-white'"
+                :disabled="!canShowTrunkOnly"
+                @click="toggleSecondary(false)"
+              >
+                只看主干
+              </button>
+              <button
+                type="button"
+                class="rounded-full border px-3 py-2 font-semibold transition"
+                :class="showSecondary ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--line)] bg-white text-[var(--ink)]'"
+                @click="toggleSecondary(true)"
+              >
+                展开二级节点
+              </button>
+              <span v-if="!canShowTrunkOnly" class="text-[11px] text-[var(--muted)]">当前中心无可折叠二级节点</span>
+            </div>
             <div v-if="relationOptions.length" class="mt-3 flex flex-wrap gap-2">
               <button
                 class="rounded-full border px-3 py-2 text-xs font-semibold transition"
@@ -71,19 +91,20 @@
       </PageSection>
 
       <div class="grid gap-4 lg:grid-cols-4 md:grid-cols-2">
-        <StatCard title="节点数" :value="summary.node_count ?? 0" hint="当前图谱节点总数" />
-        <StatCard title="边数" :value="summary.edge_count ?? 0" hint="当前图谱关系连线" />
-        <StatCard title="主题数" :value="summary.theme_count ?? 0" hint="主题节点数量" />
-        <StatCard title="行业数" :value="summary.industry_count ?? 0" hint="行业节点数量" />
+        <StatCard title="节点数" :value="displaySummary.node_count" hint="当前画布展示节点数" />
+        <StatCard title="边数" :value="displaySummary.edge_count" hint="当前画布关系连线" />
+        <StatCard title="主题数" :value="displaySummary.theme_count" hint="当前画布主题节点数" />
+        <StatCard title="行业数" :value="displaySummary.industry_count" hint="当前画布行业节点数" />
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.72fr)]">
+      <div class="grid gap-4" :class="graphSplitClass">
         <PageSection title="关系图" subtitle="主题、行业、股票三层关系图，节点可点击，中心可切换。">
           <template #action>
             <div class="flex flex-wrap gap-2 text-xs">
               <span class="metric-chip">中心：{{ centerLabel || '-' }}</span>
               <span class="metric-chip">最新评分：{{ summary.latest_score_date || '-' }}</span>
               <span class="metric-chip">中心类型：{{ centerTypeLabel(filters.center_type) }}</span>
+              <span class="metric-chip" v-if="hiddenNodeCount > 0">已折叠 {{ hiddenNodeCount }} 个节点</span>
             </div>
           </template>
 
@@ -95,59 +116,78 @@
             :description="graphSummaryMessage"
           >
             <template #action>
-              <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" @click="applyFilters">重新加载</button>
+              <div class="flex flex-wrap gap-2">
+                <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" @click="applyFilters">重新加载</button>
+                <button
+                  v-for="item in centerSuggestions"
+                  :key="`${item.type}-${item.label}-empty`"
+                  class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]"
+                  @click="quickSwitchCenter(item.type, item.label)"
+                >
+                  {{ item.label }}
+                </button>
+              </div>
             </template>
           </StatePanel>
 
-          <div v-else class="overflow-hidden rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(245,248,250,0.84)_100%)]">
-            <div class="border-b border-[var(--line)] px-4 py-3 text-xs text-[var(--muted)]">
-              选中节点：<span class="font-semibold text-[var(--ink)]">{{ selectedNode?.label || centerLabel || '-' }}</span>
-              <span class="mx-2">·</span>
-              点击节点可查看详情，再从右侧切换中心或跳转原页面。
+          <div v-if="graphWeakData && !graphEmpty" class="mb-4 rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(239,245,248,0.9)_100%)] p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div class="text-sm font-bold text-[var(--ink)]">当前中心数据较弱</div>
+                <div class="mt-1 max-w-[60ch] text-sm leading-6 text-[var(--muted)]">
+                  图谱已保留当前中心，但节点和关系不足以支撑完整浏览。建议切换到一个更强的主题或行业中心继续查看主干关系。
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="item in centerSuggestions"
+                  :key="`${item.type}-${item.label}-weak`"
+                  class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]"
+                  @click="quickSwitchCenter(item.type, item.label)"
+                >
+                  {{ item.label }}
+                </button>
+              </div>
             </div>
-            <div class="relative overflow-hidden" :style="{ height: `${graphHeight}px` }">
-              <svg class="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <defs>
-                  <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
-                    <path d="M0,0 L0,6 L6,3 z" fill="rgba(13,97,122,0.35)" />
-                  </marker>
-                </defs>
-                <line
-                  v-for="edge in visibleEdges"
-                  :key="edge.id"
-                  :x1="edgeLayout(edge).x1"
-                  :y1="edgeLayout(edge).y1"
-                  :x2="edgeLayout(edge).x2"
-                  :y2="edgeLayout(edge).y2"
-                  :stroke="edgeStroke(edge)"
-                  :stroke-width="edgeWidth(edge)"
-                  :opacity="edgeOpacity(edge)"
-                  marker-end="url(#graph-arrow)"
-                />
-              </svg>
+          </div>
 
-              <button
-                v-for="node in layoutNodes"
-                :key="node.id"
-                type="button"
-                class="absolute -translate-x-1/2 -translate-y-1/2 rounded-[24px] border px-4 py-3 text-left shadow-[0_14px_36px_rgba(10,32,44,0.08)] transition hover:-translate-y-[54%] hover:shadow-[0_18px_42px_rgba(10,32,44,0.14)]"
-                :class="nodeClass(node)"
-                :style="{ left: `${node.left}%`, top: `${node.top}%`, width: nodeWidth(node), maxWidth: '280px' }"
-                @click="selectNode(node.id)"
+          <div v-if="!graphEmpty" class="overflow-hidden rounded-[28px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.95)_0%,rgba(244,248,250,0.9)_100%)]">
+            <div class="graph-toolbar border-b border-[var(--line)] px-4 py-3 text-xs text-[var(--muted)]">
+              <div>
+                选中节点：<span class="font-semibold text-[var(--ink)]">{{ selectedNode?.label || centerLabel || '-' }}</span>
+                <span class="mx-2">·</span>
+                单击查看详情，双击主题/行业切中心。
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-[11px] font-semibold text-[var(--muted)]">
+                  {{ graphViewMode === 'full' ? '显示二级节点' : '仅显示主干' }}
+                </span>
+                <button class="graph-tool-btn" @click="zoomOut">缩小</button>
+                <button class="graph-tool-btn" @click="zoomIn">放大</button>
+                <button class="graph-tool-btn" @click="recenterGraph">回到中心</button>
+              </div>
+            </div>
+            <div class="graph-stage" :style="{ height: `${graphHeight}px` }">
+              <RelationGraph
+                ref="graphRef"
+                class="relation-graph-core"
+                :options="graphOptions"
+                :on-node-click="onGraphNodeClick"
+                :on-canvas-click="onGraphCanvasClick"
               >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <div class="truncate text-[13px] font-extrabold leading-5 text-[var(--ink)]">{{ node.label }}</div>
-                    <div class="mt-1 text-[11px] uppercase tracking-[0.14em] text-[var(--muted)]">{{ nodeTypeLabel(node.type) }} · L{{ node.layer }}</div>
-                  </div>
-                  <StatusBadge :value="node.status || 'info'" :label="node.status || '-'" />
-                </div>
-                <div class="mt-2 max-h-[40px] overflow-hidden text-xs leading-5 text-[var(--muted)]">{{ node.summary || '-' }}</div>
-                <div class="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--muted)]">
-                  <span v-if="node.score !== undefined" class="rounded-full bg-white/82 px-2 py-1">分数 {{ formatValue(node.score) }}</span>
-                  <span v-if="node.strength !== undefined" class="rounded-full bg-white/82 px-2 py-1">强度 {{ formatValue(node.strength) }}</span>
-                </div>
-              </button>
+                <template #node="{ node }">
+                  <button
+                    type="button"
+                    class="graph-node"
+                    :class="graphNodeClass(node)"
+                    @click.stop="selectNode(String(node.id || ''))"
+                    @dblclick.stop="handleNodeDoubleClick(node)"
+                  >
+                    <div class="graph-node-title">{{ node.text }}</div>
+                    <div class="graph-node-meta">{{ graphNodeMeta(node) }}</div>
+                  </button>
+                </template>
+              </RelationGraph>
             </div>
           </div>
         </PageSection>
@@ -271,8 +311,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
+import RelationGraph from 'relation-graph/vue3'
 import { useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -282,13 +323,26 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchSignalChainGraph } from '../../services/api/signals'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+import { buildGraphRenderPayload } from './graph-adapter'
 
 type GraphNode = Record<string, any>
 type GraphEdge = Record<string, any>
-type LayoutNode = GraphNode & { left: number; top: number }
+type GraphViewMode = 'trunk' | 'full'
 
 const route = useRoute()
 const router = useRouter()
+const graphRef = ref<any>(null)
+const viewportWidth = ref<number>(typeof window !== 'undefined' ? window.innerWidth : 1280)
+const zoomLevel = ref(100)
+
+const MIN_ZOOM = 65
+const MAX_ZOOM = 155
+const ZOOM_STEP = 15
+
+let removeResizeListener: (() => void) | null = null
+let renderTimer: number | null = null
+let pendingFitToView = true
+let isApplyingRouteQuery = false
 
 const filters = reactive({
   center_type: 'theme',
@@ -304,6 +358,8 @@ const queryFilters = reactive({
 })
 const relationFilter = ref('')
 const selectedNodeId = ref('')
+const showSecondary = ref(true)
+const graphViewMode = computed<GraphViewMode>(() => (showSecondary.value ? 'full' : 'trunk'))
 
 const { data: result, isFetching } = useQuery({
   queryKey: computed(() => ['signal-chain-graph', { ...queryFilters }]),
@@ -315,12 +371,46 @@ const graphNodes = computed(() => (Array.isArray(result.value?.nodes) ? result.v
 const graphEdges = computed(() => (Array.isArray(result.value?.edges) ? result.value.edges : []) as GraphEdge[])
 const summary = computed(() => result.value?.summary || {})
 const centerNode = computed(() => result.value?.center || null)
-const centerId = computed(() => String(centerNode.value?.id || ''))
+const centerId = computed(() => String(centerNode.value?.id || graphNodes.value[0]?.id || ''))
 const centerLabel = computed(() => String(result.value?.center_label || centerNode.value?.label || ''))
 const graphDetail = computed(() => result.value?.detail || {})
 const graphEmpty = computed(() => Boolean(summary.value?.empty) || graphNodes.value.length === 0)
 const graphSummaryMessage = computed(() => String(summary.value?.message || '当前没有可展示的图谱数据。'))
+const graphWeakData = computed(() => !graphEmpty.value && ((graphNodes.value.length <= 1) || (graphEdges.value.length === 0)))
 const canSwitchCenter = computed(() => ['theme', 'industry'].includes(String(selectedNode.value?.type || '')))
+const isIndustryCenterMode = computed(() => String(queryFilters.center_type || filters.center_type || 'theme') === 'industry')
+const graphSplitClass = computed(() =>
+  isIndustryCenterMode.value ? 'xl:grid-cols-[minmax(0,1.56fr)_minmax(320px,0.56fr)]' : 'xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.72fr)]',
+)
+
+const graphOptions = computed<any>(() => ({
+  layout: {
+    layoutName: 'fixed',
+    fixedRootNode: true,
+  },
+  disableNodeClickEffect: true,
+  disableLineClickEffect: true,
+  moveToCenterWhenRefresh: true,
+  zoomToFitWhenRefresh: false,
+  defaultJunctionPoint: 'border',
+  defaultLineWidth: 1.2,
+  defaultLineColor: '#8aa6b9',
+  defaultNodeBorderColor: '#9fb6c5',
+  defaultNodeColor: '#f7fbfd',
+  defaultNodeFontColor: '#102131',
+  defaultNodeBorderWidth: 1,
+  defaultNodeWidth: 184,
+  defaultNodeHeight: 66,
+  backgroundColor: 'transparent',
+  disableDragNode: true,
+  disableDragLine: true,
+  disableDragCanvas: false,
+  allowShowZoomMenu: false,
+  allowShowMiniToolBar: false,
+  allowShowRefreshButton: false,
+  allowShowDownloadButton: false,
+  useAnimationWhenRefresh: false,
+}))
 
 const relationOptions = computed(() => {
   const counts = new Map<string, number>()
@@ -334,50 +424,65 @@ const relationOptions = computed(() => {
     .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'))
 })
 
-const visibleEdges = computed(() => {
+const displayEdges = computed(() => {
   if (!relationFilter.value) return graphEdges.value
   return graphEdges.value.filter((edge) => String(edge.relation_key || '') === relationFilter.value)
 })
 
-const layoutNodes = computed<LayoutNode[]>(() => {
-  const nodes = graphNodes.value.map((node) => ({
-    ...node,
-    layer: Number(node.layer ?? 0),
-  }))
-  const grouped = new Map<number, GraphNode[]>()
-  for (const node of nodes) {
-    const layer = Number(node.layer || 0)
-    const list = grouped.get(layer) || []
-    list.push(node)
-    grouped.set(layer, list)
+const renderPayload = computed(() =>
+  buildGraphRenderPayload({
+    nodes: graphNodes.value,
+    edges: graphEdges.value,
+    centerType: isIndustryCenterMode.value ? 'industry' : 'theme',
+    centerId: centerId.value,
+    relationKey: relationFilter.value,
+    selectedNodeId: selectedNodeId.value,
+    limit: Number(queryFilters.limit || 12),
+    viewportWidth: viewportWidth.value,
+    hideSecondary: !showSecondary.value,
+  }),
+)
+const displaySummary = computed(() => {
+  const nodes = Array.isArray(renderPayload.value?.jsonData?.nodes) ? renderPayload.value.jsonData.nodes : []
+  const lines = Array.isArray(renderPayload.value?.jsonData?.lines) ? renderPayload.value.jsonData.lines : []
+  let themeCount = 0
+  let industryCount = 0
+  for (const item of nodes) {
+    const rawType = String(item?.data?.raw?.type || '')
+    if (rawType === 'theme') themeCount += 1
+    if (rawType === 'industry') industryCount += 1
   }
-  const layerOrder = [0, 1, 2]
-  const xMap: Record<number, number> = { 0: 14, 1: 50, 2: 86 }
-  const out: LayoutNode[] = []
-  for (const layer of layerOrder) {
-    const list = (grouped.get(layer) || []).sort((a, b) => {
-      const scoreA = Number(a.score || 0)
-      const scoreB = Number(b.score || 0)
-      if (scoreA !== scoreB) return scoreB - scoreA
-      return String(a.label || '').localeCompare(String(b.label || ''), 'zh-Hans-CN')
-    })
-    const count = list.length
-    list.forEach((node, index) => {
-      const top = count <= 1 ? 50 : ((index + 1) / (count + 1)) * 100
-      out.push({
-        ...node,
-        left: xMap[layer] ?? 50,
-        top,
-      })
-    })
+  return {
+    node_count: nodes.length,
+    edge_count: lines.length,
+    theme_count: themeCount,
+    industry_count: industryCount,
   }
-  return out
 })
 
+const centerSuggestions = computed(() => {
+  if (isIndustryCenterMode.value) {
+    return [
+      { type: 'industry', label: '软件' },
+      { type: 'industry', label: '半导体' },
+      { type: 'industry', label: '银行' },
+      { type: 'industry', label: '黄金' },
+    ]
+  }
+  return [
+    { type: 'theme', label: 'AI' },
+    { type: 'theme', label: '黄金' },
+    { type: 'theme', label: '机器人' },
+    { type: 'theme', label: '消费电子' },
+  ]
+})
+
+const hiddenNodeCount = computed(() => renderPayload.value.hiddenNodeCount)
+const canShowTrunkOnly = computed(() => renderPayload.value.secondaryCandidateCount > 0)
 const graphHeight = computed(() => {
-  const counts = [0, 1, 2].map((layer) => layoutNodes.value.filter((node) => Number(node.layer || 0) === layer).length)
-  const maxCount = Math.max(1, ...counts)
-  return Math.max(560, 180 + maxCount * 120)
+  const base = isIndustryCenterMode.value ? 680 : 640
+  const bonus = Math.max(0, Math.min(220, hiddenNodeCount.value * 4))
+  return Math.max(560, Math.min(860, base + bonus))
 })
 
 const selectedNode = computed<GraphNode | null>(() => {
@@ -388,7 +493,7 @@ const selectedNode = computed<GraphNode | null>(() => {
 const selectedEdgeRows = computed(() => {
   const selectedId = String(selectedNode.value?.id || '')
   if (!selectedId) return []
-  return visibleEdges.value.filter((edge) => String(edge.source || '') === selectedId || String(edge.target || '') === selectedId)
+  return displayEdges.value.filter((edge) => String(edge.source || '') === selectedId || String(edge.target || '') === selectedId)
 })
 
 const relatedNodes = computed(() => {
@@ -430,13 +535,13 @@ const centerDetailNextSteps = computed(() => (Array.isArray(graphDetail.value?.n
 watch(
   () => [centerId.value, graphNodes.value.length] as const,
   () => {
-    if (centerId.value) {
-      selectedNodeId.value = centerId.value
+    if (!graphNodes.value.length) {
+      selectedNodeId.value = ''
       return
     }
-    if (!selectedNodeId.value && graphNodes.value.length) {
-      selectedNodeId.value = String(graphNodes.value[0]?.id || '')
-    }
+    const target = String(selectedNodeId.value || centerId.value)
+    const exists = graphNodes.value.some((node) => String(node.id || '') === target)
+    selectedNodeId.value = exists ? target : String(centerId.value || graphNodes.value[0]?.id || '')
   },
   { immediate: true },
 )
@@ -447,6 +552,39 @@ watch(
     applyRouteQuery()
   },
 )
+
+watch(relationFilter, () => {
+  if (isApplyingRouteQuery) return
+  syncRouteFromQuery()
+})
+
+watch(showSecondary, () => {
+  if (isApplyingRouteQuery) return
+  syncRouteFromQuery()
+})
+
+watch(
+  () => [
+    graphNodes.value,
+    graphEdges.value,
+    relationFilter.value,
+    showSecondary.value,
+    queryFilters.center_type,
+    queryFilters.limit,
+    centerId.value,
+    viewportWidth.value,
+  ] as const,
+  () => {
+    pendingFitToView = true
+    scheduleRenderGraph()
+  },
+  { deep: true },
+)
+
+watch(selectedNodeId, () => {
+  pendingFitToView = false
+  scheduleRenderGraph()
+})
 
 function relationLabel(key: string) {
   return (
@@ -494,65 +632,12 @@ function nodeTypeLabel(value: string) {
   )
 }
 
-function nodeClass(node: LayoutNode) {
-  const selected = String(node.id || '') === String(selectedNode.value?.id || '')
-  const palette: Record<string, string> = {
-    theme: 'border-amber-200 bg-[rgba(255,247,205,0.96)] text-amber-950',
-    industry: 'border-sky-200 bg-[rgba(224,242,254,0.96)] text-sky-950',
-    stock: 'border-emerald-200 bg-[rgba(236,253,245,0.96)] text-emerald-950',
-  }
-  return [
-    palette[String(node.type || '')] || 'border-[var(--line)] bg-white text-[var(--ink)]',
-    selected ? 'ring-2 ring-[var(--brand)] ring-offset-2 ring-offset-white' : '',
-  ].join(' ')
-}
-
-function nodeWidth(node: LayoutNode) {
-  if (String(node.type || '') === 'stock') return '240px'
-  if (String(node.type || '') === 'industry') return '250px'
-  return '260px'
-}
-
-function edgeLayout(edge: GraphEdge) {
-  const source = layoutNodes.value.find((node) => String(node.id || '') === String(edge.source || ''))
-  const target = layoutNodes.value.find((node) => String(node.id || '') === String(edge.target || ''))
-  if (!source || !target) {
-    return { x1: 50, y1: 50, x2: 50, y2: 50 }
-  }
-  const direction = Number(source.layer || 0) <= Number(target.layer || 0) ? 1 : -1
-  const xShift = direction * 6
-  return {
-    x1: source.left + xShift,
-    y1: source.top,
-    x2: target.left - xShift,
-    y2: target.top,
-  }
-}
-
-function edgeStroke(edge: GraphEdge) {
-  const key = String(edge.relation_key || '')
-  if (key === 'theme_industry' || key === 'industry_theme') return 'rgba(245, 158, 11, 0.44)'
-  if (key === 'industry_stock') return 'rgba(14, 165, 233, 0.40)'
-  if (key === 'theme_stock') return 'rgba(16, 185, 129, 0.40)'
-  return 'rgba(13, 97, 122, 0.32)'
-}
-
-function edgeWidth(edge: GraphEdge) {
-  const weight = Number(edge.weight || 0)
-  if (!Number.isFinite(weight) || weight <= 0) return 1.4
-  return Math.max(1.4, Math.min(5.5, 1.4 + weight / 35))
-}
-
-function edgeOpacity(edge: GraphEdge) {
-  if (!relationFilter.value) return 1
-  return String(edge.relation_key || '') === relationFilter.value ? 1 : 0.12
-}
-
 function edgeSummary(edge: GraphEdge) {
   return `${String(edge.source || '-')} → ${String(edge.target || '-')} · 证据 ${edge.evidence_count ?? 0}`
 }
 
 function selectNode(nodeId: string) {
+  if (!nodeId) return
   selectedNodeId.value = nodeId
 }
 
@@ -583,6 +668,18 @@ function resetFilters() {
   filters.depth = 2
   filters.limit = 12
   relationFilter.value = ''
+  showSecondary.value = true
+  applyFilters()
+}
+
+function toggleSecondary(next: boolean) {
+  if (!next && !canShowTrunkOnly.value) return
+  showSecondary.value = next
+}
+
+function quickSwitchCenter(type: string, label: string) {
+  filters.center_type = type === 'industry' ? 'industry' : 'theme'
+  filters.keyword = label
   applyFilters()
 }
 
@@ -594,31 +691,261 @@ function syncRouteFromQuery() {
       depth: queryFilters.depth,
       limit: queryFilters.limit,
       relation_key: relationFilter.value,
+      view: graphViewMode.value,
     }),
   })
 }
 
 function applyRouteQuery() {
-  const q = route.query as Record<string, unknown>
-  const centerKey = readQueryString(q, 'center_key', readQueryString(q, 'keyword', ''))
-  const next = {
-    center_type: readQueryString(q, 'center_type', 'theme'),
-    keyword: centerKey,
-    depth: Math.max(1, Math.min(3, readQueryNumber(q, 'depth', 2))),
-    limit: Math.max(8, Math.min(24, readQueryNumber(q, 'limit', 12))),
+  isApplyingRouteQuery = true
+  try {
+    const q = route.query as Record<string, unknown>
+    const centerKey = readQueryString(q, 'center_key', readQueryString(q, 'keyword', ''))
+    const next = {
+      center_type: readQueryString(q, 'center_type', 'theme'),
+      keyword: centerKey,
+      depth: Math.max(1, Math.min(3, readQueryNumber(q, 'depth', 2))),
+      limit: Math.max(8, Math.min(24, readQueryNumber(q, 'limit', 12))),
+    }
+    Object.assign(filters, next)
+    Object.assign(queryFilters, {
+      center_type: next.center_type,
+      center_key: centerKey,
+      depth: next.depth,
+      limit: next.limit,
+    })
+    relationFilter.value = readQueryString(q, 'relation_key', '')
+    const view = readQueryString(q, 'view', 'full')
+    showSecondary.value = view !== 'trunk'
+  } finally {
+    isApplyingRouteQuery = false
   }
-  Object.assign(filters, next)
-  Object.assign(queryFilters, {
-    center_type: next.center_type,
-    center_key: centerKey,
-    depth: next.depth,
-    limit: next.limit,
-  })
-  relationFilter.value = readQueryString(q, 'relation_key', '')
 }
 
-onMounted(() => {
-  applyRouteQuery()
+function graphNodeClass(node: any) {
+  const role = String(node?.data?.role || '')
+  const isSelected = String(node?.id || '') === String(selectedNode.value?.id || '')
+  return {
+    'graph-node-center': role === 'center',
+    'graph-node-primary': role === 'primary',
+    'graph-node-secondary': role === 'secondary',
+    'graph-node-selected': isSelected,
+  }
+}
+
+function graphNodeMeta(node: any) {
+  const meta = String(node?.data?.meta || '').trim()
+  if (meta) return meta
+  const score = Number(node?.data?.score)
+  if (Number.isFinite(score)) return `评分 ${formatValue(score)}`
+  return '-'
+}
+
+function handleNodeDoubleClick(node: any) {
+  const id = String(node?.id || '')
+  if (!id) return
+  const raw = graphNodes.value.find((item) => String(item.id || '') === id)
+  if (!raw) return
+  if (!['theme', 'industry'].includes(String(raw.type || ''))) return
+  filters.center_type = String(raw.type)
+  filters.keyword = String(raw.label || '')
   applyFilters()
+}
+
+function onGraphNodeClick(node: any) {
+  const id = String(node?.id || '')
+  if (id) selectNode(id)
+}
+
+function onGraphCanvasClick() {
+  if (centerId.value) {
+    selectedNodeId.value = centerId.value
+  }
+}
+
+function getGraphInstance() {
+  return graphRef.value?.getInstance?.() || null
+}
+
+function scheduleRenderGraph() {
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+  }
+  renderTimer = window.setTimeout(() => {
+    renderGraph(pendingFitToView)
+    renderTimer = null
+    pendingFitToView = false
+  }, 24)
+}
+
+function renderGraph(fitToView = true) {
+  if (graphEmpty.value) return
+  const graph = graphRef.value
+  if (!graph?.setJsonData) return
+  graph.setJsonData(renderPayload.value.jsonData, true, async (instance: any) => {
+    if (selectedNodeId.value) {
+      instance?.setCheckedNode?.(selectedNodeId.value)
+    }
+    if (fitToView) {
+      await instance?.zoomToFit?.()
+      zoomLevel.value = 100
+    }
+  })
+}
+
+async function zoomIn() {
+  const instance = getGraphInstance()
+  if (!instance) return
+  zoomLevel.value = Math.min(MAX_ZOOM, zoomLevel.value + ZOOM_STEP)
+  await instance.setZoom?.(zoomLevel.value)
+}
+
+async function zoomOut() {
+  const instance = getGraphInstance()
+  if (!instance) return
+  zoomLevel.value = Math.max(MIN_ZOOM, zoomLevel.value - ZOOM_STEP)
+  await instance.setZoom?.(zoomLevel.value)
+}
+
+async function recenterGraph() {
+  const instance = getGraphInstance()
+  if (!instance) return
+  instance.focusRootNode?.()
+  await instance.zoomToFit?.()
+  zoomLevel.value = 100
+}
+
+onMounted(async () => {
+  const syncViewportWidth = () => {
+    viewportWidth.value = window.innerWidth
+  }
+  if (typeof window !== 'undefined') {
+    syncViewportWidth()
+    window.addEventListener('resize', syncViewportWidth)
+    removeResizeListener = () => {
+      window.removeEventListener('resize', syncViewportWidth)
+    }
+  }
+  applyRouteQuery()
+  await nextTick()
+  scheduleRenderGraph()
+})
+
+onBeforeUnmount(() => {
+  if (removeResizeListener) {
+    removeResizeListener()
+    removeResizeListener = null
+  }
+  if (renderTimer) {
+    window.clearTimeout(renderTimer)
+    renderTimer = null
+  }
 })
 </script>
+
+<style scoped>
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graph-tool-btn {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: white;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  transition: all 0.2s ease;
+}
+
+.graph-tool-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.graph-stage {
+  position: relative;
+  overflow: hidden;
+}
+
+.relation-graph-core {
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(100% 90% at 0% 50%, rgba(15, 126, 173, 0.1) 0%, rgba(15, 126, 173, 0) 62%),
+    linear-gradient(0deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+  background-size: auto, 24px 24px, 24px 24px;
+}
+
+.graph-node {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--graph-muted);
+  background: #fdfefe;
+  padding: 10px 12px;
+  text-align: left;
+  line-height: 1.2;
+  box-shadow: 0 8px 20px rgba(11, 40, 58, 0.08);
+  transition: all 0.18s ease;
+}
+
+.graph-node-title {
+  color: #102131;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-node-meta {
+  margin-top: 4px;
+  color: #4b5f71;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.graph-node-center {
+  border-width: 2px;
+  border-color: var(--graph-center);
+  background: linear-gradient(180deg, #f6fbfe 0%, #edf6fa 100%);
+  box-shadow: 0 10px 24px rgba(15, 97, 122, 0.2);
+}
+
+.graph-node-center .graph-node-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #0f4f66;
+}
+
+.graph-node-primary {
+  border-color: var(--graph-primary);
+  background: #f8fbfc;
+}
+
+.graph-node-secondary {
+  border-color: var(--graph-secondary);
+  background: #fbfdfe;
+}
+
+.graph-node-selected {
+  border-color: var(--graph-center);
+  box-shadow: 0 0 0 2px rgba(15, 97, 122, 0.2), 0 12px 28px rgba(15, 97, 122, 0.16);
+}
+
+@media (max-width: 900px) {
+  .graph-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .graph-node-center .graph-node-title {
+    font-size: 17px;
+  }
+}
+</style>

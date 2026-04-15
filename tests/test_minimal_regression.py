@@ -3,19 +3,26 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
+import socket
 import subprocess
 import time
 import unittest
 import urllib.error
 import urllib.request
 import urllib.parse
+import db_compat as sqlite3
 
 
 class MinimalRegressionTest(unittest.TestCase):
+    @staticmethod
+    def _pick_free_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
+
     @classmethod
     def setUpClass(cls):
-        cls.port = int(os.getenv("TEST_BACKEND_PORT", "18002"))
+        cls.port = int(os.getenv("TEST_BACKEND_PORT", str(cls._pick_free_port())))
         cls.base_url = f"http://127.0.0.1:{cls.port}"
         cls.admin_token = "test-admin-token"
         db_path = "/home/zanbo/zanbotest/stock_codes.db"
@@ -68,7 +75,7 @@ class MinimalRegressionTest(unittest.TestCase):
             stderr=subprocess.DEVNULL,
         )
 
-        deadline = time.time() + 30
+        deadline = time.time() + 45
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(f"{cls.base_url}/api/health", timeout=2) as resp:
@@ -122,6 +129,19 @@ class MinimalRegressionTest(unittest.TestCase):
         self.assertTrue(body.get("ok"))
         self.assertTrue(body.get("commands"))
 
+    def test_dashboard_payload_is_lightweight(self):
+        status, body = self._get_json(
+            "/api/dashboard",
+            headers={"X-Admin-Token": self.admin_token},
+        )
+        self.assertEqual(status, 200, body)
+        self.assertIn("overview", body)
+        self.assertIn("database_health", body)
+        self.assertNotIn("api_stack_consistency", body)
+        self.assertNotIn("source_monitor", body)
+        self.assertNotIn("orchestrator_alerts", body)
+        self.assertNotIn("orchestrator_jobs", body)
+
     def test_core_page_endpoints_smoke(self):
         # 主页面关键依赖端点 smoke：要求路由存在、认证通过。
         # 对测试库已知缺表/缺数据导致的 500，允许按白名单放行。
@@ -133,6 +153,7 @@ class MinimalRegressionTest(unittest.TestCase):
             f"/api/signals/graph?center_type=theme&center_key={urllib.parse.quote('AI算力')}&depth=2&limit=12",
             "/api/research-reports?page=1&page_size=1",
             "/api/decision/board?page=1&page_size=5",
+            "/api/decision/scores?page_size=5",
             "/api/decision/plan?page=1&page_size=5",
             "/api/decision/strategies?page=1&page_size=5",
             "/api/decision/strategy-runs?page=1&page_size=5",
@@ -150,6 +171,7 @@ class MinimalRegressionTest(unittest.TestCase):
                     allow_known_fixture_error = (
                         (path.startswith("/api/stock-detail") and "未找到股票" in message)
                     or (path.startswith("/api/decision/board") and "no such table" in message)
+                    or (path.startswith("/api/decision/scores") and "no such table" in message)
                     or (path.startswith("/api/decision/plan") and "no such table" in message)
                     or (path.startswith("/api/decision/strategies") and "no such table" in message)
                     or (path.startswith("/api/decision/strategy-runs") and "no such table" in message)

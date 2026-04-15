@@ -137,13 +137,13 @@ const {
 const resultsQuery = useQuery({
   queryKey: ['quant-factor-results'],
   queryFn: () => fetchQuantResults({ page: 1, page_size: 20 }),
-  refetchInterval: 20_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 20_000 : 90_000),
 })
 
 const healthQuery = useQuery({
   queryKey: ['quant-factor-health'],
   queryFn: () => fetchQuantHealth(),
-  refetchInterval: 10_000,
+  refetchInterval: () => (document.visibilityState === 'visible' ? 10_000 : 60_000),
 })
 
 const mineMutation = useMutation({

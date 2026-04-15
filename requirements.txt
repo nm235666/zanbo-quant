@@ -1,0 +1,22 @@
+# Core database drivers
+psycopg2==2.9.2
+redis==3.5.3
+
+# HTTP / networking
+requests==2.25.1
+requests-toolbelt==1.0.0
+httpx==0.28.1
+
+# LLM / agent framework
+langgraph==0.3.34
+langgraph-checkpoint==2.1.2
+langgraph-prebuilt==0.1.8
+langgraph-sdk==0.1.74
+langchain-core==0.3.83
+
+# Data validation
+pydantic==2.12.5
+
+# Templating / rendering
+Jinja2==3.0.3
+markdown-it-py==4.0.0

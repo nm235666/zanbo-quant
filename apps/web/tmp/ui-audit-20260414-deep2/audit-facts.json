@@ -1,0 +1,53 @@
+{
+  "checkedAt": "2026-04-14T15:13:27.100Z",
+  "facts": {
+    "decisionUrlAfterEntry": "http://127.0.0.1:8077/research/decision?from=/stocks/scores&industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414",
+    "decisionContextVisible": true,
+    "decisionContextChips": [
+      "行业 银行",
+      "关键词 平安",
+      "评分日期 20260414",
+      "整体均分 73.3",
+      "高分样本占比 10/12",
+      "可交易样本占比 12/12",
+      "行业内均分 79.1",
+      "done 49",
+      "error 31",
+      "行业数 10",
+      "Top 行业 通信设备",
+      "短名单 12",
+      "验证 ok"
+    ],
+    "decisionUrlAfterClear": "http://127.0.0.1:8077/research/decision",
+    "contextStillVisibleAfterClear": false,
+    "snapshotReqCountDoubleClick": 1,
+    "snapshotSuccessVisible": true,
+    "snapshotErrorVisible": false,
+    "graphNodeCounts": {
+      "beforeNodes": 10,
+      "afterRelationNodes": 10,
+      "afterTrunkNodes": 10
+    },
+    "graphModeLabelVisible": true,
+    "graphDetailNodeMatched": true,
+    "llmSave": {
+      "oldVal": "10",
+      "toastMsgs": [],
+      "saveTimeVisible": false
+    },
+    "limitedUpgrade": {
+      "fromSystemUsers": {
+        "url": "http://127.0.0.1:8077/upgrade?from=/system/users",
+        "hasBlockedTask": true,
+        "hasRequiredPerm": true,
+        "hasAltEntry": true
+      },
+      "fromResearchDecision": {
+        "url": "http://127.0.0.1:8077/upgrade?from=/research/decision",
+        "hasBlockedTask": true,
+        "hasRequiredPerm": true,
+        "hasAltEntry": true
+      }
+    }
+  }
+}

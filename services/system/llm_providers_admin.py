@@ -524,10 +524,16 @@ def test_model_llm_providers(payload: dict[str, Any]) -> dict[str, Any]:
 
 def update_default_rate_limit(payload: dict[str, Any]) -> dict[str, Any]:
     value = max(1, int(payload.get("default_rate_limit_per_minute") or 10))
+    before_value = value
     path = _resolve_config_path()
     with _LOCK:
         cfg = _load_payload(path)
+        before_value = max(1, int(cfg.get("default_rate_limit_per_minute") or get_default_rate_limit_per_minute() or 10))
         cfg["default_rate_limit_per_minute"] = value
         _save_payload(path, cfg)
     reload_provider_runtime()
-    return list_llm_providers()
+    payload = list_llm_providers()
+    payload["changed"] = before_value != value
+    payload["effective_value"] = value
+    payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return payload

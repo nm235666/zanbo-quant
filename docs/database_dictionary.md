@@ -1,43 +1,92 @@
 # 数据库数据字典
 
-- 生成时间：`2026-03-27 14:46:17 UTC`
+- 生成时间：`2026-04-10 12:24:57 UTC`
 - 数据库：`PostgreSQL 主库`
-- 表数量：`23`
+- 表数量：`72`
 
 ## 总览
 
 | 表名 | 中文用途 | 当前行数 | 归类 |
 | --- | --- | ---: | --- |
-| `stock_codes` | 股票基础信息主表，是所有股票相关数据的主索引表。 | 5814 | 股票与公司数据 |
-| `stock_daily_prices` | 股票日线行情表，保存历史日线 OHLCV 数据。 | 1327993 | 股票与公司数据 |
-| `stock_minline` | 股票分钟线表，保存分时/分钟级价格与成交量数据。 | 1757145 | 股票与公司数据 |
-| `stock_valuation_daily` | 股票估值日频表，保存 PE/PB/PS/股息率/市值等估值快照。 | 125985 | 股票与公司数据 |
-| `stock_financials` | 股票财务核心指标表，按报告期保存营收、利润、ROE、现金流等数据。 | 17631 | 股票与公司数据 |
-| `stock_events` | 股票事件表，保存分红、回购、解禁、业绩预告等事件。 | 128529 | 股票与公司数据 |
-| `company_governance` | 研究用治理画像表，把股东结构、董事高管结构、增减持、质押等治理数据拼成公司治理快照。 | 2744 | 股票与公司数据 |
-| `capital_flow_stock` | 个股级资金流数据，用于观察单只股票主力/大单/中单/小单资金流向。 | 1256146 | 宏观、资金流与风险 |
-| `capital_flow_market` | 市场级资金流数据，主要记录北向/南向等整体资金净流入情况。 | 476 | 宏观、资金流与风险 |
-| `stock_scores_daily` | 股票综合评分日快照表，包含总分、分项得分和行业内相对评分。 | 16479 | 股票与公司数据 |
-| `stock_news_items` | 个股相关新闻表，保存与某只股票关联的新闻、评分和摘要。 | 554 | 股票与公司数据 |
-| `news_feed_items` | 国际/国内财经快讯主表，保存抓取到的新闻原文信息及 LLM 评分结果。 | 6740 | 新闻与 LLM 新闻分析 |
-| `news_feed_items_archive` | 新闻归档表，保存从主新闻表归档出去的历史新闻。 | 50 | 新闻与 LLM 新闻分析 |
-| `news_daily_summaries` | 新闻日报总结表，保存对当日重要新闻的 LLM 总结 Markdown。 | 3 | 新闻与 LLM 新闻分析 |
-| `macro_series` | 宏观指标时间序列表，存储 CPI、PPI、社融、PMI 等指标的历史序列。 | 35329 | 宏观、资金流与风险 |
-| `fx_daily` | 汇率日线表，记录主要汇率对或指数的日频行情。 | 1565 | 宏观、资金流与风险 |
-| `rate_curve_points` | 利率曲线关键点表，保存不同市场、不同期限的收益率或政策利率点位。 | 188 | 宏观、资金流与风险 |
-| `spread_daily` | 利差日频表，如中美 10Y 利差等衍生指标。 | 47 | 宏观、资金流与风险 |
-| `risk_scenarios` | 风险情景表，记录针对个股或资产做出的情景压力测试结果。 | 27425 | 宏观、资金流与风险 |
-| `chatroom_list_items` | 群聊基础信息表，记录群 ID、备注名、成员数，以及是否继续纳入监控等状态。 | 166 | 群聊与社群分析 |
-| `wechat_chatlog_clean_items` | 清洗后的群聊消息表，过滤图片/链接等无效内容后，保留可分析文本及引用结构。 | 320945 | 群聊与社群分析 |
-| `chatroom_investment_analysis` | 群聊投资倾向分析结果表，存储大模型对单个群的总结、投资标的提炼和最终看多/看空结论。 | 27 | 群聊与社群分析 |
-| `chatroom_stock_candidate_pool` | 由群聊投资倾向分析聚合出来的候选池表，汇总哪些股票/主题被更多群看多或看空。 | 176 | 群聊与社群分析 |
+| `stock_codes` | 股票基础信息主表，是所有股票相关数据的主索引表。 | 5824 | 股票与公司数据 |
+| `stock_daily_prices` | 股票日线行情表，保存历史日线 OHLCV 数据。 | 1377367 | 股票与公司数据 |
+| `stock_minline` | 股票分钟线表，保存分时/分钟级价格与成交量数据。 | 15215281 | 股票与公司数据 |
+| `stock_valuation_daily` | 股票估值日频表，保存 PE/PB/PS/股息率/市值等估值快照。 | 180837 | 股票与公司数据 |
+| `stock_financials` | 股票财务核心指标表，按报告期保存营收、利润、ROE、现金流等数据。 | 18132 | 股票与公司数据 |
+| `stock_events` | 股票事件表，保存分红、回购、解禁、业绩预告等事件。 | 210720 | 股票与公司数据 |
+| `company_governance` | 研究用治理画像表，把股东结构、董事高管结构、增减持、质押等治理数据拼成公司治理快照。 | 5501 | 股票与公司数据 |
+| `capital_flow_stock` | 个股级资金流数据，用于观察单只股票主力/大单/中单/小单资金流向。 | 1342536 | 宏观、资金流与风险 |
+| `capital_flow_market` | 市场级资金流数据，主要记录北向/南向等整体资金净流入情况。 | 496 | 宏观、资金流与风险 |
+| `stock_scores_daily` | 股票综合评分日快照表，包含总分、分项得分和行业内相对评分。 | 54958 | 股票与公司数据 |
+| `stock_news_items` | 个股相关新闻表，保存与某只股票关联的新闻、评分和摘要。 | 138052 | 股票与公司数据 |
+| `news_feed_items` | 国际/国内财经快讯主表，保存抓取到的新闻原文信息及 LLM 评分结果。 | 44289 | 新闻与 LLM 新闻分析 |
+| `news_feed_items_archive` | 新闻归档表，保存从主新闻表归档出去的历史新闻。 | 51 | 新闻与 LLM 新闻分析 |
+| `news_daily_summaries` | 新闻日报总结表，保存对当日重要新闻的 LLM 总结 Markdown。 | 17 | 新闻与 LLM 新闻分析 |
+| `macro_series` | 宏观指标时间序列表，存储 CPI、PPI、社融、PMI 等指标的历史序列。 | 513797 | 宏观、资金流与风险 |
+| `fx_daily` | 汇率日线表，记录主要汇率对或指数的日频行情。 | 2875 | 宏观、资金流与风险 |
+| `rate_curve_points` | 利率曲线关键点表，保存不同市场、不同期限的收益率或政策利率点位。 | 380 | 宏观、资金流与风险 |
+| `spread_daily` | 利差日频表，如中美 10Y 利差等衍生指标。 | 95 | 宏观、资金流与风险 |
+| `risk_scenarios` | 风险情景表，记录针对个股或资产做出的情景压力测试结果。 | 109630 | 宏观、资金流与风险 |
+| `chatroom_list_items` | 群聊基础信息表，记录群 ID、备注名、成员数，以及是否继续纳入监控等状态。 | 201 | 群聊与社群分析 |
+| `wechat_chatlog_clean_items` | 清洗后的群聊消息表，过滤图片/链接等无效内容后，保留可分析文本及引用结构。 | 150149 | 群聊与社群分析 |
+| `chatroom_investment_analysis` | 群聊投资倾向分析结果表，存储大模型对单个群的总结、投资标的提炼和最终看多/看空结论。 | 329 | 群聊与社群分析 |
+| `chatroom_stock_candidate_pool` | 由群聊投资倾向分析聚合出来的候选池表，汇总哪些股票/主题被更多群看多或看空。 | 455 | 群聊与社群分析 |
+| `ai_retrieval_audit_logs` | 待补充说明 | 35 | 其他 |
+| `ai_retrieval_chunks` | 待补充说明 | 11677 | 其他 |
+| `ai_retrieval_documents` | 待补充说明 | 11527 | 其他 |
+| `ai_retrieval_sync_state` | 待补充说明 | 3 | 其他 |
+| `app_auth_audit_logs` | 待补充说明 | 810 | 其他 |
+| `app_auth_email_verifications` | 待补充说明 | 1 | 其他 |
+| `app_auth_invites` | 待补充说明 | 10 | 其他 |
+| `app_auth_password_resets` | 待补充说明 | 1 | 其他 |
+| `app_auth_role_policies` | 待补充说明 | 3 | 其他 |
+| `app_auth_sessions` | 待补充说明 | 52 | 其他 |
+| `app_auth_usage_daily` | 待补充说明 | 10 | 其他 |
+| `app_auth_users` | 待补充说明 | 12 | 其他 |
+| `chatroom_tag_history` | 待补充说明 | 100 | 群聊与社群分析 |
+| `decision_actions` | 待补充说明 | 0 | 其他 |
+| `decision_controls` | 待补充说明 | 1 | 其他 |
+| `decision_snapshots` | 待补充说明 | 3 | 其他 |
+| `decision_strategy_candidates` | 待补充说明 | 0 | 其他 |
+| `decision_strategy_runs` | 待补充说明 | 1 | 其他 |
+| `investment_signal_daily_snapshots` | 待补充说明 | 101381 | 其他 |
+| `investment_signal_events` | 待补充说明 | 15908 | 其他 |
+| `investment_signal_tracker` | 待补充说明 | 404 | 其他 |
+| `investment_signal_tracker_1d` | 待补充说明 | 160 | 其他 |
+| `investment_signal_tracker_7d` | 待补充说明 | 183 | 其他 |
+| `job_alerts` | 待补充说明 | 282 | 其他 |
+| `job_definitions` | 待补充说明 | 44 | 其他 |
+| `job_runs` | 待补充说明 | 34398 | 其他 |
+| `logic_view_cache` | 待补充说明 | 16534 | 其他 |
+| `market_expectation_items` | 待补充说明 | 149 | 其他 |
+| `market_expectation_snapshots` | 待补充说明 | 1366 | 其他 |
+| `multi_role_analysis_history` | 待补充说明 | 23 | 其他 |
+| `multi_role_v3_events` | 待补充说明 | 798 | 其他 |
+| `multi_role_v3_jobs` | 待补充说明 | 39 | 其他 |
+| `quantaalpha_backtest_results` | 待补充说明 | 24 | 其他 |
+| `quantaalpha_factor_results` | 待补充说明 | 89 | 其他 |
+| `quantaalpha_runs` | 待补充说明 | 81 | 其他 |
+| `research_reports` | 待补充说明 | 31 | 其他 |
+| `signal_mapping_blocklist` | 待补充说明 | 18 | 其他 |
+| `signal_quality_rules` | 待补充说明 | 8 | 其他 |
+| `signal_state_events` | 待补充说明 | 8490 | 其他 |
+| `signal_state_tracker` | 待补充说明 | 182 | 其他 |
+| `stock_alias_dictionary` | 待补充说明 | 7 | 股票与公司数据 |
+| `stock_daily_price_rollups` | 待补充说明 | 32947 | 股票与公司数据 |
+| `theme_aliases` | 待补充说明 | 126 | 其他 |
+| `theme_daily_snapshots` | 待补充说明 | 406 | 其他 |
+| `theme_definitions` | 待补充说明 | 29 | 其他 |
+| `theme_evidence_items` | 待补充说明 | 3340 | 其他 |
+| `theme_hotspot_tracker` | 待补充说明 | 28 | 其他 |
+| `theme_hotspot_tracker_1d` | 待补充说明 | 28 | 其他 |
+| `theme_stock_mapping` | 待补充说明 | 33 | 其他 |
 
 ## 各表详解
 
 ### `stock_codes`
 
 - 用途：股票基础信息主表，是所有股票相关数据的主索引表。
-- 当前行数：`5814`
+- 当前行数：`5824`
 - 字段数：`9`
 
 | 字段名 | 类型 | 中文解读 |
@@ -55,7 +104,7 @@
 ### `stock_daily_prices`
 
 - 用途：股票日线行情表，保存历史日线 OHLCV 数据。
-- 当前行数：`1327993`
+- 当前行数：`1377367`
 - 字段数：`11`
 
 | 字段名 | 类型 | 中文解读 |
@@ -75,7 +124,7 @@
 ### `stock_minline`
 
 - 用途：股票分钟线表，保存分时/分钟级价格与成交量数据。
-- 当前行数：`1757145`
+- 当前行数：`15215281`
 - 字段数：`8`
 
 | 字段名 | 类型 | 中文解读 |
@@ -92,7 +141,7 @@
 ### `stock_valuation_daily`
 
 - 用途：股票估值日频表，保存 PE/PB/PS/股息率/市值等估值快照。
-- 当前行数：`125985`
+- 当前行数：`180837`
 - 字段数：`13`
 
 | 字段名 | 类型 | 中文解读 |
@@ -114,7 +163,7 @@
 ### `stock_financials`
 
 - 用途：股票财务核心指标表，按报告期保存营收、利润、ROE、现金流等数据。
-- 当前行数：`17631`
+- 当前行数：`18132`
 - 字段数：`17`
 
 | 字段名 | 类型 | 中文解读 |
@@ -140,7 +189,7 @@
 ### `stock_events`
 
 - 用途：股票事件表，保存分红、回购、解禁、业绩预告等事件。
-- 当前行数：`128529`
+- 当前行数：`210720`
 - 字段数：`10`
 
 | 字段名 | 类型 | 中文解读 |
@@ -159,7 +208,7 @@
 ### `company_governance`
 
 - 用途：研究用治理画像表，把股东结构、董事高管结构、增减持、质押等治理数据拼成公司治理快照。
-- 当前行数：`2744`
+- 当前行数：`5501`
 - 字段数：`9`
 
 | 字段名 | 类型 | 中文解读 |
@@ -177,7 +226,7 @@
 ### `capital_flow_stock`
 
 - 用途：个股级资金流数据，用于观察单只股票主力/大单/中单/小单资金流向。
-- 当前行数：`1256146`
+- 当前行数：`1342536`
 - 字段数：`10`
 
 | 字段名 | 类型 | 中文解读 |
@@ -196,7 +245,7 @@
 ### `capital_flow_market`
 
 - 用途：市场级资金流数据，主要记录北向/南向等整体资金净流入情况。
-- 当前行数：`476`
+- 当前行数：`496`
 - 字段数：`8`
 
 | 字段名 | 类型 | 中文解读 |
@@ -213,7 +262,7 @@
 ### `stock_scores_daily`
 
 - 用途：股票综合评分日快照表，包含总分、分项得分和行业内相对评分。
-- 当前行数：`16479`
+- 当前行数：`54958`
 - 字段数：`37`
 
 | 字段名 | 类型 | 中文解读 |
@@ -259,8 +308,8 @@
 ### `stock_news_items`
 
 - 用途：个股相关新闻表，保存与某只股票关联的新闻、评分和摘要。
-- 当前行数：`554`
-- 字段数：`23`
+- 当前行数：`138052`
+- 字段数：`29`
 
 | 字段名 | 类型 | 中文解读 |
 | --- | --- | --- |
@@ -287,12 +336,18 @@
 | `llm_scored_at` | 文本 | 评分时间。 |
 | `llm_prompt_version` | 文本 | 提示词版本。 |
 | `llm_raw_output` | 文本 | 模型原始输出。 |
+| `llm_sentiment_score` | 浮点 | 待补充说明 |
+| `llm_sentiment_label` | 文本 | 待补充说明 |
+| `llm_sentiment_reason` | 文本 | 待补充说明 |
+| `llm_sentiment_confidence` | 浮点 | 待补充说明 |
+| `llm_sentiment_model` | 文本 | 待补充说明 |
+| `llm_sentiment_scored_at` | 文本 | 待补充说明 |
 
 ### `news_feed_items`
 
 - 用途：国际/国内财经快讯主表，保存抓取到的新闻原文信息及 LLM 评分结果。
-- 当前行数：`6740`
-- 字段数：`19`
+- 当前行数：`44289`
+- 字段数：`31`
 
 | 字段名 | 类型 | 中文解读 |
 | --- | --- | --- |
@@ -315,12 +370,24 @@
 | `llm_scored_at` | 文本 | 评分时间。 |
 | `llm_prompt_version` | 文本 | 新闻评分提示词版本。 |
 | `llm_raw_output` | 文本 | 模型原始输出。 |
+| `related_ts_codes_json` | 文本 | 待补充说明 |
+| `related_stock_names_json` | 文本 | 待补充说明 |
+| `stock_match_version` | 文本 | 待补充说明 |
+| `stock_mapped_at` | 文本 | 待补充说明 |
+| `llm_direct_related_ts_codes_json` | 文本 | 待补充说明 |
+| `llm_direct_related_stock_names_json` | 文本 | 待补充说明 |
+| `llm_sentiment_score` | 浮点 | 待补充说明 |
+| `llm_sentiment_label` | 文本 | 待补充说明 |
+| `llm_sentiment_reason` | 文本 | 待补充说明 |
+| `llm_sentiment_confidence` | 浮点 | 待补充说明 |
+| `llm_sentiment_model` | 文本 | 待补充说明 |
+| `llm_sentiment_scored_at` | 文本 | 待补充说明 |
 
 ### `news_feed_items_archive`
 
 - 用途：新闻归档表，保存从主新闻表归档出去的历史新闻。
-- 当前行数：`50`
-- 字段数：`20`
+- 当前行数：`51`
+- 字段数：`32`
 
 | 字段名 | 类型 | 中文解读 |
 | --- | --- | --- |
@@ -344,11 +411,23 @@
 | `llm_prompt_version` | 文本 | 提示词版本。 |
 | `llm_raw_output` | 文本 | 模型原始输出。 |
 | `archived_at` | 文本 | 归档时间。 |
+| `related_ts_codes_json` | 文本 | 待补充说明 |
+| `related_stock_names_json` | 文本 | 待补充说明 |
+| `stock_match_version` | 文本 | 待补充说明 |
+| `stock_mapped_at` | 文本 | 待补充说明 |
+| `llm_direct_related_ts_codes_json` | 文本 | 待补充说明 |
+| `llm_direct_related_stock_names_json` | 文本 | 待补充说明 |
+| `llm_sentiment_score` | 浮点 | 待补充说明 |
+| `llm_sentiment_label` | 文本 | 待补充说明 |
+| `llm_sentiment_reason` | 文本 | 待补充说明 |
+| `llm_sentiment_confidence` | 浮点 | 待补充说明 |
+| `llm_sentiment_model` | 文本 | 待补充说明 |
+| `llm_sentiment_scored_at` | 文本 | 待补充说明 |
 
 ### `news_daily_summaries`
 
 - 用途：新闻日报总结表，保存对当日重要新闻的 LLM 总结 Markdown。
-- 当前行数：`3`
+- 当前行数：`17`
 - 字段数：`9`
 
 | 字段名 | 类型 | 中文解读 |
@@ -366,7 +445,7 @@
 ### `macro_series`
 
 - 用途：宏观指标时间序列表，存储 CPI、PPI、社融、PMI 等指标的历史序列。
-- 当前行数：`35329`
+- 当前行数：`513797`
 - 字段数：`9`
 
 | 字段名 | 类型 | 中文解读 |
@@ -384,7 +463,7 @@
 ### `fx_daily`
 
 - 用途：汇率日线表，记录主要汇率对或指数的日频行情。
-- 当前行数：`1565`
+- 当前行数：`2875`
 - 字段数：`9`
 
 | 字段名 | 类型 | 中文解读 |
@@ -402,7 +481,7 @@
 ### `rate_curve_points`
 
 - 用途：利率曲线关键点表，保存不同市场、不同期限的收益率或政策利率点位。
-- 当前行数：`188`
+- 当前行数：`380`
 - 字段数：`8`
 
 | 字段名 | 类型 | 中文解读 |
@@ -419,7 +498,7 @@
 ### `spread_daily`
 
 - 用途：利差日频表，如中美 10Y 利差等衍生指标。
-- 当前行数：`47`
+- 当前行数：`95`
 - 字段数：`6`
 
 | 字段名 | 类型 | 中文解读 |
@@ -434,7 +513,7 @@
 ### `risk_scenarios`
 
 - 用途：风险情景表，记录针对个股或资产做出的情景压力测试结果。
-- 当前行数：`27425`
+- 当前行数：`109630`
 - 字段数：`12`
 
 | 字段名 | 类型 | 中文解读 |
@@ -455,7 +534,7 @@
 ### `chatroom_list_items`
 
 - 用途：群聊基础信息表，记录群 ID、备注名、成员数，以及是否继续纳入监控等状态。
-- 当前行数：`166`
+- 当前行数：`201`
 - 字段数：`31`
 
 | 字段名 | 类型 | 中文解读 |
@@ -495,7 +574,7 @@
 ### `wechat_chatlog_clean_items`
 
 - 用途：清洗后的群聊消息表，过滤图片/链接等无效内容后，保留可分析文本及引用结构。
-- 当前行数：`320945`
+- 当前行数：`150149`
 - 字段数：`21`
 
 | 字段名 | 类型 | 中文解读 |
@@ -525,8 +604,8 @@
 ### `chatroom_investment_analysis`
 
 - 用途：群聊投资倾向分析结果表，存储大模型对单个群的总结、投资标的提炼和最终看多/看空结论。
-- 当前行数：`27`
-- 字段数：`16`
+- 当前行数：`329`
+- 字段数：`22`
 
 | 字段名 | 类型 | 中文解读 |
 | --- | --- | --- |
@@ -546,12 +625,18 @@
 | `raw_output` | 文本 | 模型原始输出。 |
 | `created_at` | 文本 | 创建时间。 |
 | `update_time` | 文本 | 更新时间。 |
+| `llm_sentiment_score` | 浮点 | 待补充说明 |
+| `llm_sentiment_label` | 文本 | 待补充说明 |
+| `llm_sentiment_reason` | 文本 | 待补充说明 |
+| `llm_sentiment_confidence` | 浮点 | 待补充说明 |
+| `llm_sentiment_model` | 文本 | 待补充说明 |
+| `llm_sentiment_scored_at` | 文本 | 待补充说明 |
 
 ### `chatroom_stock_candidate_pool`
 
 - 用途：由群聊投资倾向分析聚合出来的候选池表，汇总哪些股票/主题被更多群看多或看空。
-- 当前行数：`176`
-- 字段数：`15`
+- 当前行数：`455`
+- 字段数：`19`
 
 | 字段名 | 类型 | 中文解读 |
 | --- | --- | --- |
@@ -570,6 +655,1097 @@
 | `source_talkers_json` | 文本 | 来源群名称列表 JSON。 |
 | `created_at` | 文本 | 创建时间。 |
 | `update_time` | 文本 | 更新时间。 |
+| `ts_code` | 文本 | 待补充说明 |
+| `alias_hit_name` | 文本 | 待补充说明 |
+| `alias_source` | 文本 | 待补充说明 |
+| `alias_confidence` | 浮点 | 待补充说明 |
+
+### `ai_retrieval_audit_logs`
+
+- 用途：待补充说明
+- 当前行数：`35`
+- 字段数：`12`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `request_type` | 文本 | 待补充说明 |
+| `scene` | 文本 | 待补充说明 |
+| `query_text` | 文本 | 待补充说明 |
+| `top_k` | 整数 | 待补充说明 |
+| `hit_count` | 整数 | 待补充说明 |
+| `empty_recall` | 整数 | 待补充说明 |
+| `latency_ms` | 整数 | 待补充说明 |
+| `used_model` | 文本 | 待补充说明 |
+| `attempts_json` | 文本 | 待补充说明 |
+| `trace_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `ai_retrieval_chunks`
+
+- 用途：待补充说明
+- 当前行数：`11677`
+- 字段数：`12`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `doc_id` | 整数 | 待补充说明 |
+| `scene` | 文本 | 待补充说明 |
+| `source_type` | 文本 | 待补充说明 |
+| `source_id` | 文本 | 待补充说明 |
+| `chunk_index` | 整数 | 待补充说明 |
+| `chunk_text` | 文本 | 待补充说明 |
+| `embedding_model` | 文本 | 待补充说明 |
+| `embedding_dims` | 整数 | 待补充说明 |
+| `embedding_vector` | USER-DEFINED | 待补充说明 |
+| `metadata_json` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `ai_retrieval_documents`
+
+- 用途：待补充说明
+- 当前行数：`11527`
+- 字段数：`10`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `source_type` | 文本 | 待补充说明 |
+| `source_id` | 文本 | 待补充说明 |
+| `scene` | 文本 | 待补充说明 |
+| `title` | 文本 | 待补充说明 |
+| `content` | 文本 | 待补充说明 |
+| `published_at` | 文本 | 待补充说明 |
+| `metadata_json` | 文本 | 待补充说明 |
+| `content_hash` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `ai_retrieval_sync_state`
+
+- 用途：待补充说明
+- 当前行数：`3`
+- 字段数：`5`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `scene` | 文本 | 待补充说明 |
+| `source_type` | 文本 | 待补充说明 |
+| `last_success_at` | 文本 | 待补充说明 |
+| `last_error` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `app_auth_audit_logs`
+
+- 用途：待补充说明
+- 当前行数：`810`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `event_type` | 文本 | 待补充说明 |
+| `username` | 文本 | 待补充说明 |
+| `user_id` | 整数 | 待补充说明 |
+| `result` | 文本 | 待补充说明 |
+| `detail` | 文本 | 待补充说明 |
+| `ip` | 文本 | 待补充说明 |
+| `user_agent` | 文本 | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_email_verifications`
+
+- 用途：待补充说明
+- 当前行数：`1`
+- 字段数：`7`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `user_id` | 整数 | 待补充说明 |
+| `email` | 文本 | 待补充说明 |
+| `verify_code` | 文本 | 待补充说明 |
+| `expires_at` | timestamp without time zone | 待补充说明 |
+| `used_at` | timestamp without time zone | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_invites`
+
+- 用途：待补充说明
+- 当前行数：`10`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `invite_code` | 文本 | 待补充说明 |
+| `max_uses` | 整数 | 待补充说明 |
+| `used_count` | 整数 | 待补充说明 |
+| `expires_at` | timestamp without time zone | 待补充说明 |
+| `is_active` | 整数 | 待补充说明 |
+| `created_by` | 文本 | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+| `updated_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_password_resets`
+
+- 用途：待补充说明
+- 当前行数：`1`
+- 字段数：`7`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `user_id` | 整数 | 待补充说明 |
+| `username` | 文本 | 待补充说明 |
+| `reset_code` | 文本 | 待补充说明 |
+| `expires_at` | timestamp without time zone | 待补充说明 |
+| `used_at` | timestamp without time zone | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_role_policies`
+
+- 用途：待补充说明
+- 当前行数：`3`
+- 字段数：`7`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `role` | 文本 | 待补充说明 |
+| `permissions_json` | 文本 | 待补充说明 |
+| `trend_daily_limit` | 整数 | 待补充说明 |
+| `multi_role_daily_limit` | 整数 | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+| `updated_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_sessions`
+
+- 用途：待补充说明
+- 当前行数：`52`
+- 字段数：`6`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `user_id` | 整数 | 待补充说明 |
+| `session_token_hash` | 文本 | 待补充说明 |
+| `expires_at` | timestamp without time zone | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+| `last_seen_at` | timestamp without time zone | 待补充说明 |
+
+### `app_auth_usage_daily`
+
+- 用途：待补充说明
+- 当前行数：`10`
+- 字段数：`7`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `user_id` | 整数 | 待补充说明 |
+| `usage_date` | 文本 | 待补充说明 |
+| `trend_count` | 整数 | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+| `updated_at` | timestamp without time zone | 待补充说明 |
+| `multi_role_count` | 整数 | 待补充说明 |
+
+### `app_auth_users`
+
+- 用途：待补充说明
+- 当前行数：`12`
+- 字段数：`15`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `username` | 文本 | 待补充说明 |
+| `password_hash` | 文本 | 待补充说明 |
+| `display_name` | 文本 | 待补充说明 |
+| `is_active` | 整数 | 待补充说明 |
+| `created_at` | timestamp without time zone | 待补充说明 |
+| `updated_at` | timestamp without time zone | 待补充说明 |
+| `email` | 文本 | 待补充说明 |
+| `email_verified` | 整数 | 待补充说明 |
+| `role` | 文本 | 待补充说明 |
+| `tier` | 文本 | 待补充说明 |
+| `invite_code_used` | 文本 | 待补充说明 |
+| `failed_login_count` | 整数 | 待补充说明 |
+| `locked_until` | timestamp without time zone | 待补充说明 |
+| `last_login_at` | timestamp without time zone | 待补充说明 |
+
+### `chatroom_tag_history`
+
+- 用途：待补充说明
+- 当前行数：`100`
+- 字段数：`19`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `room_id` | 文本 | 待补充说明 |
+| `talker` | 文本 | 待补充说明 |
+| `sample_start_date` | 文本 | 待补充说明 |
+| `sample_end_date` | 文本 | 待补充说明 |
+| `sample_message_count` | 整数 | 待补充说明 |
+| `proposed_primary_category` | 文本 | 待补充说明 |
+| `proposed_activity_level` | 文本 | 待补充说明 |
+| `proposed_risk_level` | 文本 | 待补充说明 |
+| `proposed_confidence` | 整数 | 待补充说明 |
+| `proposed_summary` | 文本 | 待补充说明 |
+| `proposed_tags_json` | 文本 | 待补充说明 |
+| `all_tags_text` | 文本 | 待补充说明 |
+| `model` | 文本 | 待补充说明 |
+| `prompt_version` | 文本 | 待补充说明 |
+| `raw_output` | 文本 | 待补充说明 |
+| `is_applied` | 整数 | 待补充说明 |
+| `apply_reason` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `decision_actions`
+
+- 用途：待补充说明
+- 当前行数：`0`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `action_type` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `stock_name` | 文本 | 待补充说明 |
+| `note` | 文本 | 待补充说明 |
+| `actor` | 文本 | 待补充说明 |
+| `snapshot_date` | 文本 | 待补充说明 |
+| `action_payload_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `decision_controls`
+
+- 用途：待补充说明
+- 当前行数：`1`
+- 字段数：`4`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `control_key` | 文本 | 待补充说明 |
+| `allow_trading` | 整数 | 待补充说明 |
+| `reason` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `decision_snapshots`
+
+- 用途：待补充说明
+- 当前行数：`3`
+- 字段数：`6`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `snapshot_date` | 文本 | 待补充说明 |
+| `snapshot_type` | 文本 | 待补充说明 |
+| `payload_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `decision_strategy_candidates`
+
+- 用途：待补充说明
+- 当前行数：`0`
+- 字段数：`28`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `run_id` | 整数 | 待补充说明 |
+| `run_key` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `keyword` | 文本 | 待补充说明 |
+| `rank` | 整数 | 待补充说明 |
+| `priority` | 整数 | 待补充说明 |
+| `name` | 文本 | 待补充说明 |
+| `mode` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `fit_score` | 浮点 | 待补充说明 |
+| `llm_feasibility_score` | 浮点 | 待补充说明 |
+| `llm_feasibility_label` | 文本 | 待补充说明 |
+| `llm_explanation` | 文本 | 待补充说明 |
+| `llm_risk_note` | 文本 | 待补充说明 |
+| `llm_name_hint` | 文本 | 待补充说明 |
+| `summary` | 文本 | 待补充说明 |
+| `entry_rule` | 文本 | 待补充说明 |
+| `exit_rule` | 文本 | 待补充说明 |
+| `position_bias` | 文本 | 待补充说明 |
+| `universe` | 文本 | 待补充说明 |
+| `rationale` | 文本 | 待补充说明 |
+| `risk_control` | 文本 | 待补充说明 |
+| `linked_industries_json` | 文本 | 待补充说明 |
+| `linked_stocks_json` | 文本 | 待补充说明 |
+| `candidate_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `decision_strategy_runs`
+
+- 用途：待补充说明
+- 当前行数：`1`
+- 字段数：`18`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `run_key` | 文本 | 待补充说明 |
+| `run_version` | 整数 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `keyword` | 文本 | 待补充说明 |
+| `title` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `source_mode` | 文本 | 待补充说明 |
+| `generator_mode` | 文本 | 待补充说明 |
+| `llm_model` | 文本 | 待补充说明 |
+| `llm_enabled` | 整数 | 待补充说明 |
+| `market_mode` | 文本 | 待补充说明 |
+| `approval_state` | 文本 | 待补充说明 |
+| `summary_json` | 文本 | 待补充说明 |
+| `board_snapshot_json` | 文本 | 待补充说明 |
+| `generator_rules_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+
+### `investment_signal_daily_snapshots`
+
+- 用途：待补充说明
+- 当前行数：`101381`
+- 字段数：`19`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `snapshot_at` | 文本 | 待补充说明 |
+| `snapshot_date` | 文本 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `signal_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `signal_status` | 文本 | 待补充说明 |
+| `latest_signal_date` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `investment_signal_events`
+
+- 用途：待补充说明
+- 当前行数：`15908`
+- 字段数：`24`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `event_time` | 文本 | 待补充说明 |
+| `event_date` | 文本 | 待补充说明 |
+| `event_type` | 文本 | 待补充说明 |
+| `old_direction` | 文本 | 待补充说明 |
+| `new_direction` | 文本 | 待补充说明 |
+| `old_strength` | 浮点 | 待补充说明 |
+| `new_strength` | 浮点 | 待补充说明 |
+| `delta_strength` | 浮点 | 待补充说明 |
+| `old_confidence` | 浮点 | 待补充说明 |
+| `new_confidence` | 浮点 | 待补充说明 |
+| `delta_confidence` | 浮点 | 待补充说明 |
+| `event_level` | 文本 | 待补充说明 |
+| `driver_type` | 文本 | 待补充说明 |
+| `driver_source` | 文本 | 待补充说明 |
+| `driver_ref_id` | 文本 | 待补充说明 |
+| `driver_title` | 文本 | 待补充说明 |
+| `status_after_event` | 文本 | 待补充说明 |
+| `event_summary` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `snapshot_before_json` | 文本 | 待补充说明 |
+| `snapshot_after_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `investment_signal_tracker`
+
+- 用途：待补充说明
+- 当前行数：`404`
+- 字段数：`18`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `signal_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `signal_status` | 文本 | 待补充说明 |
+| `latest_signal_date` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `investment_signal_tracker_1d`
+
+- 用途：待补充说明
+- 当前行数：`160`
+- 字段数：`18`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `signal_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `signal_status` | 文本 | 待补充说明 |
+| `latest_signal_date` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `investment_signal_tracker_7d`
+
+- 用途：待补充说明
+- 当前行数：`183`
+- 字段数：`18`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `signal_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `signal_status` | 文本 | 待补充说明 |
+| `latest_signal_date` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `job_alerts`
+
+- 用途：待补充说明
+- 当前行数：`282`
+- 字段数：`10`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `job_key` | 文本 | 待补充说明 |
+| `run_id` | 整数 | 待补充说明 |
+| `severity` | 文本 | 待补充说明 |
+| `message` | 文本 | 待补充说明 |
+| `detail_text` | 文本 | 待补充说明 |
+| `acknowledged` | 整数 | 待补充说明 |
+| `acknowledged_at` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `job_definitions`
+
+- 用途：待补充说明
+- 当前行数：`44`
+- 字段数：`10`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `job_key` | 文本 | 待补充说明 |
+| `name` | 文本 | 待补充说明 |
+| `category` | 文本 | 待补充说明 |
+| `owner` | 文本 | 待补充说明 |
+| `schedule_expr` | 文本 | 待补充说明 |
+| `description` | 文本 | 待补充说明 |
+| `enabled` | 整数 | 待补充说明 |
+| `commands_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `job_runs`
+
+- 用途：待补充说明
+- 当前行数：`34398`
+- 字段数：`17`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `job_key` | 文本 | 待补充说明 |
+| `trigger_mode` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `started_at` | 文本 | 待补充说明 |
+| `finished_at` | 文本 | 待补充说明 |
+| `duration_seconds` | 浮点 | 待补充说明 |
+| `host_name` | 文本 | 待补充说明 |
+| `process_id` | 整数 | 待补充说明 |
+| `exit_code` | 整数 | 待补充说明 |
+| `command_json` | 文本 | 待补充说明 |
+| `stdout_text` | 文本 | 待补充说明 |
+| `stderr_text` | 文本 | 待补充说明 |
+| `error_text` | 文本 | 待补充说明 |
+| `metadata_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `logic_view_cache`
+
+- 用途：待补充说明
+- 当前行数：`16534`
+- 字段数：`6`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `entity_type` | 文本 | 待补充说明 |
+| `entity_key` | 文本 | 待补充说明 |
+| `content_hash` | 文本 | 待补充说明 |
+| `logic_view_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `market_expectation_items`
+
+- 用途：待补充说明
+- 当前行数：`149`
+- 字段数：`21`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `source` | 文本 | 待补充说明 |
+| `market_id` | 文本 | 待补充说明 |
+| `question` | 文本 | 待补充说明 |
+| `slug` | 文本 | 待补充说明 |
+| `active` | 整数 | 待补充说明 |
+| `closed` | 整数 | 待补充说明 |
+| `end_date` | 文本 | 待补充说明 |
+| `liquidity` | 浮点 | 待补充说明 |
+| `volume` | 浮点 | 待补充说明 |
+| `volume_24h` | 浮点 | 待补充说明 |
+| `best_bid` | 浮点 | 待补充说明 |
+| `best_ask` | 浮点 | 待补充说明 |
+| `last_trade_price` | 浮点 | 待补充说明 |
+| `outcomes_json` | 文本 | 待补充说明 |
+| `outcome_prices_json` | 文本 | 待补充说明 |
+| `related_theme_names_json` | 文本 | 待补充说明 |
+| `source_url` | 文本 | 待补充说明 |
+| `raw_json` | 文本 | 待补充说明 |
+| `fetched_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `market_expectation_snapshots`
+
+- 用途：待补充说明
+- 当前行数：`1366`
+- 字段数：`12`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `snapshot_at` | 文本 | 待补充说明 |
+| `market_id` | 文本 | 待补充说明 |
+| `question` | 文本 | 待补充说明 |
+| `active` | 整数 | 待补充说明 |
+| `closed` | 整数 | 待补充说明 |
+| `volume` | 浮点 | 待补充说明 |
+| `liquidity` | 浮点 | 待补充说明 |
+| `last_trade_price` | 浮点 | 待补充说明 |
+| `outcome_prices_json` | 文本 | 待补充说明 |
+| `related_theme_names_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `multi_role_analysis_history`
+
+- 用途：待补充说明
+- 当前行数：`23`
+- 字段数：`21`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `job_id` | 文本 | 待补充说明 |
+| `version` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `name` | 文本 | 待补充说明 |
+| `lookback` | 整数 | 待补充说明 |
+| `roles_json` | 文本 | 待补充说明 |
+| `accept_auto_degrade` | 整数 | 待补充说明 |
+| `requested_model` | 文本 | 待补充说明 |
+| `used_model` | 文本 | 待补充说明 |
+| `attempts_json` | 文本 | 待补充说明 |
+| `role_runs_json` | 文本 | 待补充说明 |
+| `aggregator_run_json` | 文本 | 待补充说明 |
+| `decision_state_json` | 文本 | 待补充说明 |
+| `warnings_json` | 文本 | 待补充说明 |
+| `error` | 文本 | 待补充说明 |
+| `analysis_markdown` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+| `finished_at` | 文本 | 待补充说明 |
+
+### `multi_role_v3_events`
+
+- 用途：待补充说明
+- 当前行数：`798`
+- 字段数：`6`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `job_id` | 文本 | 待补充说明 |
+| `stage` | 文本 | 待补充说明 |
+| `event_type` | 文本 | 待补充说明 |
+| `payload_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `multi_role_v3_jobs`
+
+- 用途：待补充说明
+- 当前行数：`39`
+- 字段数：`17`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `job_id` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `stage` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `lookback` | 整数 | 待补充说明 |
+| `config_json` | 文本 | 待补充说明 |
+| `state_json` | 文本 | 待补充说明 |
+| `result_json` | 文本 | 待补充说明 |
+| `decision_state_json` | 文本 | 待补充说明 |
+| `metrics_json` | 文本 | 待补充说明 |
+| `error` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `updated_at` | 文本 | 待补充说明 |
+| `finished_at` | 文本 | 待补充说明 |
+| `worker_id` | 文本 | 待补充说明 |
+| `lease_until` | 文本 | 待补充说明 |
+
+### `quantaalpha_backtest_results`
+
+- 用途：待补充说明
+- 当前行数：`24`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `task_id` | 文本 | 待补充说明 |
+| `strategy_name` | 文本 | 待补充说明 |
+| `arr` | 浮点 | 待补充说明 |
+| `mdd` | 浮点 | 待补充说明 |
+| `calmar` | 浮点 | 待补充说明 |
+| `params_json` | 文本 | 待补充说明 |
+| `artifact_path` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `quantaalpha_factor_results`
+
+- 用途：待补充说明
+- 当前行数：`89`
+- 字段数：`8`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `task_id` | 文本 | 待补充说明 |
+| `factor_name` | 文本 | 待补充说明 |
+| `ic` | 浮点 | 待补充说明 |
+| `rank_ic` | 浮点 | 待补充说明 |
+| `effective_window` | 文本 | 待补充说明 |
+| `source_version` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `quantaalpha_runs`
+
+- 用途：待补充说明
+- 当前行数：`81`
+- 字段数：`16`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `task_id` | 文本 | 待补充说明 |
+| `job_key` | 文本 | 待补充说明 |
+| `task_type` | 文本 | 待补充说明 |
+| `status` | 文本 | 待补充说明 |
+| `error_code` | 文本 | 待补充说明 |
+| `error_message` | 文本 | 待补充说明 |
+| `input_json` | 文本 | 待补充说明 |
+| `output_json` | 文本 | 待补充说明 |
+| `artifacts_json` | 文本 | 待补充说明 |
+| `metrics_json` | 文本 | 待补充说明 |
+| `started_at` | 文本 | 待补充说明 |
+| `finished_at` | 文本 | 待补充说明 |
+| `duration_seconds` | 浮点 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `research_reports`
+
+- 用途：待补充说明
+- 当前行数：`31`
+- 字段数：`10`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `report_date` | 文本 | 待补充说明 |
+| `report_type` | 文本 | 待补充说明 |
+| `subject_key` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `model` | 文本 | 待补充说明 |
+| `markdown_content` | 文本 | 待补充说明 |
+| `context_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `signal_mapping_blocklist`
+
+- 用途：待补充说明
+- 当前行数：`18`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `term` | 文本 | 待补充说明 |
+| `target_type` | 文本 | 待补充说明 |
+| `match_type` | 文本 | 待补充说明 |
+| `source` | 文本 | 待补充说明 |
+| `reason` | 文本 | 待补充说明 |
+| `enabled` | 整数 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `signal_quality_rules`
+
+- 用途：待补充说明
+- 当前行数：`8`
+- 字段数：`8`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `rule_key` | 文本 | 待补充说明 |
+| `rule_value` | 文本 | 待补充说明 |
+| `value_type` | 文本 | 待补充说明 |
+| `category` | 文本 | 待补充说明 |
+| `description` | 文本 | 待补充说明 |
+| `enabled` | 整数 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `signal_state_events`
+
+- 用途：待补充说明
+- 当前行数：`8490`
+- 字段数：`26`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_scope` | 文本 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `event_time` | 文本 | 待补充说明 |
+| `event_date` | 文本 | 待补充说明 |
+| `event_type` | 文本 | 待补充说明 |
+| `old_state` | 文本 | 待补充说明 |
+| `new_state` | 文本 | 待补充说明 |
+| `old_direction` | 文本 | 待补充说明 |
+| `new_direction` | 文本 | 待补充说明 |
+| `old_strength` | 浮点 | 待补充说明 |
+| `new_strength` | 浮点 | 待补充说明 |
+| `delta_strength` | 浮点 | 待补充说明 |
+| `old_confidence` | 浮点 | 待补充说明 |
+| `new_confidence` | 浮点 | 待补充说明 |
+| `delta_confidence` | 浮点 | 待补充说明 |
+| `source_table` | 文本 | 待补充说明 |
+| `driver_type` | 文本 | 待补充说明 |
+| `driver_title` | 文本 | 待补充说明 |
+| `event_summary` | 文本 | 待补充说明 |
+| `snapshot_before_json` | 文本 | 待补充说明 |
+| `snapshot_after_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `signal_state_tracker`
+
+- 用途：待补充说明
+- 当前行数：`182`
+- 字段数：`20`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `signal_scope` | 文本 | 待补充说明 |
+| `signal_key` | 文本 | 待补充说明 |
+| `signal_type` | 文本 | 待补充说明 |
+| `subject_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `signal_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `current_state` | 文本 | 待补充说明 |
+| `prev_state` | 文本 | 待补充说明 |
+| `source_table` | 文本 | 待补充说明 |
+| `latest_signal_date` | 文本 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `driver_type` | 文本 | 待补充说明 |
+| `driver_title` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `snapshot_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `stock_alias_dictionary`
+
+- 用途：待补充说明
+- 当前行数：`7`
+- 字段数：`12`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `alias` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `stock_name` | 文本 | 待补充说明 |
+| `alias_type` | 文本 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `source` | 文本 | 待补充说明 |
+| `notes` | 文本 | 待补充说明 |
+| `used_count` | 整数 | 待补充说明 |
+| `last_used_at` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `stock_daily_price_rollups`
+
+- 用途：待补充说明
+- 当前行数：`32947`
+- 字段数：`13`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `ts_code` | 文本 | 待补充说明 |
+| `window_days` | 整数 | 待补充说明 |
+| `start_date` | 文本 | 待补充说明 |
+| `end_date` | 文本 | 待补充说明 |
+| `rows_count` | 整数 | 待补充说明 |
+| `close_first` | 浮点 | 待补充说明 |
+| `close_last` | 浮点 | 待补充说明 |
+| `close_change_pct` | 浮点 | 待补充说明 |
+| `high_max` | 浮点 | 待补充说明 |
+| `low_min` | 浮点 | 待补充说明 |
+| `vol_avg` | 浮点 | 待补充说明 |
+| `amount_avg` | 浮点 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `theme_aliases`
+
+- 用途：待补充说明
+- 当前行数：`126`
+- 字段数：`8`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `alias` | 文本 | 待补充说明 |
+| `alias_type` | 文本 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `source` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `theme_daily_snapshots`
+
+- 用途：待补充说明
+- 当前行数：`406`
+- 字段数：`21`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `snapshot_date` | 文本 | 待补充说明 |
+| `lookback_days` | 整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `theme_group` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `theme_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `intl_news_count` | 整数 | 待补充说明 |
+| `domestic_news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `stock_link_count` | 整数 | 待补充说明 |
+| `latest_evidence_time` | 文本 | 待补充说明 |
+| `heat_level` | 文本 | 待补充说明 |
+| `top_terms_json` | 文本 | 待补充说明 |
+| `top_stocks_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `theme_definitions`
+
+- 用途：待补充说明
+- 当前行数：`29`
+- 字段数：`9`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `theme_group` | 文本 | 待补充说明 |
+| `description` | 文本 | 待补充说明 |
+| `keywords_json` | 文本 | 待补充说明 |
+| `priority` | 整数 | 待补充说明 |
+| `enabled` | 整数 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `theme_evidence_items`
+
+- 用途：待补充说明
+- 当前行数：`3340`
+- 字段数：`20`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `theme_group` | 文本 | 待补充说明 |
+| `source_type` | 文本 | 待补充说明 |
+| `source_table` | 文本 | 待补充说明 |
+| `source_id` | 文本 | 待补充说明 |
+| `source_name` | 文本 | 待补充说明 |
+| `evidence_time` | 文本 | 待补充说明 |
+| `evidence_date` | 文本 | 待补充说明 |
+| `original_term` | 文本 | 待补充说明 |
+| `title` | 文本 | 待补充说明 |
+| `summary` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `weight` | 浮点 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `stock_name` | 文本 | 待补充说明 |
+| `sentiment_label` | 文本 | 待补充说明 |
+| `sentiment_score` | 浮点 | 待补充说明 |
+| `meta_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+
+### `theme_hotspot_tracker`
+
+- 用途：待补充说明
+- 当前行数：`28`
+- 字段数：`20`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `theme_group` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `theme_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `intl_news_count` | 整数 | 待补充说明 |
+| `domestic_news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `stock_link_count` | 整数 | 待补充说明 |
+| `latest_evidence_time` | 文本 | 待补充说明 |
+| `heat_level` | 文本 | 待补充说明 |
+| `top_terms_json` | 文本 | 待补充说明 |
+| `top_stocks_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `theme_hotspot_tracker_1d`
+
+- 用途：待补充说明
+- 当前行数：`28`
+- 字段数：`20`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `theme_group` | 文本 | 待补充说明 |
+| `direction` | 文本 | 待补充说明 |
+| `theme_strength` | 浮点 | 待补充说明 |
+| `confidence` | 浮点 | 待补充说明 |
+| `evidence_count` | 整数 | 待补充说明 |
+| `intl_news_count` | 整数 | 待补充说明 |
+| `domestic_news_count` | 整数 | 待补充说明 |
+| `stock_news_count` | 整数 | 待补充说明 |
+| `chatroom_count` | 整数 | 待补充说明 |
+| `stock_link_count` | 整数 | 待补充说明 |
+| `latest_evidence_time` | 文本 | 待补充说明 |
+| `heat_level` | 文本 | 待补充说明 |
+| `top_terms_json` | 文本 | 待补充说明 |
+| `top_stocks_json` | 文本 | 待补充说明 |
+| `source_summary_json` | 文本 | 待补充说明 |
+| `evidence_json` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
+
+### `theme_stock_mapping`
+
+- 用途：待补充说明
+- 当前行数：`33`
+- 字段数：`10`
+
+| 字段名 | 类型 | 中文解读 |
+| --- | --- | --- |
+| `id` | 长整数 | 待补充说明 |
+| `theme_name` | 文本 | 待补充说明 |
+| `ts_code` | 文本 | 待补充说明 |
+| `stock_name` | 文本 | 待补充说明 |
+| `relation_type` | 文本 | 待补充说明 |
+| `weight` | 浮点 | 待补充说明 |
+| `source` | 文本 | 待补充说明 |
+| `notes` | 文本 | 待补充说明 |
+| `created_at` | 文本 | 待补充说明 |
+| `update_time` | 文本 | 待补充说明 |
 
 ## 说明
 

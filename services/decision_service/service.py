@@ -992,6 +992,254 @@ def _related_signals_for_term(*, conn, term: str) -> list[dict[str, Any]]:
         pass
 
 
+def _recent_stock_news_for_stock(*, conn, ts_code: str, limit: int = 3) -> dict[str, Any]:
+    normalized_ts_code = str(ts_code or "").strip().upper()
+    if not normalized_ts_code:
+        return {"status": "empty", "available": False, "count": 0, "high_importance_count": 0, "latest_pub_time": "", "items": []}
+    if not _table_exists(conn, "stock_news_items"):
+        return {"status": "missing_source", "available": False, "count": 0, "high_importance_count": 0, "latest_pub_time": "", "items": []}
+    cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(stock_news_items)").fetchall()}
+    importance_expr = "COALESCE(llm_finance_importance, '') AS finance_importance" if "llm_finance_importance" in cols else "'' AS finance_importance"
+    summary_expr = "COALESCE(llm_summary, '') AS llm_summary" if "llm_summary" in cols else "'' AS llm_summary"
+    count = int(conn.execute("SELECT COUNT(*) FROM stock_news_items WHERE ts_code = ?", (normalized_ts_code,)).fetchone()[0] or 0)
+    if count <= 0:
+        return {"status": "empty", "available": True, "count": 0, "high_importance_count": 0, "latest_pub_time": "", "items": []}
+    latest_pub_time = str(conn.execute("SELECT MAX(pub_time) FROM stock_news_items WHERE ts_code = ?", (normalized_ts_code,)).fetchone()[0] or "")
+    high_importance_count = 0
+    if "llm_finance_importance" in cols:
+        high_importance_count = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM stock_news_items
+                WHERE ts_code = ? AND COALESCE(llm_finance_importance, '') IN ('极高', '高')
+                """,
+                (normalized_ts_code,),
+            ).fetchone()[0]
+            or 0
+        )
+    rows = conn.execute(
+        f"""
+        SELECT title, pub_time, {importance_expr}, {summary_expr}
+        FROM stock_news_items
+        WHERE ts_code = ?
+        ORDER BY pub_time DESC, id DESC
+        LIMIT ?
+        """,
+        (normalized_ts_code, max(limit, 1)),
+    ).fetchall()
+    items = [
+        {
+            "title": str(row["title"] or "").strip(),
+            "pub_time": str(row["pub_time"] or ""),
+            "finance_importance": str(row["finance_importance"] or ""),
+            "summary": str(row["llm_summary"] or "").strip(),
+        }
+        for row in rows
+        if str(row["title"] or "").strip()
+    ]
+    return {
+        "status": "ok",
+        "available": True,
+        "count": count,
+        "high_importance_count": high_importance_count,
+        "latest_pub_time": latest_pub_time,
+        "items": items,
+    }
+
+
+def _candidate_pool_reason_for_stock(*, conn, ts_code: str, name: str) -> dict[str, Any]:
+    normalized_ts_code = str(ts_code or "").strip().upper()
+    normalized_name = str(name or "").strip()
+    if not _table_exists(conn, "chatroom_stock_candidate_pool"):
+        return {"status": "missing_source", "available": False, "matched_count": 0, "items": []}
+    where_parts: list[str] = []
+    params: list[Any] = []
+    if normalized_ts_code:
+        where_parts.append("COALESCE(ts_code, '') = ?")
+        params.append(normalized_ts_code)
+    if normalized_name:
+        where_parts.append("candidate_name = ?")
+        params.append(normalized_name)
+    if not where_parts:
+        return {"status": "empty", "available": True, "matched_count": 0, "items": []}
+    rows = conn.execute(
+        f"""
+        SELECT candidate_name, candidate_type, ts_code, dominant_bias, net_score, mention_count, room_count, latest_analysis_date
+        FROM chatroom_stock_candidate_pool
+        WHERE {' OR '.join(where_parts)}
+        ORDER BY ABS(COALESCE(net_score, 0)) DESC, COALESCE(room_count, 0) DESC, COALESCE(mention_count, 0) DESC, candidate_name
+        LIMIT 3
+        """,
+        tuple(params),
+    ).fetchall()
+    items = [dict(row) for row in rows]
+    top = items[0] if items else {}
+    return {
+        "status": "ok" if items else "empty",
+        "available": True,
+        "matched_count": len(items),
+        "dominant_bias": str(top.get("dominant_bias") or ""),
+        "net_score": round(_as_float(top.get("net_score")), 2) if items else 0.0,
+        "mention_count": int(_as_float(top.get("mention_count"), 0)) if items else 0,
+        "room_count": int(_as_float(top.get("room_count"), 0)) if items else 0,
+        "latest_analysis_date": str(top.get("latest_analysis_date") or ""),
+        "items": items,
+    }
+
+
+def _score_reason_for_stock(item: dict[str, Any]) -> dict[str, Any]:
+    summary = item.get("score_summary") if isinstance(item.get("score_summary"), dict) else {}
+    summary_points = [str(summary.get(key) or "").strip() for key in ("trend", "financial", "valuation", "capital_flow", "event", "news", "risk")]
+    summary_points = [point for point in summary_points if point]
+    return {
+        "status": "ok",
+        "total_score": round(_as_float(item.get("total_score")), 2),
+        "industry_total_score": round(_as_float(item.get("industry_total_score")), 2),
+        "score_grade": str(item.get("score_grade") or _score_grade(_as_float(item.get("total_score")))),
+        "industry_score_grade": str(item.get("industry_score_grade") or _score_grade(_as_float(item.get("industry_total_score")))),
+        "industry_rank": int(_as_float(item.get("industry_rank"), 0)) if item.get("industry_rank") is not None else None,
+        "industry_count": int(_as_float(item.get("industry_count"), 0)) if item.get("industry_count") is not None else None,
+        "position_label": str(item.get("position_label") or _position_label(_as_float(item.get("total_score")))),
+        "decision_reason": str(item.get("decision_reason") or _build_stock_reason(item)),
+        "decision_risk": str(item.get("decision_risk") or _build_stock_risk(item)),
+        "summary_points": summary_points[:4],
+    }
+
+
+def _signal_reason_for_stock(*, conn, ts_code: str, name: str) -> dict[str, Any]:
+    merged: list[dict[str, Any]] = []
+    seen = set()
+    for term in (str(ts_code or "").strip().upper(), str(name or "").strip()):
+        if not term:
+            continue
+        for item in _related_signals_for_term(conn=conn, term=term):
+            key = str(item.get("signal_key") or item.get("subject_name") or item.get("ts_code") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+    latest_signal_date = str(merged[0].get("latest_signal_date") or "") if merged else ""
+    directions = sorted({str(item.get("direction") or "").strip() for item in merged if str(item.get("direction") or "").strip()})
+    return {
+        "status": "ok" if merged else "empty",
+        "available": True,
+        "count": len(merged),
+        "latest_signal_date": latest_signal_date,
+        "directions": directions,
+        "items": merged[:3],
+    }
+
+
+def _scoreboard_shortlist(conn, *, target_size: int) -> tuple[str, list[dict[str, Any]], list[str]]:
+    latest_score_date, _, rows = _load_stock_score_rows(conn, page=1, page_size=max(target_size * 3, 12))
+    shortlist: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for row in rows:
+        ts_code = str(row.get("ts_code") or "").strip().upper()
+        if not ts_code or ts_code in seen_codes:
+            continue
+        seen_codes.add(ts_code)
+        shortlist.append(
+            {
+                "ts_code": ts_code,
+                "name": str(row.get("name") or ts_code),
+                "industry": str(row.get("industry") or "未知行业"),
+                "market": str(row.get("market") or ""),
+                "area": str(row.get("area") or ""),
+                "total_score": round(_as_float(row.get("total_score")), 2),
+                "industry_total_score": round(_as_float(row.get("industry_total_score")), 2),
+                "score_grade": str(row.get("score_grade") or _score_grade(_as_float(row.get("total_score")))),
+                "industry_score_grade": str(row.get("industry_score_grade") or _score_grade(_as_float(row.get("industry_total_score")))),
+                "industry_rank": int(_as_float(row.get("industry_rank"), 0)) if row.get("industry_rank") is not None else None,
+                "industry_count": int(_as_float(row.get("industry_count"), 0)) if row.get("industry_count") is not None else None,
+                "position_label": str(row.get("position_label") or _position_label(_as_float(row.get("total_score")))),
+                "decision_reason": str(row.get("decision_reason") or _build_stock_reason(row)),
+                "decision_risk": str(row.get("decision_risk") or _build_stock_risk(row)),
+                "source_date": str(row.get("score_date") or latest_score_date or ""),
+                "trend_score": round(_as_float(row.get("trend_score")), 2),
+                "financial_score": round(_as_float(row.get("financial_score")), 2),
+                "valuation_score": round(_as_float(row.get("valuation_score")), 2),
+                "capital_flow_score": round(_as_float(row.get("capital_flow_score")), 2),
+                "event_score": round(_as_float(row.get("event_score")), 2),
+                "news_score": round(_as_float(row.get("news_score")), 2),
+                "risk_score": round(_as_float(row.get("risk_score")), 2),
+                "score_summary": row.get("score_summary") or {},
+            }
+        )
+        if len(shortlist) >= target_size:
+            break
+    return latest_score_date, shortlist, [str(item.get("ts_code") or "") for item in shortlist]
+
+
+def query_decision_scoreboard(*, sqlite3_module, db_path: str, page_size: int = 8) -> dict[str, Any]:
+    conn = sqlite3_module.connect(db_path)
+    conn.row_factory = sqlite3_module.Row
+    try:
+        _ensure_tables(conn)
+        page_size = min(max(int(page_size or 8), 3), 20)
+        board = _board_payload(conn=conn, sqlite3_module=sqlite3_module, db_path=db_path, page=1, page_size=max(page_size, 8))
+        shortlist: list[dict[str, Any]] = list(board.get("shortlist") or [])[:page_size]
+        latest_score_date, fallback_items, _ = _scoreboard_shortlist(conn, target_size=page_size)
+        seen_codes = {str(item.get("ts_code") or "").strip().upper() for item in shortlist}
+        for item in fallback_items:
+            ts_code = str(item.get("ts_code") or "").strip().upper()
+            if not ts_code or ts_code in seen_codes:
+                continue
+            shortlist.append(item)
+            seen_codes.add(ts_code)
+            if len(shortlist) >= page_size:
+                break
+
+        source_health = {
+            "stock_scores": "ok" if latest_score_date else "missing_source",
+            "stock_news": "ok" if _table_exists(conn, "stock_news_items") else "missing_source",
+            "signals": "ok" if (_table_exists(conn, "investment_signal_tracker_7d") or _table_exists(conn, "investment_signal_tracker")) else "missing_source",
+            "candidate_pool": "ok" if _table_exists(conn, "chatroom_stock_candidate_pool") else "missing_source",
+        }
+        reason_packets: dict[str, Any] = {}
+        for item in shortlist:
+            ts_code = str(item.get("ts_code") or "").strip().upper()
+            if not ts_code:
+                continue
+            name = str(item.get("name") or "").strip()
+            score_reason = _score_reason_for_stock(item)
+            news_reason = _recent_stock_news_for_stock(conn=conn, ts_code=ts_code, limit=3)
+            signal_reason = _signal_reason_for_stock(conn=conn, ts_code=ts_code, name=name)
+            candidate_reason = _candidate_pool_reason_for_stock(conn=conn, ts_code=ts_code, name=name)
+            degraded_sources = [
+                source_name
+                for source_name, packet in {
+                    "news": news_reason,
+                    "signals": signal_reason,
+                    "candidate_pool": candidate_reason,
+                }.items()
+                if str(packet.get("status") or "") == "missing_source"
+            ]
+            reason_packets[ts_code] = {
+                "ts_code": ts_code,
+                "name": name,
+                "industry": str(item.get("industry") or ""),
+                "score": score_reason,
+                "news": news_reason,
+                "signals": signal_reason,
+                "candidate_pool": candidate_reason,
+                "degraded_sources": degraded_sources,
+                "status": "degraded" if degraded_sources else "ok",
+            }
+
+        return {
+            "generated_at": _utc_now(),
+            "snapshot_date": board.get("snapshot_date") or latest_score_date or "",
+            "macro_regime": board.get("market_regime") or _aggregate_market_regime(shortlist),
+            "industry_scores": list(board.get("industries") or [])[:8],
+            "stock_shortlist": shortlist,
+            "reason_packets": reason_packets,
+            "source_health": source_health,
+        }
+    finally:
+        conn.close()
+
+
 def _score_strategy_candidate_with_llm(*, board: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     baseline = _as_float(candidate.get("fit_score"))
     mode = str(candidate.get("mode") or "")
@@ -1944,6 +2192,7 @@ def run_decision_scheduled_job(*, sqlite3_module, db_path: str, job_key: str) ->
 def build_decision_runtime_deps(*, sqlite3_module, db_path: str) -> dict[str, Any]:
     return {
         "query_decision_board": lambda **kwargs: query_decision_board(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
+        "query_decision_scoreboard": lambda **kwargs: query_decision_scoreboard(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_stock": lambda **kwargs: query_decision_stock(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_trade_plan": lambda **kwargs: query_decision_trade_plan(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),
         "query_decision_strategy_lab": lambda **kwargs: query_decision_strategy_lab(sqlite3_module=sqlite3_module, db_path=db_path, **kwargs),

@@ -1,0 +1,113 @@
+name: web-smoke-layered
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "backend/**"
+      - "tests/**"
+      - ".github/workflows/web-smoke-layered.yml"
+  push:
+    branches: ["main", "master"]
+    paths:
+      - "apps/web/**"
+      - "backend/**"
+      - "tests/**"
+      - ".github/workflows/web-smoke-layered.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "apps/web/package-lock.json"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install frontend deps
+        run: cd apps/web && npm ci
+      - name: Install Playwright browser
+        run: cd apps/web && npx playwright install --with-deps chromium
+      - name: Start backend for e2e
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          export USE_POSTGRES=0
+          export BACKEND_ADMIN_TOKEN=test-admin-token
+          export DECISION_STRATEGY_LLM_ENABLED=0
+          export PORT=8002
+          nohup python3 backend/server.py >/tmp/ci_backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8002/api/health >/dev/null; then
+              echo "backend ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8002/api/health
+      - name: Run core smoke
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8002
+        run: cd apps/web && npm run smoke:e2e:core
+      - name: Upload core smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-core-artifacts
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            /tmp/ci_backend.log
+
+  smoke-write-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: smoke-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "apps/web/package-lock.json"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install frontend deps
+        run: cd apps/web && npm ci
+      - name: Install Playwright browser
+        run: cd apps/web && npx playwright install --with-deps chromium
+      - name: Start backend for e2e
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          export USE_POSTGRES=0
+          export BACKEND_ADMIN_TOKEN=test-admin-token
+          export DECISION_STRATEGY_LLM_ENABLED=0
+          export PORT=8002
+          nohup python3 backend/server.py >/tmp/ci_backend.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:8002/api/health >/dev/null; then
+              echo "backend ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8002/api/health
+      - name: Run write + boundary smoke
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:8002
+        run: cd apps/web && npm run smoke:e2e:write-boundary
+      - name: Upload write-boundary artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-write-boundary-artifacts
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            /tmp/ci_backend.log

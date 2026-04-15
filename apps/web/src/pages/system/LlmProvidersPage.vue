@@ -9,6 +9,12 @@
           </button>
           <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" @click="refreshAll">刷新</button>
         </div>
+        <div v-if="defaultRateLimitSavedAt" class="mt-2 text-sm text-[var(--muted)]">
+          最近保存时间：{{ defaultRateLimitSavedAt }} · 当前默认值 {{ defaultRateLimit }}
+        </div>
+        <div v-if="defaultRateLimitFeedback" class="mt-1 text-sm text-[var(--muted)]">
+          {{ defaultRateLimitFeedback }}
+        </div>
       </PageSection>
 
       <PageSection title="新增节点" subtitle="推荐优先使用 api_key_env，避免在配置文件存明文 key。">
@@ -182,6 +188,7 @@ import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
+import { useUiStore } from '../../stores/ui'
 import {
   createLlmProvider,
   deleteLlmProvider,
@@ -207,6 +214,7 @@ const authHint = reactive({
   message: '',
 })
 const router = useRouter()
+const ui = useUiStore()
 
 const createForm = reactive({
   provider_key: 'gpt-5.4',
@@ -238,6 +246,9 @@ const createPending = ref(false)
 const editPending = ref(false)
 const batchTestPending = ref(false)
 const saveDefaultLimitPending = ref(false)
+const defaultRateLimitSavedAt = ref('')
+const defaultRateLimitFeedback = ref('')
+const lastLoadedDefaultRateLimit = ref<number | null>(null)
 const singleTestPending = ref(false)
 const singleTestTargetKey = ref('')
 
@@ -274,6 +285,7 @@ async function refreshAll() {
     const data = await fetchLlmProviders()
     rows.value = Array.isArray(data.items) ? data.items : []
     defaultRateLimit.value = Number(data.default_rate_limit_per_minute || 10)
+    lastLoadedDefaultRateLimit.value = Number(data.default_rate_limit_per_minute || 10)
     if (!currentPreview.value && rows.value.length) {
       currentPreview.value = rows.value[0]
     } else if (currentPreview.value) {
@@ -415,9 +427,33 @@ async function toggleNodeStatus(item: LlmProviderItem) {
 
 async function saveDefaultLimit() {
   saveDefaultLimitPending.value = true
+  defaultRateLimitFeedback.value = ''
+  const beforeValue = Number(lastLoadedDefaultRateLimit.value ?? defaultRateLimit.value ?? 0)
+  const requestedValue = Number(defaultRateLimit.value || 0)
   try {
-    await updateDefaultLlmRateLimit(defaultRateLimit.value)
+    const response = await updateDefaultLlmRateLimit(requestedValue) as Record<string, any>
     await refreshAll()
+    const effectiveValue = Number(response?.effective_value ?? defaultRateLimit.value ?? requestedValue)
+    const changed = Boolean(response?.changed ?? (beforeValue !== effectiveValue))
+    const savedAtRaw = String(response?.updated_at || '').trim()
+    defaultRateLimitSavedAt.value = savedAtRaw
+      ? new Date(savedAtRaw).toLocaleString('zh-CN', { hour12: false })
+      : new Date().toLocaleString('zh-CN', { hour12: false })
+    if (effectiveValue === requestedValue) {
+      ui.showToast('默认限速已保存。', 'success')
+      defaultRateLimitFeedback.value = '默认限速已保存。'
+    } else {
+      ui.showToast(`默认限速已更新为 ${effectiveValue}。`, 'success')
+      defaultRateLimitFeedback.value = `默认限速已更新为 ${effectiveValue}。`
+    }
+    if (!changed) {
+      ui.showToast('配置未变化，已确认当前默认限速。', 'info')
+      defaultRateLimitFeedback.value = '配置未变化，已确认当前默认限速。'
+    }
+  } catch (error: any) {
+    const detail = String(error?.response?.data?.error || error?.message || 'unknown')
+    ui.showToast(`保存默认限速失败：${detail}`, 'error')
+    defaultRateLimitFeedback.value = `保存默认限速失败：${detail}`
   } finally {
     saveDefaultLimitPending.value = false
   }

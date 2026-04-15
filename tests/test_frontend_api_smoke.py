@@ -23,6 +23,21 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn("{ path: '/upgrade'", router_ts)
         self.assertIn("permission: 'public'", router_ts)
         self.assertIn("if (!requiredPermission && auth.rbacDynamicEnforced && !staticPermission)", router_ts)
+        self.assertIn("resolveDefaultLandingPath", router_ts)
+        self.assertIn("resolveLanding: true", router_ts)
+
+    def test_default_landing_resolver_and_upgrade_page_are_dynamic(self):
+        navigation_ts = (ROOT / "apps/web/src/app/navigation.ts").read_text(encoding="utf-8")
+        login_page = (ROOT / "apps/web/src/pages/auth/LoginPage.vue").read_text(encoding="utf-8")
+        upgrade_page = (ROOT / "apps/web/src/pages/auth/UpgradePage.vue").read_text(encoding="utf-8")
+
+        self.assertIn("export function resolveDefaultLandingPath", navigation_ts)
+        self.assertIn("return '/intelligence/global-news'", navigation_ts)
+        self.assertIn("resolveDefaultLandingPath", login_page)
+        self.assertIn("authStore.permissionCatalog", upgrade_page)
+        self.assertIn("auth.trend_quota", upgrade_page)
+        self.assertIn("auth.multi_role_quota", upgrade_page)
+        self.assertNotIn("每日最多 3 次", upgrade_page)
 
     def test_quant_api_strategy_contract(self):
         quant_api_ts = (ROOT / "apps/web/src/services/api/quantFactors.ts").read_text(encoding="utf-8")
@@ -48,11 +63,16 @@ class FrontendApiSmokeTest(unittest.TestCase):
         router_ts = (ROOT / "apps/web/src/app/router.ts").read_text(encoding="utf-8")
         nav_ts = (ROOT / "apps/web/src/app/navigation.ts").read_text(encoding="utf-8")
         decision_api_ts = (ROOT / "apps/web/src/services/api/decision.ts").read_text(encoding="utf-8")
+        scoreboard_page = (ROOT / "apps/web/src/pages/research/ScoreboardPage.vue").read_text(encoding="utf-8")
+        rbac_config = json.loads((ROOT / "config" / "rbac_dynamic.config.json").read_text(encoding="utf-8"))
         self.assertIn("/research/decision", router_ts)
-        self.assertIn("/research/trade-plan", router_ts)
+        self.assertIn("/research/scoreboard", router_ts)
+        self.assertNotIn("/research/trade-plan", router_ts)
         self.assertIn("决策看板", nav_ts)
-        self.assertIn("交易计划书", nav_ts)
+        self.assertIn("评分总览", nav_ts)
+        self.assertNotIn("交易计划书", nav_ts)
         self.assertIn("/api/decision/board", decision_api_ts)
+        self.assertIn("/api/decision/scores", decision_api_ts)
         self.assertIn("/api/decision/plan", decision_api_ts)
         self.assertIn("/api/decision/strategies", decision_api_ts)
         self.assertIn("/api/decision/strategy-runs", decision_api_ts)
@@ -60,13 +80,8 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn("/api/decision/kill-switch", decision_api_ts)
         self.assertIn("/api/decision/strategy-runs/run", decision_api_ts)
         self.assertIn("/api/decision/snapshot/run", decision_api_ts)
-        trade_plan_ts = (ROOT / "apps/web/src/pages/research/DecisionTradePlanPage.vue").read_text(encoding="utf-8")
-        self.assertIn("策略实验台", trade_plan_ts)
-        self.assertIn("生成策略批次", trade_plan_ts)
-        self.assertIn("版本", trade_plan_ts)
-        self.assertIn("日内执行计划", trade_plan_ts)
-        self.assertIn("产业链联动", trade_plan_ts)
-        self.assertIn("LLM 辅助说明", trade_plan_ts)
+        self.assertIn("入选理由", scoreboard_page)
+        self.assertEqual(rbac_config["route_permissions"].get("/research/scoreboard"), "research_advanced")
 
     def test_signal_graph_routes_and_api_exist(self):
         router_ts = (ROOT / "apps/web/src/app/router.ts").read_text(encoding="utf-8")
@@ -86,6 +101,30 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn('"quant_factors_backtest_start": "/api/quant-factors/backtest/start"', server_py)
         self.assertIn('"quant_factors_task": "/api/quant-factors/task?task_id=<task_id>"', server_py)
         self.assertIn('"quant_factors_health": "/api/quant-factors/health"', server_py)
+
+    def test_dashboard_contract_is_lightweight(self):
+        dashboard_page = (ROOT / "apps/web/src/pages/dashboard/DashboardPage.vue").read_text(encoding="utf-8")
+        dashboard_types = (ROOT / "apps/web/src/shared/types/api.ts").read_text(encoding="utf-8")
+        server_py = (ROOT / "backend/server.py").read_text(encoding="utf-8")
+
+        self.assertIn("快捷入口", dashboard_page)
+        self.assertNotIn("API 端口 build_id 一致性", dashboard_page)
+        self.assertNotIn("任务编排回放", dashboard_page)
+        self.assertNotIn("api_stack_consistency", dashboard_types)
+        self.assertNotIn("source_monitor", dashboard_types)
+        self.assertNotIn("orchestrator_alerts", dashboard_types)
+        self.assertIn('cache_get_json("api:dashboard:v2")', server_py)
+        self.assertNotIn('"api_stack_consistency": query_api_stack_consistency()', server_py)
+
+    def test_scoreboard_contract_types_exist(self):
+        api_types = (ROOT / "apps/web/src/shared/types/api.ts").read_text(encoding="utf-8")
+        route_file = (ROOT / "backend/routes/decision.py").read_text(encoding="utf-8")
+        decision_service = (ROOT / "services/decision_service/service.py").read_text(encoding="utf-8")
+
+        self.assertIn("export interface DecisionScoreboardPayload", api_types)
+        self.assertIn("export interface ReasonPacket", api_types)
+        self.assertIn("def query_decision_scoreboard", decision_service)
+        self.assertIn('if parsed.path == "/api/decision/scores"', route_file)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+{
+  "graphModePersistence": {
+    "countTrunk": 4,
+    "countAfterReload": 10,
+    "urlAfterTrunk": "http://127.0.0.1:8077/signals/graph?center_type=theme&center_key=AI&depth=2&limit=16",
+    "modeAfterReloadTrunkLabel": false
+  },
+  "graphFilterSwitch": {
+    "chipCount": 2,
+    "selectedChip": "行业→股票 · 6",
+    "urlAfterSwitch": "http://127.0.0.1:8077/signals/graph?center_type=theme&center_key=AI&depth=2&limit=16&relation_key=industry_stock",
+    "stillHasRelationQuery": true
+  },
+  "decisionBackForward": {
+    "ctxVisible1": true,
+    "ctxVisibleAfterClear": false,
+    "urlBack": "http://127.0.0.1:8077/stocks/scores?industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414",
+    "urlForward": "http://127.0.0.1:8077/research/decision",
+    "ctxVisibleAfterForward": false
+  }
+}

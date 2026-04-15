@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4">
+  <div class="space-y-4 overflow-x-hidden">
     <PageSection v-if="!hideFilterPanel" :title="pageTitle" :subtitle="pageSubtitle">
       <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-3">
         <label v-if="showSource" class="text-sm font-semibold text-[var(--ink)]">
@@ -86,7 +86,7 @@
               <span class="rounded-full border px-2.5 py-0.5 text-[13px] font-semibold leading-5" :class="evaluationBadgeClass(item)">
                 {{ evaluationLabel(item) }}
               </span>
-              <span>{{ String(item.title || '-') }}</span>
+              <span class="min-w-0 flex-1 break-all">{{ String(item.title || '-') }}</span>
             </div>
           </template>
           <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">

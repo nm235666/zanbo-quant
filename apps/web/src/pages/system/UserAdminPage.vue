@@ -1,8 +1,48 @@
 <template>
   <AppShell title="用户与会话管理" subtitle="用户列表、角色变更、禁用解封、重置密码、会话强制下线与审计日志。">
     <div class="space-y-4">
+      <div class="page-hero-grid">
+        <div class="page-hero-card">
+          <div class="page-insight-label">User Admin</div>
+          <div class="page-hero-title">先判断账号状态，再做角色、会话和额度操作。</div>
+          <div class="page-hero-copy">
+            这页最容易变成“按钮堆”。更合理的使用顺序是：先定位用户，再确认角色/状态，再做密码重置、额度修复和会话强退，最后回看审计日志。
+          </div>
+          <div class="page-action-cluster">
+            <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="onRefreshUsers">刷新用户列表</button>
+            <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" @click="onRefreshSessions">刷新会话</button>
+          </div>
+        </div>
+        <div class="page-insight-list">
+          <div class="page-insight-item">
+            <div class="page-insight-label">当前后台关注点</div>
+            <div class="page-insight-value">{{ activeUsersCount < (users?.total ?? 0) ? '存在禁用账号' : '账号状态正常' }}</div>
+            <div class="page-insight-note">启用 {{ activeUsersCount }} / 总数 {{ users?.total ?? (users?.items?.length || 0) }}。</div>
+          </div>
+          <div class="page-insight-item">
+            <div class="page-insight-label">安全面板</div>
+            <div class="page-insight-value">{{ sessions?.total ?? (sessions?.items?.length || 0) }} 个在线会话</div>
+            <div class="page-insight-note">如遇异常登录或改密，优先处理会话，再回查审计日志。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <StatCard title="用户总数" :value="users?.total ?? (users?.items?.length || 0)" hint="当前用户列表统计" />
+        <StatCard title="启用用户" :value="activeUsersCount" hint="禁用用户可在列表中恢复" />
+        <StatCard title="在线会话" :value="sessions?.total ?? (sessions?.items?.length || 0)" hint="支持单会话强制下线" />
+        <StatCard title="审计日志" :value="audit?.total ?? (audit?.items?.length || 0)" hint="认证安全事件总量" />
+      </div>
+
       <PageSection title="用户列表" subtitle="支持账号检索、角色调整、启停、密码重置。">
-        <div class="mb-3 grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+        <div class="table-lead">
+          <div class="table-lead-copy">用户卡片优先用来做账号状态判断。真正有风险的操作包括：改角色、禁用、重置密码和额度归零，建议逐个确认。</div>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <span class="metric-chip">角色 {{ userFilters.role || '全部' }}</span>
+            <span class="metric-chip">状态 {{ userFilters.active === '' ? '全部' : (userFilters.active === '1' ? '启用' : '禁用') }}</span>
+          </div>
+        </div>
+        <div class="mb-3 grid gap-3 xl:grid-cols-5 md:grid-cols-2">
           <input v-model.trim="userFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="账号/昵称/邮箱关键字" />
           <select v-model="userFilters.role" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
             <option value="">全部角色</option>
@@ -15,9 +55,14 @@
             <option value="1">启用</option>
             <option value="0">禁用</option>
           </select>
+          <select v-model.number="userFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+            <option :value="20">20 / 页</option>
+            <option :value="10">10 / 页</option>
+            <option :value="6">6 / 页</option>
+          </select>
           <button class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold" @click="onRefreshUsers">刷新</button>
         </div>
-        <div class="space-y-3">
+        <div class="grid gap-3 2xl:grid-cols-2">
           <div v-for="u in users?.items || []" :key="u.id" class="rounded-[20px] border border-[var(--line)] bg-white p-4 shadow-[var(--shadow-soft)]">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="font-bold">{{ u.username }} <span class="text-sm text-[var(--muted)]">({{ u.display_name || '-' }})</span></div>
@@ -81,11 +126,16 @@
       </PageSection>
 
       <PageSection title="活跃会话" subtitle="按用户查看在线会话并强制下线。">
-        <div class="mb-3 grid gap-3 xl:grid-cols-2 md:grid-cols-2">
+        <div class="mb-3 grid gap-3 xl:grid-cols-3 md:grid-cols-2">
           <input v-model.trim="sessionFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="按账号关键字筛选会话" />
+          <select v-model.number="sessionFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+            <option :value="10">10 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="40">40 / 页</option>
+          </select>
           <button class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold" @click="onRefreshSessions">刷新</button>
         </div>
-        <div class="space-y-2">
+        <div class="grid gap-3 2xl:grid-cols-2">
           <InfoCard
             v-for="s in sessions?.items || []"
             :key="s.session_id"
@@ -103,7 +153,7 @@
       </PageSection>
 
       <PageSection title="认证审计日志" subtitle="登录失败、注册、登出等安全事件。">
-        <div class="mb-3 grid gap-3 xl:grid-cols-4 md:grid-cols-2">
+        <div class="mb-3 grid gap-3 xl:grid-cols-5 md:grid-cols-2">
           <input v-model.trim="auditFilters.keyword" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="用户/IP/详情关键字" />
           <input v-model.trim="auditFilters.event_type" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="事件类型，如 login" />
           <select v-model="auditFilters.result" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
@@ -111,9 +161,14 @@
             <option value="ok">ok</option>
             <option value="fail">fail</option>
           </select>
+          <select v-model.number="auditFilters.page_size" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+            <option :value="12">12 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="40">40 / 页</option>
+          </select>
           <button class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold" @click="onRefreshAudit">刷新</button>
         </div>
-        <div class="space-y-2">
+        <div class="grid gap-3 2xl:grid-cols-2">
           <InfoCard
             v-for="a in audit?.items || []"
             :key="a.id"
@@ -128,19 +183,20 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
+import StatCard from '../../shared/ui/StatCard.vue'
 import { fetchAuthAuditLogs, fetchAuthSessions, fetchAuthUsers, resetAuthQuotaBatch, resetAuthUserMultiRoleQuota, resetAuthUserPassword, resetAuthUserTrendQuota, revokeAuthSession, updateAuthUser } from '../../services/api/system'
 import { formatDateTime } from '../../shared/utils/format'
 import { confirmDangerAction, infoNoticeAction, promptInputAction } from '../../shared/utils/confirm'
 
 const userFilters = reactive({ keyword: '', role: '', active: '', page: 1, page_size: 20 })
-const sessionFilters = reactive({ keyword: '', page: 1, page_size: 20 })
-const auditFilters = reactive({ keyword: '', event_type: '', result: '', page: 1, page_size: 20 })
+const sessionFilters = reactive({ keyword: '', page: 1, page_size: 10 })
+const auditFilters = reactive({ keyword: '', event_type: '', result: '', page: 1, page_size: 12 })
 const quotaBatch = reactive({ usage_date: '', role: 'limited', usernames_text: '' })
 const quotaBatchMessage = ref('')
 
@@ -170,6 +226,10 @@ const { data: audit, refetch: refetchAudit } = useQuery({
   queryKey: ['auth-audit', auditFilters],
   queryFn: () => fetchAuthAuditLogs(auditFilters),
 })
+
+const activeUsersCount = computed(() =>
+  (users.value?.items || []).reduce((sum: number, item: Record<string, any>) => sum + (item.is_active ? 1 : 0), 0),
+)
 
 async function saveUser(userId: number) {
   const edit = editUsers[userId]

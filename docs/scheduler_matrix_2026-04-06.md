@@ -1,6 +1,6 @@
 # 定时任务调度矩阵（UTC/CST 双时区）
 
-更新时间：2026-04-08
+更新时间：2026-04-10
 
 调度原则：
 
@@ -11,7 +11,7 @@
 
 ## 业务时段矩阵
 
-### 实时链（自然日）
+### 实时资讯链（自然日）
 
 | job_key | cron(UTC) | 北京时间(CST) |
 | --- | --- | --- |
@@ -24,8 +24,9 @@
 | `stock_news_score_refresh` | `*/10 * * * *` | 每 10 分钟 |
 | `stock_news_expand_focus` | `23 * * * *` | 每小时第 23 分 |
 | `stock_news_backfill_missing` | `53 * * * *` | 每小时第 53 分 |
+| `market_news_refresh` | `15 * * * *` | 每小时第 15 分 |
 
-### 信号/主题（自然日）
+### 信号/主题链（自然日）
 
 | job_key | cron(UTC) | 北京时间(CST) |
 | --- | --- | --- |
@@ -43,6 +44,7 @@
 | `chatroom_sentiment_refresh` | `18 * * * *` | 每小时第 18 分 |
 | `chatroom_list_refresh` | `5 0 * * *` | 每天 08:05 |
 | `monitored_chatlog_backfill_midnight` | `10 0 * * *` | 每天 08:10 |
+| `chatroom_tagging_safe` | `12 0 */3 * *` | 每 3 天 08:12 |
 
 ### 交易日行情链（交易日门禁）
 
@@ -54,8 +56,9 @@
 | `minline_backfill_recent` | `45 7 * * 1-5` | 15:45（周一至周五） |
 | `minline_akshare_patch` | `5 8 * * 1-5` | 16:05（周一至周五） |
 | `minline_intraday_focus` | `*/10 1-3,5-7 * * 1-5` | 09:00-11:59、13:00-15:59 每 10 分钟 |
+| `decision_daily_snapshot` | `15 1 * * 1-5` | 09:15（周一至周五） |
 
-### 报告与维护（自然日）
+### 宏观/报表/维护链（自然日）
 
 | job_key | cron(UTC) | 北京时间(CST) |
 | --- | --- | --- |
@@ -68,6 +71,8 @@
 | `logic_view_cache_refresh` | `55 17 * * *` | 01:55 |
 | `macro_series_akshare_refresh` | `20 17 * * *` | 01:20 |
 | `macro_context_refresh` | `10 17 * * *` | 01:10 |
+| `fx_daily_dual_source` | `35 7 * * *` | 15:35 |
+| `data_completion_nightly` | `0 17 * * *` | 01:00 |
 | `llm_provider_nodes_probe` | `*/20 * * * *` | 每 20 分钟 |
 | `multi_role_v3_stale_recovery` | `*/5 * * * *` | 每 5 分钟 |
 | `multi_role_v3_worker_guard` | `* * * * *` | 每分钟 |

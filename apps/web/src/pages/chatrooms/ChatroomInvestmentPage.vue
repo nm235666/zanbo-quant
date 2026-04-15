@@ -31,6 +31,8 @@
           <label class="text-sm font-semibold text-[var(--ink)]">
             每页条数
             <select v-model.number="filters.page_size" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option :value="8">8 / 页</option>
+              <option :value="12">12 / 页</option>
               <option :value="20">20 / 页</option>
               <option :value="50">50 / 页</option>
               <option :value="100">100 / 页</option>
@@ -43,7 +45,7 @@
       </PageSection>
 
       <PageSection :title="`分析结果 (${result?.total || 0})`" subtitle="每个群卡片里同时展示总结、情绪和标的列表。">
-        <div class="space-y-2">
+        <div class="grid gap-3 2xl:grid-cols-2">
           <InfoCard
             v-for="item in result?.items || []"
             :key="item.room_id"
@@ -65,19 +67,21 @@
             <div class="mt-3 text-sm text-[var(--muted)]">{{ item.llm_sentiment_reason || '暂无情绪原因说明。' }}</div>
             <div class="mt-3 space-y-2">
               <div class="text-sm font-semibold text-[var(--ink)]">投资标的</div>
-              <InfoCard
-                v-for="target in parseTargets(item.targets_json)"
-                :key="`${item.room_id}-${target.name}-${target.bias}`"
-                :title="target.name || '-'" :description="target.reason || ''"
-              >
-                <template #badge>
-                  <StatusBadge :value="target.bias" :label="target.bias || '-'" />
-                </template>
-              </InfoCard>
+              <div class="max-h-[220px] space-y-2 overflow-auto pr-1">
+                <InfoCard
+                  v-for="target in parseTargets(item.targets_json)"
+                  :key="`${item.room_id}-${target.name}-${target.bias}`"
+                  :title="target.name || '-'" :description="target.reason || ''"
+                >
+                  <template #badge>
+                    <StatusBadge :value="target.bias" :label="target.bias || '-'" />
+                  </template>
+                </InfoCard>
+              </div>
             </div>
           </InfoCard>
         </div>
-        <div class="mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
+        <div class="table-pager mt-3 flex items-center justify-between text-sm text-[var(--muted)]">
           <div>第 {{ queryFilters.page }} / {{ result?.total_pages || 1 }} 页</div>
           <div class="flex gap-2">
             <button class="rounded-2xl bg-stone-800 px-4 py-2 text-white disabled:opacity-40" :disabled="queryFilters.page <= 1" @click="goPrevPage">上一页</button>
@@ -121,14 +125,14 @@ const filters = reactive({
   final_bias: '',
   target_keyword: '',
   page: 1,
-  page_size: 20,
+  page_size: 8,
 })
 const queryFilters = reactive({
   keyword: '',
   final_bias: '',
   target_keyword: '',
   page: 1,
-  page_size: 20,
+  page_size: 8,
 })
 const route = useRoute()
 const router = useRouter()
@@ -161,7 +165,7 @@ function applyRouteFilters() {
     final_bias: readQueryString(q, 'final_bias', ''),
     target_keyword: readQueryString(q, 'target_keyword', ''),
     page: Math.max(1, readQueryNumber(q, 'page', 1)),
-    page_size: Math.max(20, readQueryNumber(q, 'page_size', 20)),
+    page_size: Math.max(8, readQueryNumber(q, 'page_size', 8)),
   }
   Object.assign(filters, next)
   Object.assign(queryFilters, next)
@@ -173,7 +177,7 @@ function applyFilters() {
     final_bias: filters.final_bias,
     target_keyword: filters.target_keyword,
     page: 1,
-    page_size: Number(filters.page_size) || 20,
+    page_size: Number(filters.page_size) || 8,
   })
   syncRouteFromFilters()
 }

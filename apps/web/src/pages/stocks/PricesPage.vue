@@ -70,6 +70,7 @@
           <template v-else-if="result?.message">{{ result.message }}</template>
           <template v-else>日线与分钟线会分别保留最近一次查询结果。</template>
         </div>
+        <div v-if="filterError" class="mt-2 text-sm text-[var(--danger)]">{{ filterError }}</div>
       </PageSection>
 
       <div :class="mobilePanel === 'daily' ? '' : 'hidden lg:block'">
@@ -178,11 +179,13 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import { fetchStockMinline, fetchStockPrices } from '../../services/api/stocks'
 import { formatDate, formatNumber, formatPercent } from '../../shared/utils/format'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
+import { useUiStore } from '../../stores/ui'
 
 const TrendAreaChart = defineAsyncComponent(() => import('../../shared/charts/TrendAreaChart.vue'))
 const MinuteKlineChart = defineAsyncComponent(() => import('../../shared/charts/MinuteKlineChart.vue'))
 const route = useRoute()
 const router = useRouter()
+const ui = useUiStore()
 
 const filters = reactive({
   ts_code: '',
@@ -199,6 +202,7 @@ const queryParams = reactive({
 })
 const hasSearched = ref(false)
 const mobilePanel = ref<'daily' | 'minute'>('daily')
+const filterError = ref('')
 const minuteFilters = reactive({
   ts_code: '600114.SH',
   trade_date: '',
@@ -265,10 +269,24 @@ const chart = computed(() => {
 
 const showChart = computed(() => hasSearched.value && (result.value?.items?.length || 0) > 0)
 
+function isCompactDate(value: string) {
+  const text = String(value || '').trim()
+  if (!text) return true
+  return /^\d{8}$/.test(text)
+}
+
 function submitSearch() {
+  const startDate = (filters.start_date || '').trim()
+  const endDate = (filters.end_date || '').trim()
+  if (!isCompactDate(startDate) || !isCompactDate(endDate)) {
+    filterError.value = '日期格式错误，请使用 YYYYMMDD。'
+    ui.showToast(filterError.value, 'error')
+    return
+  }
+  filterError.value = ''
   queryParams.ts_code = (filters.ts_code || '').trim().toUpperCase()
-  queryParams.start_date = (filters.start_date || '').trim()
-  queryParams.end_date = (filters.end_date || '').trim()
+  queryParams.start_date = startDate
+  queryParams.end_date = endDate
   queryParams.page_size = Number(filters.page_size) || 20
   queryParams.page = 1
   hasSearched.value = true
@@ -290,8 +308,15 @@ function goNextPage() {
 }
 
 function submitMinuteSearch() {
+  const tradeDate = (minuteFilters.trade_date || '').trim()
+  if (!isCompactDate(tradeDate)) {
+    filterError.value = '分钟线交易日格式错误，请使用 YYYYMMDD。'
+    ui.showToast(filterError.value, 'error')
+    return
+  }
+  filterError.value = ''
   minuteQueryParams.ts_code = (minuteFilters.ts_code || '').trim().toUpperCase()
-  minuteQueryParams.trade_date = (minuteFilters.trade_date || '').trim()
+  minuteQueryParams.trade_date = tradeDate
   minuteQueryParams.page_size = Number(minuteFilters.page_size) || 500
   minuteQueryParams.page = 1
   hasMinuteSearched.value = true

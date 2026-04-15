@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import bisect
 import concurrent.futures
+import mimetypes
 import hashlib
 import ipaddress
 import json
@@ -22,11 +23,13 @@ from collections import deque
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+WEB_DIST_DIR = ROOT_DIR / "apps" / "web" / "dist"
 
 import db_compat as sqlite3
 from db_compat import assert_database_ready, cache_get_json, cache_set_json, db_label, get_redis_client
@@ -277,6 +280,8 @@ PROTECTED_GET_PATHS = {
     "/api/llm/multi-role/v3/jobs",
 }
 DEFAULT_ALLOWED_ADMIN_ORIGINS = {
+    "http://127.0.0.1:8002",
+    "http://localhost:8002",
     "http://127.0.0.1:8077",
     "http://localhost:8077",
     "http://127.0.0.1:8080",
@@ -288,7 +293,7 @@ DEFAULT_ALLOWED_ADMIN_ORIGINS = {
     "http://tianbo.asia:6273",
     "https://tianbo.asia:6273",
 }
-TRUSTED_FRONTEND_PORTS = {"8077", "8080", "5173", "4173"}
+TRUSTED_FRONTEND_PORTS = {"8002", "8077", "8080", "5173", "4173"}
 AUTH_PUBLIC_API_PATHS = {
     "/api/health",
     "/api/auth/status",
@@ -363,6 +368,8 @@ ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
     "/signals/quality-config": "signals_advanced",
     "/signals/state-timeline": "signals_advanced",
     "/research/reports": "research_advanced",
+    "/research/decision": "research_advanced",
+    "/research/scoreboard": "research_advanced",
     "/research/quant-factors": "research_advanced",
     "/research/multi-role": "multi_role_analyze",
     "/research/trend": "trend_analyze",
@@ -430,6 +437,8 @@ NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
             {"to": "/macro", "label": "宏观看板", "desc": "宏观指标查询与序列趋势", "permission": "macro_advanced"},
             {"to": "/research/trend", "label": "走势分析", "desc": "LLM 股票走势分析工作台", "permission": "trend_analyze"},
             {"to": "/research/reports", "label": "标准报告", "desc": "统一投研报告列表", "permission": "research_advanced"},
+            {"to": "/research/scoreboard", "label": "评分总览", "desc": "宏观-行业-个股评分与自动短名单", "permission": "research_advanced"},
+            {"to": "/research/decision", "label": "决策看板", "desc": "宏观-行业-个股评分与执行参考", "permission": "research_advanced"},
             {"to": "/research/quant-factors", "label": "因子挖掘", "desc": "双引擎因子挖掘与回测（business/research）", "permission": "research_advanced"},
             {"to": "/research/multi-role", "label": "多角色分析", "desc": "LLM 多角色公司分析工作台", "permission": "multi_role_analyze"},
         ],
@@ -3430,7 +3439,7 @@ def query_api_stack_consistency() -> dict:
 
 
 def query_dashboard():
-    cached = cache_get_json("api:dashboard:v1")
+    cached = cache_get_json("api:dashboard:v2")
     if cached:
         return cached
 
@@ -3561,15 +3570,13 @@ def query_dashboard():
     finally:
         conn.close()
 
-    source_monitor = query_source_monitor()
-    with ASYNC_MULTI_ROLE_LOCK:
-        multi_role_jobs = list(ASYNC_MULTI_ROLE_JOBS.values())
-    with ASYNC_DAILY_SUMMARY_LOCK:
-        daily_summary_jobs = list(ASYNC_DAILY_SUMMARY_JOBS.values())
+    try:
+        database_health = query_database_health()
+    except Exception as exc:
+        database_health = {"error": f"database health unavailable: {exc}"}
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "api_stack_consistency": query_api_stack_consistency(),
         "overview": {
             "stock_total": stock_total,
             "listed_total": listed_total,
@@ -3583,26 +3590,13 @@ def query_dashboard():
             "candidate_total": candidate_total,
             "daily_summary_total": daily_summary_total,
         },
-        "source_monitor": {
-            "summary": source_monitor.get("summary", {}),
-            "sources": source_monitor.get("sources", [])[:6],
-            "processes": source_monitor.get("processes", [])[:4],
-        },
-        "async_jobs": {
-            "multi_role_running": sum(1 for x in multi_role_jobs if x.get("status") == "running"),
-            "multi_role_error": sum(1 for x in multi_role_jobs if x.get("status") == "error"),
-            "daily_summary_running": sum(1 for x in daily_summary_jobs if x.get("status") == "running"),
-            "daily_summary_error": sum(1 for x in daily_summary_jobs if x.get("status") == "error"),
-        },
-        "orchestrator_alerts": query_job_alerts(limit=6, unresolved_only=True).get("items", []),
-        "orchestrator_jobs": query_job_runs(limit=8).get("items", []),
-        "database_health": query_database_health(),
+        "database_health": database_health,
         "top_scores": top_scores,
         "candidate_pool_top": candidate_pool_top,
         "recent_daily_summaries": recent_daily_summaries,
         "important_news": important_news,
     }
-    cache_set_json("api:dashboard:v1", payload, REDIS_CACHE_TTL_DASHBOARD)
+    cache_set_json("api:dashboard:v2", payload, REDIS_CACHE_TTL_DASHBOARD)
     return payload
 
 
@@ -8135,7 +8129,69 @@ class ApiHandler(BaseHTTPRequestHandler):
             "ai_retrieval_context": ai_retrieval_context,
             "ai_retrieval_sync": ai_retrieval_sync,
             "ai_retrieval_metrics": ai_retrieval_metrics,
+            "frontend_dist_exists": bool((WEB_DIST_DIR / "index.html").exists()),
+            "frontend_url": f"http://{self.headers.get('Host', f'127.0.0.1:{PORT}')}/",
         }
+
+    def _serve_frontend_static(self, parsed) -> bool:
+        path = str(parsed.path or "").strip()
+        if not path or path.startswith("/api/") or path.startswith("/ws/"):
+            return False
+        index_path = WEB_DIST_DIR / "index.html"
+        if not index_path.exists():
+            return False
+
+        raw_path = path.split("?", 1)[0].split("#", 1)[0]
+        norm = os.path.normpath(unquote(raw_path)).lstrip("/")
+        root = WEB_DIST_DIR.resolve()
+        candidate = (root / norm).resolve()
+        if not str(candidate).startswith(str(root)):
+            candidate = index_path.resolve()
+
+        static_suffixes = {
+            ".js",
+            ".css",
+            ".map",
+            ".svg",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".ico",
+            ".webp",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".json",
+            ".txt",
+        }
+        suffix = Path(raw_path).suffix.lower()
+        if candidate.exists() and candidate.is_file():
+            self._send_static_file(candidate)
+            return True
+        if raw_path.startswith("/assets/") or suffix in static_suffixes:
+            self._send_json({"error": "Not Found"}, status=404)
+            return True
+        self._send_static_file(index_path)
+        return True
+
+    def _send_static_file(self, file_path: Path) -> None:
+        try:
+            data = file_path.read_bytes()
+        except Exception as exc:
+            self._send_json({"error": f"静态资源读取失败: {exc}"}, status=500)
+            return
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        if file_path.name == "index.html":
+            self.send_header("Cache-Control", "no-cache")
+        else:
+            self.send_header("Cache-Control", "public, max-age=3600")
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -8220,6 +8276,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         if signal_routes.dispatch_get(self, parsed, deps):
             return
         if ai_retrieval_routes.dispatch_get(self, parsed, deps):
+            return
+
+        if self._serve_frontend_static(parsed):
             return
 
         self._send_json({"error": "Not Found"}, status=404)

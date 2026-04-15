@@ -1,5 +1,5 @@
 import type { AppPermission } from './permissions'
-import { APP_PERMISSION_VALUES } from './permissions'
+import { APP_PERMISSION_VALUES, hasPermissionByEffective } from './permissions'
 import config from './navigation.config.json'
 
 export type NavItemConfig = {
@@ -74,8 +74,8 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/macro', label: '宏观看板', desc: '宏观指标查询与序列趋势', permission: 'macro_advanced' },
       { to: '/research/trend', label: '走势分析', desc: 'LLM 股票走势分析工作台', permission: 'trend_analyze' },
       { to: '/research/reports', label: '标准报告', desc: '统一投研报告列表', permission: 'research_advanced' },
-      { to: '/research/decision', label: '决策看板', desc: '宏观-行业-个股评分与交易计划', permission: 'research_advanced' },
-      { to: '/research/trade-plan', label: '交易计划书', desc: '每日交易计划、仓位与执行清单', permission: 'research_advanced' },
+      { to: '/research/scoreboard', label: '评分总览', desc: '宏观-行业-个股评分与自动短名单', permission: 'research_advanced' },
+      { to: '/research/decision', label: '决策看板', desc: '宏观-行业-个股评分与执行参考', permission: 'research_advanced' },
       { to: '/research/quant-factors', label: '因子挖掘', desc: 'QuantaAlpha 旁路因子挖掘与回测', permission: 'research_advanced' },
       { to: '/research/multi-role', label: '多角色分析', desc: 'LLM 多角色公司分析工作台', permission: 'multi_role_analyze' },
     ],
@@ -146,3 +146,28 @@ export const NAV_GROUPS: NavGroupConfig[] = (() => {
   console.warn('[nav-config] invalid local navigation.config.json, fallback to minimal defaults')
   return FALLBACK_NAV_GROUPS
 })()
+
+export function resolveNavigationGroups(raw: unknown): NavGroupConfig[] {
+  const normalized = normalizeNavGroups(raw)
+  return normalized.length ? normalized : NAV_GROUPS
+}
+
+export function resolveDefaultLandingPath(options: {
+  role?: string | null
+  effectivePermissions?: string[] | null
+  dynamicNavigationGroups?: unknown
+}): string {
+  const role = String(options.role || '').trim().toLowerCase()
+  if (role === 'admin') return '/dashboard'
+
+  const groups = resolveNavigationGroups(options.dynamicNavigationGroups)
+  const effectivePermissions = Array.isArray(options.effectivePermissions) ? options.effectivePermissions : []
+  for (const group of groups) {
+    for (const item of group.items) {
+      if (hasPermissionByEffective(effectivePermissions, role, item.permission)) {
+        return item.to
+      }
+    }
+  }
+  return '/intelligence/global-news'
+}

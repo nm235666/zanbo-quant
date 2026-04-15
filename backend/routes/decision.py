@@ -28,6 +28,21 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         handler._send_json({"ok": True, **payload})
         return True
 
+    if parsed.path == "/api/decision/scores":
+        params = parse_qs(parsed.query)
+        try:
+            page_size = int(params.get("page_size", ["8"])[0] or 8)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "page_size 必须是整数"}, status=400)
+            return True
+        try:
+            payload = deps["query_decision_scoreboard"](page_size=page_size)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"评分总览查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
     if parsed.path == "/api/decision/stock":
         params = parse_qs(parsed.query)
         ts_code = params.get("ts_code", [""])[0].strip().upper()
@@ -59,7 +74,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
                 keyword=params.get("keyword", [""])[0].strip(),
             )
         except Exception as exc:  # pragma: no cover
-            handler._send_json({"ok": False, "error": f"交易计划查询失败: {exc}"}, status=500)
+            handler._send_json({"ok": False, "error": f"决策板查询失败: {exc}"}, status=500)
             return True
         handler._send_json({"ok": True, **payload})
         return True
