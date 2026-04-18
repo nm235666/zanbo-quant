@@ -161,14 +161,18 @@ export function resolveDefaultLandingPath(options: {
   const groups = resolveNavigationGroups(options.dynamicNavigationGroups)
   const effectivePermissions = Array.isArray(options.effectivePermissions) ? options.effectivePermissions : []
 
-  // Non-admin roles: prefer /research/decision if accessible (decision board is the primary workspace)
+  // Non-admin roles: prefer /research/workbench as the primary workspace landing
   if (role !== 'admin') {
     for (const group of groups) {
       for (const item of group.items) {
-        if (item.to === '/research/decision' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
-          return '/research/decision'
+        if (item.to === '/research/workbench' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
+          return '/research/workbench'
         }
       }
+    }
+    // Fallback: if workbench not in nav config, check research_advanced permission directly
+    if (hasPermissionByEffective(effectivePermissions, role, 'research_advanced')) {
+      return '/research/workbench'
     }
   }
 

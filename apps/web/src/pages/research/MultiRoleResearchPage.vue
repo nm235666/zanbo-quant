@@ -27,6 +27,14 @@
         <div class="mt-3 rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.9)_0%,rgba(238,244,247,0.78)_100%)] px-4 py-3 text-sm text-[var(--muted)] shadow-[var(--shadow-soft)]" role="status" aria-live="polite">
           {{ actionMessage }}
         </div>
+        <div v-if="taskStatus === 'error'" class="mt-3 flex flex-wrap gap-2">
+          <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)]" @click="runAnalysis">
+            重试失败任务
+          </button>
+          <button v-if="quickInsightResult" class="rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700">
+            仅用快速结论继续
+          </button>
+        </div>
         <div class="mt-2 flex flex-wrap gap-2">
           <button class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] disabled:opacity-40" :disabled="!currentJobId" @click="clearCurrentTaskTracking">
             清除当前任务跟踪
@@ -93,6 +101,38 @@
           </div>
         </div>
       </PageSection>
+
+      <!-- Quick Insight Card -->
+      <div v-if="quickInsightResult || quickInsightLoading || quickInsightError" class="rounded-2xl border-2 border-cyan-200 bg-cyan-50 px-4 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="rounded-full bg-cyan-600 px-2.5 py-1 text-xs font-bold text-white">Quick</span>
+            <span class="text-sm font-semibold text-[var(--ink)]">快速结论</span>
+            <span class="text-xs text-cyan-700">≤8s · 置信度：{{ quickInsightResult?.confidence_level || '中' }}</span>
+          </div>
+          <button v-if="!quickInsightLoading" class="text-xs text-[var(--muted)] hover:text-[var(--ink)]" @click="clearQuickInsight">清除</button>
+        </div>
+        <div v-if="quickInsightLoading" class="mt-3 text-sm text-cyan-700">快速分析中，预计 ≤8 秒...</div>
+        <div v-else-if="quickInsightError" class="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          快速结论获取失败，深度工作流仍可继续使用。
+          <button class="ml-2 underline" @click="runQuickInsight">重试</button>
+        </div>
+        <div v-else-if="quickInsightResult" class="mt-3 space-y-2">
+          <div v-if="quickInsightResult.view" class="text-sm">
+            <span class="font-semibold text-[var(--ink)]">观点：</span>{{ quickInsightResult.view }}
+          </div>
+          <div v-if="quickInsightResult.risk" class="text-sm">
+            <span class="font-semibold text-red-700">风险：</span>{{ quickInsightResult.risk }}
+          </div>
+          <div v-if="quickInsightResult.suggested_action" class="text-sm">
+            <span class="font-semibold text-emerald-700">建议动作：</span>{{ quickInsightResult.suggested_action }}
+          </div>
+          <div v-if="quickInsightResult.missing_evidence?.length" class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            受限结论，缺失项：{{ quickInsightResult.missing_evidence.join('、') }}
+          </div>
+          <div class="mt-2 text-xs text-cyan-600">深度工作流分析完成后可获取更完整结论。</div>
+        </div>
+      </div>
 
       <PageSection v-if="chiefVerdictVisible" title="首席裁决" subtitle="Portfolio Manager 在多轮辩论后给出的明确方向判断，禁止模糊、必须表态。">
         <div class="rounded-2xl border-2 p-5 transition-all"
@@ -317,6 +357,56 @@ const ANALYSIS_PROFILES = {
 type AnalysisProfileKey = keyof typeof ANALYSIS_PROFILES
 
 const form = reactive({ keyword: '000001.SZ', lookback: 120, config_profile: 'standard' as AnalysisProfileKey })
+
+// Quick Insight state
+const quickInsightLoading = ref(false)
+const quickInsightError = ref(false)
+const quickInsightResult = ref<{
+  view?: string
+  risk?: string
+  suggested_action?: string
+  confidence_level?: string
+  missing_evidence?: string[]
+} | null>(null)
+
+async function runQuickInsight() {
+  const tsCode = resolvedStock.value.ts_code || (looksLikeTsCode(form.keyword.trim()) ? form.keyword.trim().toUpperCase() : '')
+  if (!tsCode) return
+  quickInsightLoading.value = true
+  quickInsightError.value = false
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch('/api/llm/quick-insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ts_code: tsCode, lookback: 30 }),
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+    if (!res.ok) throw new Error(`${res.status}`)
+    quickInsightResult.value = await res.json()
+  } catch {
+    clearTimeout(timeout)
+    quickInsightError.value = true
+    // Provide a minimal fallback result from local context
+    quickInsightResult.value = {
+      view: `${tsCode} 的快速结论暂不可用`,
+      risk: '受限结论：证据不足，建议启动深度工作流获取完整分析',
+      suggested_action: '启动深度工作流',
+      confidence_level: '低',
+      missing_evidence: ['价格快照', '催化摘要', '信号摘要'],
+    }
+  } finally {
+    quickInsightLoading.value = false
+  }
+}
+
+function clearQuickInsight() {
+  quickInsightResult.value = null
+  quickInsightError.value = false
+}
+
 const fullMarkdown = ref('等待发起分析...')
 const actionMessage = ref('准备就绪')
 const roleSections = ref<Array<Record<string, any>>>([])
@@ -408,7 +498,20 @@ const notificationMeta = computed(() => {
   return 'error'
 })
 const pendingDecision = computed(() => taskStatus.value === 'pending_user_decision')
-const taskStatusLabel = computed(() => taskStatus.value || 'idle')
+const taskStatusLabel = computed(() => {
+  const map: Record<string, string> = {
+    queued: '排队中，等待处理',
+    running: '分析中',
+    pending_user_decision: '需你决定',
+    approved: '已审批',
+    rejected: '已拒绝',
+    deferred: '已暂缓',
+    done: '分析完成',
+    done_with_warnings: '分析完成（含告警）',
+    error: '任务失败，可重试',
+  }
+  return map[taskStatus.value] || taskStatus.value || 'idle'
+})
 const taskProgressPct = computed(() => {
   const value = Number(taskProgress.value || 0)
   if (!Number.isFinite(value)) return 0
@@ -917,6 +1020,8 @@ const lastUsedProfile = ref<AnalysisProfileKey>('standard')
 
 function runAnalysis() {
   lastUsedProfile.value = (form.config_profile || 'standard') as AnalysisProfileKey
+  // Launch Quick Insight in parallel with Deep Workflow
+  runQuickInsight()
   mutation.mutate()
 }
 

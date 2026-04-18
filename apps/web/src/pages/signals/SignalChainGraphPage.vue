@@ -45,6 +45,9 @@
                 <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white" @click="applyFilters">
                   {{ isFetching ? '加载中...' : '刷新图谱' }}
                 </button>
+                <RouterLink to="/research/workbench?from=signals_graph" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+                  进入决策工作台
+                </RouterLink>
               </div>
             </div>
             <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -334,7 +337,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import RelationGraph from 'relation-graph/vue3'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'

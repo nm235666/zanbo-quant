@@ -12,8 +12,8 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
               {{ isFetching ? '查询中...' : '更新评分看板' }}
             </button>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" :to="decisionEntryTo">
-              打开决策板
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" :to="workbenchEntryTo">
+              进入决策工作台
             </RouterLink>
           </div>
         </div>
@@ -78,8 +78,9 @@
             <template #badge>
               <StatusBadge value="brand" :label="row.score_grade || '-'" />
             </template>
-            <div class="mt-3">
+            <div class="mt-3 flex flex-wrap gap-2">
               <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">查看详情</RouterLink>
+              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)]" :to="`/research/workbench?ts_code=${encodeURIComponent(row.ts_code)}&from=stock_scores`">→工作台</RouterLink>
             </div>
           </InfoCard>
         </div>
@@ -129,21 +130,21 @@ const columns = [
   { key: 'score_grade', label: '评分等级' },
 ]
 
+const workbenchEntryTo = computed(() => {
+  const q: Record<string, string> = { from: 'stock_scores' }
+  if (queryFilters.industry) q.industry = queryFilters.industry
+  if (queryFilters.keyword) q.keyword = queryFilters.keyword
+  if (queryFilters.score_date) q.score_date = queryFilters.score_date
+  const qs = new URLSearchParams(q).toString()
+  return `/research/workbench${qs ? '?' + qs : ''}`
+})
+
 const { data: scoreFilters } = useQuery({ queryKey: ['stock-score-filters'], queryFn: fetchStockScoreFilters })
 const { data: scores, isFetching } = useQuery({
   queryKey: computed(() => ['stock-scores', { ...queryFilters }]),
   queryFn: () => fetchStockScores({ ...queryFilters }),
   placeholderData: keepPreviousData,
 })
-const decisionEntryTo = computed(() => ({
-  path: '/research/decision',
-  query: buildCleanQuery({
-    from: '/stocks/scores',
-    industry: queryFilters.industry || filters.industry,
-    keyword: queryFilters.keyword || filters.keyword,
-    score_date: queryFilters.score_date || filters.score_date,
-  }),
-}))
 
 function applyFilters() {
   queryFilters.keyword = (filters.keyword || '').trim()

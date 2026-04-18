@@ -148,6 +148,10 @@ from backend.routes import signals as signal_routes
 from backend.routes import stocks as stock_routes
 from backend.routes import system as system_routes
 from backend.routes import roundtable as roundtable_routes
+from backend.routes import market as market_routes
+from backend.routes import funnel as funnel_routes
+from backend.routes import portfolio as portfolio_routes
+from backend.routes import llm_quick_insight as llm_quick_insight_routes
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
@@ -8283,7 +8287,49 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if ai_retrieval_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if funnel_routes.dispatch_post(self, parsed, payload, deps):
+            return
+        if portfolio_routes.dispatch_post(self, parsed, payload, deps):
+            return
+        if llm_quick_insight_routes.dispatch_post(self, parsed, payload, deps):
+            return
 
+        self._send_json({"error": "Not Found"}, status=404)
+
+    def do_PATCH(self):
+        self._request_started_at = time.time()
+        parsed = urlparse(self.path)
+        if self._reject_protected_request():
+            return
+        auth_ctx = self._resolve_auth_context()
+        if self._requires_auth_for_path(parsed.path) and not auth_ctx.get("authenticated"):
+            self._send_json(
+                {
+                    "error": "请先登录后再访问该接口",
+                    "code": "AUTH_REQUIRED",
+                    "path": parsed.path,
+                    "hint": "请先完成账号登录，若已登录请重新登录刷新会话。",
+                },
+                status=401,
+            )
+            return
+        if self._requires_auth_for_path(parsed.path) and not self._has_permission(auth_ctx, parsed.path):
+            self._send_json(_permission_denied_payload(parsed.path), status=403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8", errors="ignore") or "{}")
+        except Exception:
+            self._send_json({"error": "请求体必须是 JSON"}, status=400)
+            return
+        deps = self._route_deps()
+        deps["auth_context"] = auth_ctx
+        if portfolio_routes.dispatch_patch(self, parsed, payload, deps):
+            return
         self._send_json({"error": "Not Found"}, status=404)
 
     def do_GET(self):
@@ -8327,6 +8373,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         if signal_routes.dispatch_get(self, parsed, deps):
             return
         if ai_retrieval_routes.dispatch_get(self, parsed, deps):
+            return
+        if market_routes.dispatch_get(self, parsed, deps):
+            return
+        if funnel_routes.dispatch_get(self, parsed, deps):
+            return
+        if portfolio_routes.dispatch_get(self, parsed, deps):
             return
 
         if self._serve_frontend_static(parsed):

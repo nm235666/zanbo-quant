@@ -86,20 +86,17 @@ test.describe('股票模块', () => {
     await expect(page).not.toHaveURL(/page=999/)
   })
 
-  test('评分页跳转决策板时携带上下文', async ({ page }) => {
+  test('评分页跳转决策工作台时携带上下文', async ({ page }) => {
     await page.goto('/stocks/scores?industry=%E9%93%B6%E8%A1%8C&keyword=%E5%B9%B3%E5%AE%89&score_date=20260414')
     await page.waitForTimeout(3000)
-    const decisionLink = page.getByRole('link', { name: '打开决策板' })
-    await expect(decisionLink).toHaveAttribute('href', /\/research\/decision/)
-    await expect(decisionLink).toHaveAttribute('href', /industry=%E9%93%B6%E8%A1%8C/)
-    await expect(decisionLink).toHaveAttribute('href', /keyword=%E5%B9%B3%E5%AE%89/)
-    await expect(decisionLink).toHaveAttribute('href', /score_date=20260414/)
-    await decisionLink.click()
-    await page.waitForURL(/\/research\/decision/, { timeout: 15000 })
+    const workbenchLink = page.getByRole('link', { name: '进入决策工作台' }).first()
+    await expect(workbenchLink).toHaveAttribute('href', /\/research\/workbench/)
+    await expect(workbenchLink).toHaveAttribute('href', /industry=%E9%93%B6%E8%A1%8C/)
+    await expect(workbenchLink).toHaveAttribute('href', /keyword=%E5%B9%B3%E5%AE%89/)
+    await expect(workbenchLink).toHaveAttribute('href', /score_date=20260414/)
+    await workbenchLink.click()
+    await page.waitForURL(/\/research\/workbench/, { timeout: 15000 })
     await expect(page.locator('#main-content')).toBeVisible({ timeout: 15000 })
-    await expect(page.locator('text=当前研究上下文').first()).toBeVisible()
-    await expect(page.locator('text=行业 银行').first()).toBeVisible()
-    await expect(page.locator('text=关键词 平安').first()).toBeVisible()
   })
 
   test('空结果时分页固定显示 1/1 且 URL 回到 page=1', async ({ page }) => {

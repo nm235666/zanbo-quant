@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-09",
+  "version": "2026-04-18",
   "source": "repo_default",
   "groups": [
     {
@@ -12,6 +12,12 @@
           "label": "总控台",
           "desc": "全局健康度、热点、任务与新鲜度",
           "permission": "admin_system"
+        },
+        {
+          "to": "/research/workbench",
+          "label": "研究工作台",
+          "desc": "今日重点、待处理动作与风险预警",
+          "permission": "research_advanced"
         }
       ]
     },
@@ -20,6 +26,12 @@
       "title": "市场数据",
       "order": 2,
       "items": [
+        {
+          "to": "/market/conclusion",
+          "label": "市场结论",
+          "desc": "今日交易主线、风险与行业影响",
+          "permission": "research_advanced"
+        },
         {
           "to": "/stocks/list",
           "label": "股票列表",
@@ -150,9 +162,21 @@
           "permission": "research_advanced"
         },
         {
+          "to": "/research/funnel",
+          "label": "候选漏斗",
+          "desc": "候选生命周期状态机与流转追溯",
+          "permission": "research_advanced"
+        },
+        {
           "to": "/research/decision",
           "label": "决策看板",
           "desc": "宏观-行业-个股评分与执行参考",
+          "permission": "research_advanced"
+        },
+        {
+          "to": "/research/task-inbox",
+          "label": "任务收件箱",
+          "desc": "待审批、待重试、待复盘汇总",
           "permission": "research_advanced"
         },
         {
@@ -176,9 +200,34 @@
       ]
     },
     {
+      "id": "portfolio",
+      "title": "组合管理",
+      "order": 6,
+      "items": [
+        {
+          "to": "/portfolio/positions",
+          "label": "持仓看板",
+          "desc": "当前纸面持仓与状态",
+          "permission": "research_advanced"
+        },
+        {
+          "to": "/portfolio/orders",
+          "label": "计划单",
+          "desc": "计划单、执行单、取消单",
+          "permission": "research_advanced"
+        },
+        {
+          "to": "/portfolio/review",
+          "label": "执行复盘",
+          "desc": "执行偏差与复盘结论",
+          "permission": "research_advanced"
+        }
+      ]
+    },
+    {
       "id": "sentiment",
       "title": "舆情监控",
-      "order": 6,
+      "order": 7,
       "items": [
         {
           "to": "/chatrooms/overview",
@@ -209,7 +258,7 @@
     {
       "id": "system",
       "title": "系统管理",
-      "order": 7,
+      "order": 8,
       "items": [
         {
           "to": "/system/source-monitor",

@@ -38,8 +38,11 @@
               <option :value="100">100 / 页</option>
             </select>
           </label>
-          <div class="flex items-end">
-            <button class="w-full rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">查询</button>
+          <div class="flex items-end gap-2">
+            <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">查询</button>
+            <RouterLink to="/research/workbench?from=chatrooms_investment" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+              进入决策工作台
+            </RouterLink>
           </div>
         </fieldset>
       </PageSection>
@@ -104,7 +107,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'

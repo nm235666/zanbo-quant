@@ -1081,4 +1081,69 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
         handler._send_json(payload)
         return True
 
+    if parsed.path == "/api/system/stale-tasks":
+        auth_ctx = deps.get("auth_context") or {}
+        if not auth_ctx.get("is_admin"):
+            handler._send_json(
+                {
+                    "error": "无权限访问此功能",
+                    "code": "PERMISSION_DENIED",
+                    "action": "contact_admin",
+                },
+                status=403,
+            )
+            return True
+        _handle_stale_tasks(handler)
+        return True
+
     return False
+
+
+def _handle_stale_tasks(handler) -> None:
+    """GET /api/system/stale-tasks - List stale pending multi-role jobs (>30min running)."""
+    import datetime
+    from db_compat import get_db_connection
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cutoff = (
+            datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
+        ).isoformat()
+        try:
+            cur.execute(
+                """
+                SELECT id, ts_code, status, created_at, updated_at
+                FROM multi_role_v3_jobs
+                WHERE status IN ('queued', 'running')
+                AND updated_at < %s
+                ORDER BY created_at DESC
+                LIMIT 20
+                """,
+                (cutoff,),
+            )
+            rows = cur.fetchall()
+            stale = [
+                {
+                    "id": r[0],
+                    "ts_code": r[1],
+                    "status": r[2],
+                    "created_at": str(r[3]),
+                    "updated_at": str(r[4]),
+                }
+                for r in rows
+            ]
+        except Exception:
+            stale = []
+        cur.close()
+        conn.close()
+        handler._send_json({"stale_tasks": stale, "count": len(stale)})
+    except Exception as exc:
+        handler._send_json(
+            {
+                "error": "数据库暂时不可用，请稍后重试",
+                "code": "DB_UNAVAILABLE",
+                "action": "retry_in_30s",
+            },
+            status=500,
+        )

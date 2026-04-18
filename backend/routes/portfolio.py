@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+import re
+from urllib.parse import parse_qs
+
+from services.portfolio_service import (
+    add_review,
+    create_order,
+    list_orders,
+    list_positions,
+    list_reviews,
+    update_order,
+    VALID_ACTION_TYPES,
+    VALID_ORDER_STATUSES,
+)
+
+# Match /api/portfolio/orders/<id>
+_ORDER_ID_RE = re.compile(r"^/api/portfolio/orders/([^/]+)$")
+
+
+def dispatch_get(handler, parsed, deps: dict) -> bool:
+    if not parsed.path.startswith("/api/portfolio"):
+        return False
+
+    if parsed.path == "/api/portfolio/positions":
+        try:
+            payload = list_positions()
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"持仓查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
+    if parsed.path == "/api/portfolio/orders":
+        params = parse_qs(parsed.query)
+        status = params.get("status", [""])[0].strip()
+        try:
+            limit = int(params.get("limit", ["50"])[0] or 50)
+            offset = int(params.get("offset", ["0"])[0] or 0)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "limit/offset 必须是整数"}, status=400)
+            return True
+        limit = max(1, min(limit, 200))
+        try:
+            payload = list_orders(status=status, limit=limit, offset=offset)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"订单查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
+    if parsed.path == "/api/portfolio/review":
+        params = parse_qs(parsed.query)
+        try:
+            limit = int(params.get("limit", ["50"])[0] or 50)
+            offset = int(params.get("offset", ["0"])[0] or 0)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "limit/offset 必须是整数"}, status=400)
+            return True
+        limit = max(1, min(limit, 200))
+        try:
+            payload = list_reviews(limit=limit, offset=offset)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"复盘记录查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
+    return False
+
+
+def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
+    if not parsed.path.startswith("/api/portfolio"):
+        return False
+
+    if parsed.path == "/api/portfolio/orders":
+        ts_code = str(payload.get("ts_code") or "").strip().upper()
+        action_type = str(payload.get("action_type") or "buy").strip().lower()
+        decision_action_id = str(payload.get("decision_action_id") or "").strip()
+        note = str(payload.get("note") or "").strip()
+        try:
+            size = int(payload.get("size") or 0)
+        except (TypeError, ValueError):
+            handler._send_json({"ok": False, "error": "size 必须是整数"}, status=400)
+            return True
+        planned_price_raw = payload.get("planned_price")
+        planned_price: float | None = None
+        if planned_price_raw is not None:
+            try:
+                planned_price = float(planned_price_raw)
+            except (TypeError, ValueError):
+                handler._send_json({"ok": False, "error": "planned_price 必须是数字"}, status=400)
+                return True
+
+        if not ts_code:
+            handler._send_json({"ok": False, "error": "缺少 ts_code"}, status=400)
+            return True
+        if action_type not in VALID_ACTION_TYPES:
+            handler._send_json(
+                {"ok": False, "error": f"无效操作类型: {action_type}", "valid": sorted(VALID_ACTION_TYPES)},
+                status=400,
+            )
+            return True
+        try:
+            result = create_order(
+                ts_code=ts_code,
+                action_type=action_type,
+                planned_price=planned_price,
+                size=size,
+                decision_action_id=decision_action_id,
+                note=note,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"创建订单失败: {exc}"}, status=500)
+            return True
+        status_code = 200 if result.get("ok") else 500
+        handler._send_json(result, status=status_code)
+        return True
+
+    if parsed.path == "/api/portfolio/review":
+        order_id = str(payload.get("order_id") or "").strip()
+        review_tag = str(payload.get("review_tag") or "").strip()
+        review_note = str(payload.get("review_note") or "").strip()
+        slippage_raw = payload.get("slippage")
+        latency_ms_raw = payload.get("latency_ms")
+        slippage: float | None = None
+        latency_ms: int | None = None
+        if slippage_raw is not None:
+            try:
+                slippage = float(slippage_raw)
+            except (TypeError, ValueError):
+                pass
+        if latency_ms_raw is not None:
+            try:
+                latency_ms = int(latency_ms_raw)
+            except (TypeError, ValueError):
+                pass
+        if not order_id:
+            handler._send_json({"ok": False, "error": "缺少 order_id"}, status=400)
+            return True
+        try:
+            result = add_review(
+                order_id=order_id,
+                review_tag=review_tag,
+                review_note=review_note,
+                slippage=slippage,
+                latency_ms=latency_ms,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"添加复盘记录失败: {exc}"}, status=500)
+            return True
+        status_code = 200 if result.get("ok") else 500
+        handler._send_json(result, status=status_code)
+        return True
+
+    return False
+
+
+def dispatch_patch(handler, parsed, payload: dict, deps: dict) -> bool:
+    if not parsed.path.startswith("/api/portfolio"):
+        return False
+
+    m = _ORDER_ID_RE.match(parsed.path)
+    if m:
+        order_id = m.group(1)
+        status = payload.get("status")
+        executed_price_raw = payload.get("executed_price")
+        executed_at = payload.get("executed_at")
+        executed_price: float | None = None
+        if executed_price_raw is not None:
+            try:
+                executed_price = float(executed_price_raw)
+            except (TypeError, ValueError):
+                handler._send_json({"ok": False, "error": "executed_price 必须是数字"}, status=400)
+                return True
+        if status is not None:
+            status = str(status).strip()
+            if status not in VALID_ORDER_STATUSES:
+                handler._send_json(
+                    {"ok": False, "error": f"无效订单状态: {status}", "valid": sorted(VALID_ORDER_STATUSES)},
+                    status=400,
+                )
+                return True
+        try:
+            result = update_order(
+                order_id,
+                status=status,
+                executed_price=executed_price,
+                executed_at=str(executed_at).strip() if executed_at is not None else None,
+            )
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"更新订单失败: {exc}"}, status=500)
+            return True
+        if not result.get("ok"):
+            handler._send_json(result, status=404)
+            return True
+        handler._send_json(result)
+        return True
+
+    return False

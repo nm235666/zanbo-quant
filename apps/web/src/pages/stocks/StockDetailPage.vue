@@ -38,6 +38,12 @@
           </div>
 
           <div class="grid gap-3">
+            <RouterLink
+              :to="`/research/workbench?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}&from=stock_detail`"
+              class="rounded-2xl bg-emerald-600 px-4 py-3 font-semibold text-white text-center"
+            >
+              进入决策工作台
+            </RouterLink>
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" :disabled="isFetchNewsPending" @click="fetchStockNewsNow">
               {{ isFetchNewsPending ? '采集中...' : '立即采集股票新闻' }}
             </button>
@@ -138,6 +144,24 @@
         </PageSection>
       </div>
 
+      <PageSection id="themes-signals" title="主题与信号" subtitle="当前标的关联的主题热点与投资信号摘要。">
+        <div class="flex flex-wrap gap-2 text-sm">
+          <RouterLink :to="`/signals/overview?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            查看投资信号
+          </RouterLink>
+          <RouterLink :to="`/signals/themes`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            查看主题热点
+          </RouterLink>
+          <RouterLink :to="`/signals/graph`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            产业链图谱
+          </RouterLink>
+          <RouterLink :to="`/research/funnel`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            查看候选漏斗
+          </RouterLink>
+        </div>
+        <div class="mt-3 text-xs text-[var(--muted)]">主题信号数据需前往信号研究页查看，本页展示导航快捷入口。</div>
+      </PageSection>
+
       <PageSection title="决策视角" subtitle="把现有评分、财务、估值、趋势和风险结果压成可执行语言。">
         <div class="grid gap-4 xl:grid-cols-2">
           <InfoCard
@@ -236,7 +260,7 @@
         </div>
       </PageSection>
 
-      <details id="news-impact" class="group">
+      <details id="news-impact" class="group" open>
         <summary class="cursor-pointer list-none rounded-[24px] border border-[var(--line)] bg-white/82 px-4 py-4 text-base font-bold text-[var(--ink)] shadow-[var(--shadow-soft)]">
           相关个股新闻与群聊摘要
           <span class="ml-2 text-sm font-normal text-[var(--muted)]">先看摘要，需要时再展开详细卡片。</span>

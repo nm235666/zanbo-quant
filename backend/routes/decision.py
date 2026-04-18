@@ -278,15 +278,22 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         evidence_sources = evidence_sources_raw if isinstance(evidence_sources_raw, list) else []
         execution_status = str(payload.get("execution_status", "") or "").strip()
         review_conclusion = str(payload.get("review_conclusion", "") or "").strip()
+        # P1-5: Idempotency key — prevent duplicate submissions (double-click protection)
+        idempotency_key = str(payload.get("idempotency_key", "") or "").strip()
         if not ts_code:
             handler._send_json({"ok": False, "error": "缺少 ts_code"}, status=400)
             return True
         if not action_type:
             handler._send_json({"ok": False, "error": "缺少 action_type"}, status=400)
             return True
+        # P0-5: Evidence chain enforcement — warn if key actions lack evidence sources
+        evidence_warnings = []
+        if action_type in ("confirm", "reject") and not evidence_sources:
+            evidence_warnings.append("此动作缺少证据来源引用，建议通过决策板附加 trace_id 或 run_id")
         action_payload: dict = {
             "context": context,
             "source": str(context.get("source") or "decision_board"),
+            "evidence_chain_complete": bool(evidence_sources),
         }
         if evidence_sources:
             action_payload["evidence_sources"] = evidence_sources
@@ -294,6 +301,25 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             action_payload["execution_status"] = execution_status
         if review_conclusion:
             action_payload["review_conclusion"] = review_conclusion
+        if idempotency_key:
+            action_payload["idempotency_key"] = idempotency_key
+            # Check for duplicate idempotency key in recent actions
+            try:
+                from db_compat import get_db_connection
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM decision_actions WHERE payload::text LIKE %s ORDER BY created_at DESC LIMIT 1",
+                    (f'%"idempotency_key": "{idempotency_key}"%',)
+                )
+                existing = cur.fetchone()
+                cur.close()
+                conn.close()
+                if existing:
+                    handler._send_json({"ok": True, "action_id": existing[0], "deduplicated": True, "message": "重复提交已忽略（幂等键匹配）"})
+                    return True
+            except Exception:
+                pass  # If dedup check fails, proceed normally
         try:
             result = deps["record_decision_action"](
                 action_type=action_type,
@@ -307,7 +333,10 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"动作记录失败: {exc}"}, status=500)
             return True
-        handler._send_json({"ok": True, **result})
+        response = {"ok": True, **result}
+        if evidence_warnings:
+            response["evidence_warnings"] = evidence_warnings
+        handler._send_json(response)
         return True
 
     return False

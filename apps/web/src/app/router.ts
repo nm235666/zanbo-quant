@@ -42,13 +42,22 @@ export const router = createRouter({
     { path: '/signals/quality-config', component: () => import('../pages/signals/SignalQualityConfigPage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
     { path: '/signals/state-timeline', component: () => import('../pages/signals/SignalStateTimelinePage.vue'), meta: { auth: true, permission: 'signals_advanced' } as RouteMetaAuth },
 
+    { path: '/research/workbench', component: () => import('../pages/research/ResearchWorkbenchPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/reports', component: () => import('../pages/research/ReportsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/scoreboard', component: () => import('../pages/research/ScoreboardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/funnel', component: () => import('../pages/research/CandidateFunnelPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/decision', component: () => import('../pages/research/DecisionBoardPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/research/task-inbox', component: () => import('../pages/research/TaskInboxPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/quant-factors', component: () => import('../pages/research/QuantFactorsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
     { path: '/research/multi-role', component: () => import('../pages/research/MultiRoleResearchPage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/roundtable', component: () => import('../pages/research/ChiefRoundtablePage.vue'), meta: { auth: true, permission: 'multi_role_analyze' } as RouteMetaAuth },
     { path: '/research/trend', component: () => import('../pages/research/TrendAnalysisPage.vue'), meta: { auth: true, permission: 'trend_analyze' } as RouteMetaAuth },
+
+    { path: '/market/conclusion', component: () => import('../pages/market/MarketConclusionPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+
+    { path: '/portfolio/positions', component: () => import('../pages/portfolio/PositionsPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/portfolio/orders', component: () => import('../pages/portfolio/OrdersPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
+    { path: '/portfolio/review', component: () => import('../pages/portfolio/ReviewPage.vue'), meta: { auth: true, permission: 'research_advanced' } as RouteMetaAuth },
 
     { path: '/chatrooms/overview', component: () => import('../pages/chatrooms/ChatroomsOverviewPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced' } as RouteMetaAuth },
     { path: '/chatrooms/candidates', component: () => import('../pages/chatrooms/ChatroomCandidatesPage.vue'), meta: { auth: true, permission: 'chatrooms_advanced' } as RouteMetaAuth },

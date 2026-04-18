@@ -74,6 +74,9 @@
   - 主要风险
   - 受益行业 / 受压行业
   - 值得跟踪的候选方向（可一键进入 workbench/对象页）
+- 增加“冲突裁决口径”（固定优先级，避免结论话术漂移）：
+  - `时效` > `风险等级` > `信号强度` > `AI 摘要一致性`
+  - 当资讯结论与信号结论冲突时，按上述优先级生成最终结论，并显示“冲突说明 + 取舍依据”。
 
 7. 新增“候选漏斗”产品对象（建议路由：`/research/funnel`）
 - 把候选生命周期显式化为状态机：
@@ -88,6 +91,26 @@
   - 前进依据：催化强度、信号一致性、风险阈值、AI 置信度
   - 淘汰依据：证据冲突、催化衰减、风险超限、时效失效
 - 每次状态流转都记录：`from_state`、`to_state`、`reason`、`evidence_ref`、`operator`、`timestamp`
+- 明确“谁来驱动流转”（防止状态来源不一致）：
+  - 自动流转：
+    - `ingested -> amplified`：由信号增强/催化增强规则触发
+    - `amplified -> ai_screen_passed`：由 AI 初筛阈值触发
+    - `shortlisted -> decision_ready`：由前置条件满足触发（证据齐全、风险未超限）
+  - 人工确认流转：
+    - `ai_screen_passed -> shortlisted`：研究员确认纳入短名单
+    - `decision_ready -> confirmed/rejected/deferred`：决策动作触发
+    - `executed -> reviewed`：复盘确认触发
+  - 混合触发（系统建议 + 人工确认）：
+    - `amplified -> rejected`（高风险自动建议淘汰，人工最终确认）
+    - `shortlisted -> deferred`（时效衰减或证据冲突时建议暂缓）
+- 统一触发源枚举：`trigger_source = signal | ai_screen | researcher | decision_action | execution_feedback | system_rule`
+- 同一候选在任一时刻仅允许一个当前状态，跨页读取统一以漏斗状态源为准。
+- 异常流转保护（并发与幂等）：
+  - 最终写权限优先级：`decision_action/researcher > execution_feedback > system_rule > ai_screen > signal`
+  - 同时到达的多触发写入按“优先级 + 事件时间 + 版本号”裁决，低优先级写入不得覆盖高优先级终态。
+  - 状态写入必须携带 `idempotency_key`（建议：`candidate_id + trigger_source + trigger_event_id`），重复提交只生效一次。
+  - 使用乐观锁字段 `state_version` 防并发覆盖：仅当版本匹配时允许更新，不匹配则重读后重放裁决。
+  - 对 `confirmed/rejected/executed/reviewed` 设为受保护终态：非高优先级触发不得直接回写到前置状态。
 - 漏斗页要回答三个核心问题：
   - 现在池子里有多少票，分别卡在哪一层？
   - 为什么这只票晋级/淘汰？
@@ -247,6 +270,10 @@
 1. 双通道分析模型
 - `Quick Insight`（<=8s）：返回结构化结论卡（观点、风险、建议动作）。
 - `Deep Workflow`（异步）：完整多角色、取证、汇总、待审批链路。
+- Quick 输入边界（硬约束）：
+  - 仅消费“当前对象必要证据集”（价格快照、最新催化摘要、信号摘要、基础风险标签）。
+  - 不等待全量深度取证、不触发多角色全链路聚合。
+  - 若必要证据缺失，Quick 返回“受限结论 + 缺失项提示”，而不是阻塞等待 Deep 数据。
 
 2. 页面交互改造
 - 首屏先展示 Quick 结果并标注“快速版/置信度级别”。
@@ -320,6 +347,7 @@
 3. 可追溯覆盖率：关键动作 `trace_id` 与证据链完整率 >= 99%。  
 4. 降级可用率：异步失败场景仍有可执行路径覆盖率 100%。  
 5. 回归阻断有效率：高风险失败必须阻断合入，拦截率 100%。  
+6. 对象页收口率：研究单票时“无需离开 `/stocks/detail/:tsCode?` 即可完成主要判断”的会话占比 >= 80%。  
 
 ---
 

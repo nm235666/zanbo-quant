@@ -15,6 +15,9 @@
             <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isSnapshotPending" @click="runSnapshot">
               {{ isSnapshotPending ? '生成中...' : '生成快照' }}
             </button>
+            <RouterLink to="/portfolio/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+              执行任务
+            </RouterLink>
           </div>
         </div>
         <div class="page-insight-list">
@@ -201,6 +204,20 @@
                 </span>
               </div>
               <div class="mt-0.5 truncate text-xs text-[var(--muted)]">{{ item.created_at || '-' }}</div>
+              <div class="mt-1 flex items-center gap-1.5">
+                <span class="text-xs text-[var(--muted)]">执行：</span>
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                  :class="{
+                    'bg-gray-100 text-gray-600': !item.execution_status,
+                    'bg-amber-100 text-amber-700': item.execution_status === 'planned',
+                    'bg-blue-100 text-blue-700': item.execution_status === 'executing',
+                    'bg-emerald-100 text-emerald-700': item.execution_status === 'done',
+                    'bg-gray-100 text-gray-500': item.execution_status === 'cancelled',
+                  }"
+                >{{ { planned: '待执行', executing: '执行中', done: '已完成', cancelled: '已取消' }[item.execution_status as string] || '未关联' }}</span>
+                <RouterLink v-if="item.execution_status" :to="`/portfolio/orders?decision_action_id=${item.id}`" class="text-xs text-[var(--brand)] hover:underline">查看执行</RouterLink>
+              </div>
               <div v-if="item.note" class="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{{ item.note }}</div>
             </div>
           </div>

@@ -165,6 +165,8 @@ ss -ltnp | grep -E ':8000|:8002|:8004|:8005|:8006'
 | `bash /home/zanbo/zanbotest/run_database_audit_once.sh` | 运行数据库审计报告 |
 | `bash /home/zanbo/zanbotest/run_db_health_check_once.sh` | 运行数据库健康巡检 |
 | `bash /home/zanbo/zanbotest/run_logic_view_cache_once.sh` | 运行逻辑视图缓存回填 |
+| `bash /home/zanbo/zanbotest/scripts/sync_strategy_repo.sh` | 同步 `WealthCodePro/Strategy` 仓库到 `external/strategy`（支持 SSH/Token） |
+| `bash /home/zanbo/zanbotest/scripts/sync_and_import_strategy_reports.sh` | 一键执行“同步 Strategy 仓库 + 导入 `research_reports` 数据源” |
 
 ## 数据抓取与回填
 

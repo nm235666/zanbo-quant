@@ -65,6 +65,9 @@
                 {{ isFetching ? '查询中...' : '应用筛选' }}
               </button>
               <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" @click="resetFilters">恢复默认筛选</button>
+              <RouterLink class="rounded-2xl border border-[var(--brand)] bg-white px-4 py-3 text-sm font-semibold text-[var(--brand)]" to="/research/workbench?from=signals_overview">
+                进入决策工作台
+              </RouterLink>
             </div>
           </div>
         </div>
@@ -163,7 +166,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import DataTable from '../../shared/ui/DataTable.vue'
