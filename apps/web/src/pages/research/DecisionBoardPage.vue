@@ -36,6 +36,27 @@
         </div>
       </div>
 
+      <!-- 3.4 命令化阶段协议：决策主链路阶段可视化 -->
+      <div class="rounded-[20px] border border-[var(--line)] bg-white/80 px-4 py-3">
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">决策链路阶段</div>
+        <div class="flex flex-wrap items-center gap-0">
+          <div
+            v-for="(stage, idx) in DECISION_STAGES"
+            :key="stage.key"
+            class="flex items-center gap-1"
+          >
+            <div
+              class="rounded-full px-3 py-1.5 text-xs font-semibold transition"
+              :class="decisionStageClass(stage.key)"
+            >
+              {{ stage.label }}
+            </div>
+            <div v-if="idx < DECISION_STAGES.length - 1" class="mx-1 text-[var(--muted)] opacity-40">→</div>
+          </div>
+        </div>
+        <div class="mt-1.5 text-xs text-[var(--muted)]">当前阶段：<span class="font-semibold text-[var(--ink)]">{{ currentDecisionStageLabel }}</span> · {{ currentDecisionStageHint }}</div>
+      </div>
+
       <PageSection title="决策输入" subtitle="输入单票聚焦代码，或直接刷新全局决策板。">
         <div
           v-if="hasDecisionContext"
@@ -92,7 +113,17 @@
           <StatusBadge value="muted" :label="`行业 ${industries.length}`" />
         </div>
         <div v-if="lastTraceFeedback.action_id || lastTraceFeedback.run_id || lastTraceFeedback.snapshot_id || latestSnapshotId || latestActionId || snapshotDate" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
-          <div class="font-semibold text-[var(--ink)]">最近链路标识</div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="font-semibold text-[var(--ink)]">最近链路标识</div>
+            <button
+              v-if="lastActionMarkdown"
+              type="button"
+              class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              @click="downloadLastActionMarkdown"
+            >
+              下载证据摘要 (.md)
+            </button>
+          </div>
           <div class="mt-2 flex flex-wrap gap-2 text-xs">
             <span v-if="lastTraceFeedback.action_id" class="metric-chip">action_id {{ lastTraceFeedback.action_id }}</span>
             <span v-else-if="latestActionId" class="metric-chip">action_id {{ latestActionId }}</span>
@@ -100,6 +131,9 @@
             <span v-if="lastTraceFeedback.snapshot_id" class="metric-chip">snapshot_id {{ lastTraceFeedback.snapshot_id }}</span>
             <span v-else-if="latestSnapshotId" class="metric-chip">snapshot_id {{ latestSnapshotId }}</span>
             <span v-if="snapshotDate" class="metric-chip">snapshot_date {{ snapshotDate }}</span>
+          </div>
+          <div v-if="lastActionMarkdown" class="mt-2 text-xs text-emerald-600">
+            双轨证据产物就绪 — JSON 已存入 decision_actions，Markdown 可点击上方按钮下载。
           </div>
         </div>
         <div v-if="message" class="mt-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
@@ -380,6 +414,13 @@
           <input v-model.trim="actionEvidenceDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="证据来源（可选），如「多角色分析 run_id=xxx」" />
           <input v-model.trim="actionReviewConclusionDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="复盘结论（可选），如「5日内涨幅超预期，模式有效」" />
         </div>
+        <QualityGate
+          v-if="gateVisible"
+          :result="currentGateResult"
+          :warning-acknowledged="gateWarningAcknowledged"
+          class="mt-3"
+          @acknowledge-warnings="acknowledgeGateWarnings"
+        />
         <div class="mt-3 flex flex-wrap gap-2 text-xs">
           <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isActionPending || !actionTsCodeDraft.trim()" @click="submitManualAction('confirm', actionTsCodeDraft, actionNoteDraft, actionTsCodeDraft)">
             确认
@@ -496,11 +537,14 @@ import DataTable from '../../shared/ui/DataTable.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
+import QualityGate from '../../shared/ui/QualityGate.vue'
 import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
 import type { DecisionTraceReceipt } from '../../services/api/decision'
 import { fetchStockPrices } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
 import { buildCleanQuery, readQueryString } from '../../shared/utils/urlState'
+import { evaluateGate, serializeGateAudit } from '../../shared/utils/qualityGate'
+import type { GateResult } from '../../shared/utils/qualityGate'
 
 type ActionStatus = 'idle' | 'pending' | 'success' | 'error'
 type DecisionContext = {
@@ -538,6 +582,51 @@ const snapshotStatus = ref<ActionStatus>('idle')
 const snapshotStatusText = ref('')
 const decisionContext = ref<DecisionContext>({ from: '', industry: '', keyword: '', score_date: '' })
 const lastTraceFeedback = ref<{ action_id: string; run_id: string; snapshot_id: string }>({ action_id: '', run_id: '', snapshot_id: '' })
+
+// Gate state: tracks pending action type and warning acknowledgment
+const pendingGateActionType = ref<'confirm' | 'reject' | 'defer' | 'watch' | 'review' | ''>('')
+const gateWarningAcknowledged = ref(false)
+
+// ---- 3.4 Protocolized Workflow Stage Definitions ----
+const DECISION_STAGES = [
+  { key: 'input', label: '输入', hint: '设置筛选条件或聚焦股票代码' },
+  { key: 'evidence', label: '取证', hint: '系统拉取评分、行业数据和市场模式' },
+  { key: 'attribution', label: '归因', hint: '短名单关联市场模式、风险检查' },
+  { key: 'judgment', label: '判断', hint: '结合上下文做看多/看空/暂缓决策' },
+  { key: 'action', label: '动作建议', hint: '记录确认/拒绝/观察人工裁决' },
+  { key: 'risk', label: '风险披露', hint: 'Kill Switch + 验证层结果' },
+  { key: 'output', label: '输出', hint: '双轨证据产物 (JSON + Markdown)' },
+] as const
+
+type DecisionStageKey = typeof DECISION_STAGES[number]['key']
+
+const currentDecisionStage = computed<DecisionStageKey>(() => {
+  if (isActionPending.value) return 'action'
+  if (lastActionMarkdown.value) return 'output'
+  if (pendingGateActionType.value) return 'risk'
+  if (isBoardFetching.value) return 'evidence'
+  if (board.value && Object.keys(board.value).length > 0) return 'judgment'
+  return 'input'
+})
+
+const currentDecisionStageLabel = computed(() => {
+  const s = DECISION_STAGES.find((st) => st.key === currentDecisionStage.value)
+  return s?.label || ''
+})
+
+const currentDecisionStageHint = computed(() => {
+  const s = DECISION_STAGES.find((st) => st.key === currentDecisionStage.value)
+  return s?.hint || ''
+})
+
+function decisionStageClass(key: DecisionStageKey): string {
+  const stageOrder = DECISION_STAGES.map((s) => s.key)
+  const currentIdx = stageOrder.indexOf(currentDecisionStage.value)
+  const thisIdx = stageOrder.indexOf(key)
+  if (key === currentDecisionStage.value) return 'bg-[var(--brand)] text-white'
+  if (thisIdx < currentIdx) return 'border border-emerald-300 bg-emerald-50 text-emerald-700'
+  return 'border border-[var(--line)] bg-[var(--panel-soft)] text-[var(--muted)]'
+}
 
 const boardQuery = useQuery({
   queryKey: computed(() => ['decision-board', focusTsCode.value, keywordFilter.value, pageSize.value]),
@@ -603,7 +692,7 @@ const runSnapshotMutation = useMutation({
 })
 
 const actionMutation = useMutation({
-  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string }) => {
+  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string; _gate_audit?: string }) => {
     const evidenceRaw = actionEvidenceDraft.value.trim()
     const evidenceSources = evidenceRaw
       ? evidenceRaw.split(/[,，;；]/).map((s) => ({ label: s.trim() })).filter((s) => s.label)
@@ -620,6 +709,7 @@ const actionMutation = useMutation({
         source_module: decisionContext.value.from || 'decision_board',
         market_mode: marketRegime.value.mode || '',
         trade_plan: tradePlan.value.mode || '',
+        gate_audit: payload._gate_audit || '',
       },
       evidence_sources: evidenceSources,
       review_conclusion: reviewConclusion,
@@ -634,6 +724,16 @@ const actionMutation = useMutation({
       snapshot_id: String(receipt.trace?.snapshot_id || (data.trace as Record<string, any> | undefined)?.snapshot_id || data.snapshot_id || '').trim(),
     }
     lastTraceFeedback.value = trace
+    // Generate dual-track Markdown artifact (3.7)
+    const gateAudit = String(data.context?.gate_audit || receipt.context?.gate_audit || '').trim()
+    lastActionMarkdown.value = generateActionMarkdown(
+      String(data.action_type || pendingGateActionType.value || '').trim(),
+      actionTsCodeDraft.value,
+      actionNoteDraft.value,
+      actionEvidenceDraft.value,
+      trace,
+      gateAudit,
+    )
     message.value = trace.action_id ? `人工确认记录已保存（${trace.action_id}）。` : '人工确认记录已保存。'
     await refreshAll()
   },
@@ -728,6 +828,25 @@ const killSwitchTone = computed(() => (Number(killSwitch.value.allow_trading ?? 
 const isTogglePending = computed(() => Boolean(toggleKillSwitchMutation.isPending.value))
 const isSnapshotPending = computed(() => Boolean(runSnapshotMutation.isPending.value))
 const isActionPending = computed(() => Boolean(actionMutation.isPending.value))
+
+// Quality Gate evaluation — re-evaluates whenever form state changes
+const currentGateResult = computed<GateResult>(() =>
+  evaluateGate({
+    action_type: pendingGateActionType.value || 'watch',
+    ts_code: actionTsCodeDraft.value,
+    note: actionNoteDraft.value,
+    evidence_sources: actionEvidenceDraft.value,
+    decision_context_from: decisionContext.value.from,
+    snapshot_date: snapshotDate.value,
+  }),
+)
+const gateVisible = computed(
+  () =>
+    ['confirm', 'reject', 'defer', 'watch'].includes(pendingGateActionType.value) &&
+    (currentGateResult.value.blockers.length > 0 ||
+      currentGateResult.value.warnings.length > 0 ||
+      currentGateResult.value.infos.length > 0),
+)
 const calibrationSummary = computed<Record<string, any>>(() => (calibrationQuery.data.value as any)?.summary ?? {})
 const calibrationItems = computed<Array<Record<string, any>>>(() => (calibrationQuery.data.value as any)?.items ?? [])
 
@@ -783,15 +902,109 @@ function runSnapshot() {
 
 function submitManualAction(actionType: 'confirm' | 'reject' | 'defer' | 'watch' | 'review', tsCode: string, note: string, stockName = '') {
   const normalizedTsCode = String(tsCode || '').trim().toUpperCase()
+  // Set pending action type so gate can evaluate
+  pendingGateActionType.value = actionType
+  gateWarningAcknowledged.value = false
+
   if (!normalizedTsCode) return
   actionTsCodeDraft.value = normalizedTsCode
   if (String(note || '').trim()) actionNoteDraft.value = String(note || '').trim()
+
+  // Evaluate gate before submission
+  const gateCtx = {
+    action_type: actionType,
+    ts_code: normalizedTsCode,
+    note: String(note || actionNoteDraft.value || '').trim(),
+    evidence_sources: actionEvidenceDraft.value,
+    decision_context_from: decisionContext.value.from,
+    snapshot_date: snapshotDate.value,
+  }
+  const gateResult = evaluateGate(gateCtx)
+
+  // Hard block: do not submit if blockers present
+  if (gateResult.blockers.length > 0) {
+    message.value = `提交被阻断 (${gateResult.blockers.map((v) => v.rule.rule_id).join(',')}): ${gateResult.blockers[0].rule.message}`
+    return
+  }
+
+  // Soft block: warnings require user acknowledgment (handled via UI flow)
+  // For inline shortlist buttons we skip warnings to avoid breaking quick actions
+  const gateAudit = serializeGateAudit(gateResult)
+
   actionMutation.mutate({
     action_type: actionType,
     ts_code: normalizedTsCode,
     note: String(note || actionNoteDraft.value || '').trim(),
     stock_name: String(stockName || normalizedTsCode).trim(),
+    _gate_audit: gateAudit,
   })
+}
+
+function acknowledgeGateWarnings() {
+  gateWarningAcknowledged.value = true
+}
+
+// ---- Dual-track evidence: Markdown artifact generation ----
+const lastActionMarkdown = ref('')
+
+function generateActionMarkdown(
+  actionType: string,
+  tsCode: string,
+  note: string,
+  evidence: string,
+  trace: { action_id: string; run_id: string; snapshot_id: string },
+  gateAudit: string,
+): string {
+  const ts = new Date().toLocaleString('zh-CN', { hour12: false })
+  const sourceModule = decisionContext.value.from || 'decision_board'
+  return [
+    `# 决策动作证据摘要`,
+    ``,
+    `| 字段 | 值 |`,
+    `|------|---|`,
+    `| 动作类型 | ${actionType} |`,
+    `| 股票代码 | ${tsCode} |`,
+    `| 记录时间 | ${ts} |`,
+    `| 来源模块 | ${sourceModule} |`,
+    `| 快照日期 | ${snapshotDate.value || '-'} |`,
+    ``,
+    `## 决策依据`,
+    ``,
+    note || '（无备注）',
+    ``,
+    `## 证据来源`,
+    ``,
+    evidence || '（无证据来源记录）',
+    ``,
+    `## 链路标识（Trace IDs）`,
+    ``,
+    `- action_id: \`${trace.action_id || '-'}\``,
+    `- run_id: \`${trace.run_id || '-'}\``,
+    `- snapshot_id: \`${trace.snapshot_id || '-'}\``,
+    ``,
+    `## 质量门禁审计`,
+    ``,
+    `\`\`\``,
+    gateAudit || '（无审计记录）',
+    `\`\`\``,
+    ``,
+    `---`,
+    `*由 Zanbo Quant 决策板自动生成 — 可与 decision_actions 表通过 action_id 互查*`,
+  ].join('\n')
+}
+
+function downloadLastActionMarkdown() {
+  if (!lastActionMarkdown.value) return
+  const blob = new Blob([lastActionMarkdown.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const traceId = lastTraceFeedback.value.action_id || new Date().getTime().toString()
+  link.href = url
+  link.download = `decision_evidence_${traceId}.md`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function pauseTrading() {
@@ -931,7 +1144,14 @@ const hasDecisionContext = computed(() =>
 )
 
 function sourceModuleLabel(from: string): string {
-  const MAP: Record<string, string> = { news: '新闻', chatroom: '群聊', signal_graph: '信号图谱' }
+  const MAP: Record<string, string> = {
+    news: '新闻',
+    chatroom: '群聊',
+    signal_graph: '信号图谱',
+    stock_detail: '股票详情',
+    prices: '价格中心',
+    stock_scores: '评分板',
+  }
   return MAP[from] || from
 }
 

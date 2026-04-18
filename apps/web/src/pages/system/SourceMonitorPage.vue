@@ -33,11 +33,92 @@
         </div>
       </PageSection>
 
+      <PageSection v-if="latestMetrics" title="运营指标 (长期证据化)" subtitle="通过主链路成功率、决策可追踪率和闭环完成率，衡量系统长期稳定性和业务价值。">
+        <div class="grid gap-4 xl:grid-cols-3">
+          <StatCard
+            title="主链路成功率"
+            :value="latestMetrics.pipeline_success_rate !== null ? `${latestMetrics.pipeline_success_rate}%` : '-'"
+            :tone="pipelineSuccessTone"
+            :hint="latestMetrics.sample_insufficient ? '样本不足 (N < 20)' : '目标 > 99%'"
+          />
+          <StatCard
+            title="决策可追踪率"
+            :value="latestMetrics.traceability_rate !== null ? `${latestMetrics.traceability_rate}%` : '-'"
+            :tone="traceabilityTone"
+            :hint="latestMetrics.sample_insufficient ? '样本不足 (N < 20)' : '目标 > 95%'"
+          />
+          <StatCard
+            title="闭环完成率"
+            :value="latestMetrics.closure_rate !== null ? `${latestMetrics.closure_rate}%` : '-'"
+            :tone="closureTone"
+            :hint="latestMetrics.sample_insufficient ? '样本不足 (N < 20)' : '目标 > 85%'"
+          />
+        </div>
+        <div class="mt-4 grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+          <div class="rounded-[24px] border border-[var(--line)] bg-[var(--panel-soft)] p-4">
+            <div class="mb-3 text-sm font-bold text-[var(--ink)]">最近 7 天趋势</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="text-[var(--muted)] border-b border-[var(--line)]">
+                    <th class="pb-2 font-semibold">日期</th>
+                    <th class="pb-2 font-semibold text-right">主链路成功率</th>
+                    <th class="pb-2 font-semibold text-right">可追踪率</th>
+                    <th class="pb-2 font-semibold text-right">闭环率</th>
+                    <th class="pb-2 font-semibold text-center">样本状态</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--line)]">
+                  <tr v-for="day in trendMetrics" :key="day.date" class="hover:bg-white/50">
+                    <td class="py-2 text-[var(--ink)] font-medium">{{ day.date }}</td>
+                    <td class="py-2 text-right">{{ day.pipeline_success_rate !== null ? `${day.pipeline_success_rate}%` : '-' }}</td>
+                    <td class="py-2 text-right">{{ day.traceability_rate !== null ? `${day.traceability_rate}%` : '-' }}</td>
+                    <td class="py-2 text-right">{{ day.closure_rate !== null ? `${day.closure_rate}%` : '-' }}</td>
+                    <td class="py-2 text-center">
+                      <StatusBadge v-if="day.sample_insufficient" value="warning" label="样本不足" />
+                      <span v-else class="text-[var(--muted)]">-</span>
+                    </td>
+                  </tr>
+                  <tr v-if="trendMetrics.length === 0">
+                    <td colspan="5" class="py-8 text-center text-[var(--muted)]">暂无历史趋势数据</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div v-if="metricsAdvice.length > 0" class="rounded-[24px] border border-rose-100 bg-rose-50/30 p-4">
+            <div class="mb-3 text-sm font-bold text-rose-900">下一步建议</div>
+            <div class="space-y-3">
+              <div v-for="item in metricsAdvice" :key="item.title" class="flex items-start gap-2">
+                <div class="mt-1 size-1.5 rounded-full bg-rose-500" />
+                <div>
+                  <div class="text-xs font-bold text-rose-800">{{ item.title }}</div>
+                  <div class="mt-0.5 text-xs text-rose-600">{{ item.action }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="rounded-[24px] border border-emerald-100 bg-emerald-50/30 p-4 flex flex-col items-center justify-center text-center">
+            <div class="text-sm font-bold text-emerald-900">指标表现良好</div>
+            <div class="mt-1 text-xs text-emerald-600">系统当前处于高可用与高可追踪状态。</div>
+          </div>
+        </div>
+      </PageSection>
+
       <div class="grid gap-4 xl:grid-cols-2">
-        <PageSection title="数据源状态" subtitle="按数据源粒度看状态、最近更新时间和说明。">
+        <PageSection title="数据源状态" :subtitle="`按数据源粒度看状态、最近更新时间和说明。当前系统来源等级：${sourceLevelLabel(systemSourceLevel)}`">
+          <div v-if="systemSourceLevel !== 'primary' && systemSourceLevel !== 'unknown'" class="mb-3 rounded-[18px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span class="font-semibold">来源等级：{{ sourceLevelLabel(systemSourceLevel) }}</span>
+            —— 部分数据源当前处于降级或离线状态，系统可能正在从缓存或备用源提供数据。决策前请确认数据时效性。
+          </div>
           <div class="space-y-2">
             <InfoCard v-for="item in monitor?.sources || []" :key="item.key" :title="item.name || item.key" :meta="`${item.detail || '-'} · 最近更新 ${formatDateTime(item.last_update)}`">
-              <template #badge><StatusBadge :value="item.status" :label="item.status_text || item.status || '-'" /></template>
+              <template #badge>
+                <div class="flex flex-wrap gap-1.5">
+                  <StatusBadge :value="item.status" :label="item.status_text || item.status || '-'" />
+                  <StatusBadge :value="sourceLevelTone(sourceLevel(item))" :label="sourceLevelLabel(sourceLevel(item))" />
+                </div>
+              </template>
             </InfoCard>
           </div>
         </PageSection>
@@ -128,6 +209,7 @@ import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import StatePanel from '../../shared/ui/StatePanel.vue'
 import { fetchSourceMonitor } from '../../services/api/dashboard'
 import { fetchQuantHealth } from '../../services/api/quantFactors'
+import { fetchMetricsSummary } from '../../services/api/metrics'
 import { formatDateTime } from '../../shared/utils/format'
 
 const { data: monitor, error, refetch } = useQuery({
@@ -170,6 +252,45 @@ const quantAnomalyHints = computed((): string[] => {
     hints.push('若错误为 EXTERNAL_TIMEOUT，可检查 LLM 节点管理页（左侧导航 → LLM 节点管理）的节点可用性。')
   }
   return hints
+})
+
+// ---- Metrics Summary (长期证据化) ----
+const { data: metricsSummary } = useQuery({
+  queryKey: ['metrics-summary'],
+  queryFn: fetchMetricsSummary,
+  refetchInterval: 300_000,
+  staleTime: 240_000,
+})
+
+const latestMetrics = computed(() => metricsSummary.value?.latest || null)
+const trendMetrics = computed(() => metricsSummary.value?.trend_7d || [])
+
+const pipelineSuccessTone = computed(() => {
+  const val = latestMetrics.value?.pipeline_success_rate
+  if (val === null || val === undefined) return undefined
+  return val >= 99 ? 'success' as const : 'danger' as const
+})
+const traceabilityTone = computed(() => {
+  const val = latestMetrics.value?.traceability_rate
+  if (val === null || val === undefined) return undefined
+  return val >= 95 ? 'success' as const : 'danger' as const
+})
+const closureTone = computed(() => {
+  const val = latestMetrics.value?.closure_rate
+  if (val === null || val === undefined) return undefined
+  return val >= 85 ? 'success' as const : 'danger' as const
+})
+const metricsAdvice = computed(() => {
+  const list: { title: string; action: string }[] = []
+  const latest = latestMetrics.value
+  if (!latest) return list
+  if (latest.pipeline_success_rate !== null && latest.pipeline_success_rate < 99)
+    list.push({ title: '成功率下降', action: '查看 smoke 最近失败用例，确认是基础设施 flaky 还是真实回归。' })
+  if (latest.traceability_rate !== null && latest.traceability_rate < 95)
+    list.push({ title: '可追踪率下降', action: '核查 decision_actions 记录完整性，确认 action_id/ts_code/created_at 字段是否全部填充。' })
+  if (latest.closure_rate !== null && latest.closure_rate < 85)
+    list.push({ title: '闭环率下降', action: '检查动作是否有 context payload，确认来源模块跳转时携带了 source/source_module 字段。' })
+  return list
 })
 
 const effectiveSummary = computed(() => {
@@ -234,6 +355,40 @@ const monitorError = computed(() => error.value?.message || '')
 function reload() {
   refetch()
 }
+
+// ---- Data Source Level (primary/fallback/mixed) ----
+// Derives whether a data source is serving primary or fallback data.
+type SourceLevel = 'primary' | 'fallback' | 'mixed' | 'unknown'
+
+function sourceLevel(item: Record<string, any>): SourceLevel {
+  const status = String(item.status || '').toLowerCase()
+  if (item.source_level) return item.source_level as SourceLevel  // backend override
+  if (status === 'ok') return 'primary'
+  if (status === 'warn') return 'fallback'   // degraded but available → serving from cache/fallback
+  if (status === 'error') return 'fallback'  // offline, fallback (if any) in use
+  return 'unknown'
+}
+
+function sourceLevelLabel(level: SourceLevel): string {
+  return { primary: '主源', fallback: '降级/缓存', mixed: '混合', unknown: '-' }[level] || '-'
+}
+
+function sourceLevelTone(level: SourceLevel): string {
+  return { primary: 'success', fallback: 'warning', mixed: 'info', unknown: 'muted' }[level] || 'muted'
+}
+
+// Overall system source level (for overview display)
+const systemSourceLevel = computed<SourceLevel>(() => {
+  const sources = monitor.value?.sources || []
+  if (!sources.length) return 'unknown'
+  const levels = sources.map((s: Record<string, any>) => sourceLevel(s))
+  const hasFallback = levels.some((l: SourceLevel) => l === 'fallback')
+  const hasPrimary = levels.some((l: SourceLevel) => l === 'primary')
+  if (hasFallback && hasPrimary) return 'mixed'
+  if (hasFallback) return 'fallback'
+  if (hasPrimary) return 'primary'
+  return 'unknown'
+})
 
 async function copyLog(text: string) {
   try {

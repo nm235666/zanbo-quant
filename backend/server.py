@@ -882,6 +882,7 @@ API_ENDPOINTS_CATALOG = {
     "macro_indicators": "/api/macro/indicators",
     "macro_series": "/api/macro?indicator_code=cn_cpi.nt_yoy&freq=M&period_start=202001&period_end=202512&page=1&page_size=200",
     "source_monitor": "/api/source-monitor",
+    "metrics_summary": "/api/metrics/summary",
     "database_audit": "/api/database-audit?refresh=0|1",
     "signal_audit": "/api/signal-audit?scope=7d|1d",
     "signal_quality_config": "/api/signal-quality/config",

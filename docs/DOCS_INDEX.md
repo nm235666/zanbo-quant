@@ -17,6 +17,8 @@
 - `docs/final_state_remaining_34_progress_assessment_2026-04-17.md`
 - `docs/final_state_projection_gap_closure_plan_2026-04-17.md`
 - `docs/unified_entry_and_long_term_metrics_strategy_2026-04-17.md`
+- `docs/uzi_skill_reuse_final_architecture_2026-04-18.md`
+- `docs/decision_productization_batches_A_to_C_2026-04-18.md`
 - `docs/repo_structure_rules.md`
 
 ## B. 归档文档（历史快照，不再持续维护）

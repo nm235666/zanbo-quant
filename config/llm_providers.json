@@ -129,10 +129,10 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 300,
-        "last_checked_at": "2026-04-17T19:41:14Z",
+        "last_checked_at": "2026-04-18T16:21:20Z",
         "last_http_status": 404,
-        "last_latency_ms": 1020,
-        "last_error": "{\"timestamp\":\"2026-04-17T19:41:15.402+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}",
+        "last_latency_ms": 1356,
+        "last_error": "{\"timestamp\":\"2026-04-18T16:21:22.084+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}",
         "last_probe_model": "embedding-3",
         "last_probe_base_url": "https://open.bigmodel.cn/api/paas/v4/v1",
         "last_probe_attempts": [
@@ -142,7 +142,7 @@
             "model": "EMBEDDING-3",
             "ok": false,
             "status_code": 400,
-            "latency_ms": 858,
+            "latency_ms": 1096,
             "error": "{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误，请检查文档。\"}}"
           },
           {
@@ -151,7 +151,7 @@
             "model": "Embedding-3",
             "ok": false,
             "status_code": 400,
-            "latency_ms": 832,
+            "latency_ms": 3054,
             "error": "{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误，请检查文档。\"}}"
           },
           {
@@ -160,8 +160,8 @@
             "model": "embedding-3",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 835,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:20.463+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 1148,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:31.675+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 2,
@@ -169,8 +169,8 @@
             "model": "EMBEDDING-3",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 821,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:21.287+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 1787,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:33.641+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 2,
@@ -178,8 +178,8 @@
             "model": "Embedding-3",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 841,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:22.125+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 996,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:34.640+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 2,
@@ -187,7 +187,7 @@
             "model": "embedding-3",
             "ok": false,
             "status_code": 400,
-            "latency_ms": 874,
+            "latency_ms": 1201,
             "error": "{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误，请检查文档。\"}}"
           },
           {
@@ -196,7 +196,7 @@
             "model": "EMBEDDING-3",
             "ok": false,
             "status_code": 400,
-            "latency_ms": 842,
+            "latency_ms": 1455,
             "error": "{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误，请检查文档。\"}}"
           },
           {
@@ -205,11 +205,11 @@
             "model": "Embedding-3",
             "ok": false,
             "status_code": 400,
-            "latency_ms": 850,
+            "latency_ms": 1166,
             "error": "{\"error\":{\"code\":\"1210\",\"message\":\"API 调用参数有误，请检查文档。\"}}"
           }
         ],
-        "consecutive_failures": 753
+        "consecutive_failures": 815
       }
     ],
     "gpt-5.4": [
@@ -218,9 +218,9 @@
         "base_url": "https://api.univibe.cc/openai/v1",
         "api_key": "sk-u3UIQYsyUcJrnFQFIMGj4dMFW1u5B2RL",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-17T19:40:13Z",
+        "last_checked_at": "2026-04-18T16:20:13Z",
         "last_http_status": 200,
-        "last_latency_ms": 5986,
+        "last_latency_ms": 5193,
         "last_error": "",
         "enabled": true,
         "status": "active",
@@ -237,7 +237,7 @@
             "model": "gpt-5.4",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 5986,
+            "latency_ms": 5193,
             "error": ""
           }
         ],
@@ -252,9 +252,9 @@
         "enabled": false,
         "status": "disabled",
         "health_status": "unhealthy",
-        "last_checked_at": "2026-04-17T19:40:13Z",
+        "last_checked_at": "2026-04-18T16:20:13Z",
         "last_http_status": null,
-        "last_latency_ms": 182,
+        "last_latency_ms": 183,
         "last_error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>",
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "https://ice.v.ua/v1",
@@ -265,7 +265,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 169,
+            "latency_ms": 185,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -274,7 +274,7 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 171,
+            "latency_ms": 180,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -283,7 +283,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 176,
+            "latency_ms": 184,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -292,7 +292,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 169,
+            "latency_ms": 183,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -310,7 +310,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 195,
+            "latency_ms": 185,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -319,7 +319,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 170,
+            "latency_ms": 181,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           },
           {
@@ -328,12 +328,12 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": null,
-            "latency_ms": 167,
+            "latency_ms": 355,
             "error": "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1007)>"
           }
         ],
         "priority": 2,
-        "consecutive_failures": 606,
+        "consecutive_failures": 668,
         "health_recommendation": "active",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 100
@@ -343,9 +343,9 @@
         "base_url": "https://ai.ijunze.cn/v1",
         "api_key": "sk-g3bumJwpN8og2caMQmRBQa3qjYmUK6vRFe7Uyaz4KoKr62ev",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-17T19:40:13Z",
+        "last_checked_at": "2026-04-18T16:20:13Z",
         "last_http_status": 404,
-        "last_latency_ms": 1314,
+        "last_latency_ms": 1373,
         "last_error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>",
         "enabled": false,
         "status": "disabled",
@@ -360,7 +360,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1264,
+            "latency_ms": 1391,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -369,7 +369,7 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1291,
+            "latency_ms": 938,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -378,7 +378,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1152,
+            "latency_ms": 1410,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -387,7 +387,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1258,
+            "latency_ms": 1197,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -396,7 +396,7 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1268,
+            "latency_ms": 1573,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -405,7 +405,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 1136,
+            "latency_ms": 1178,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -414,7 +414,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 911,
+            "latency_ms": 1546,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           },
           {
@@ -423,11 +423,11 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 892,
+            "latency_ms": 1431,
             "error": "<html>\r <head><title>404 Not Found</title></head>\r <body>\r <center><h1>404 Not Found</h1></center>\r <hr><center>openresty</center>\r </body>\r </html>"
           }
         ],
-        "consecutive_failures": 754,
+        "consecutive_failures": 816,
         "health_recommendation": "disabled",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000
@@ -437,9 +437,9 @@
         "base_url": "http://192.168.5.43:8087/v1",
         "api_key": "sk-1cefe212ace017b3ba7f4983ee29d60e297ef042f369c868249ad7c4f790583c",
         "default_temperature": 0.2,
-        "last_checked_at": "2026-04-17T19:40:13Z",
+        "last_checked_at": "2026-04-18T16:20:13Z",
         "last_http_status": 503,
-        "last_latency_ms": 40,
+        "last_latency_ms": 37,
         "last_error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}",
         "enabled": false,
         "status": "disabled",
@@ -472,7 +472,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": 503,
-            "latency_ms": 10,
+            "latency_ms": 11,
             "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
           },
           {
@@ -481,7 +481,7 @@
             "model": "GPT-5.4",
             "ok": false,
             "status_code": 503,
-            "latency_ms": 17,
+            "latency_ms": 16,
             "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
           },
           {
@@ -490,7 +490,7 @@
             "model": "Gpt-5.4",
             "ok": false,
             "status_code": 503,
-            "latency_ms": 15,
+            "latency_ms": 13,
             "error": "{\"error\":{\"message\":\"Service temporarily unavailable\",\"type\":\"api_error\"}}"
           },
           {
@@ -499,7 +499,7 @@
             "model": "gpt-5.4",
             "ok": false,
             "status_code": 200,
-            "latency_ms": 3,
+            "latency_ms": 4,
             "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
           },
           {
@@ -521,7 +521,7 @@
             "error": "unexpected response: <!doctype html> <html lang=\"zh-CN\">   <head>     <meta charset=\"UTF-8\" />     <link rel=\"icon\" type=\"image/png\" href=\"/logo.png\" />     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />     <title>Sub2API - AI API Gat"
           }
         ],
-        "consecutive_failures": 755,
+        "consecutive_failures": 817,
         "health_recommendation": "degraded",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000
@@ -541,9 +541,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:40:43Z",
+        "last_checked_at": "2026-04-18T16:20:46Z",
         "last_http_status": 200,
-        "last_latency_ms": 11130,
+        "last_latency_ms": 7691,
         "last_error": "",
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "https://api.univibe.cc/openai/v1",
@@ -554,7 +554,7 @@
             "model": "gpt-5.4",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 11130,
+            "latency_ms": 7691,
             "error": ""
           }
         ],
@@ -575,9 +575,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:40:55Z",
+        "last_checked_at": "2026-04-18T16:20:54Z",
         "last_http_status": 200,
-        "last_latency_ms": 7378,
+        "last_latency_ms": 7623,
         "last_error": "",
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "https://api.univibe.cc/openai/v1",
@@ -588,7 +588,7 @@
             "model": "gpt-5.4",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 7378,
+            "latency_ms": 7623,
             "error": ""
           }
         ],
@@ -609,9 +609,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:40:35Z",
+        "last_checked_at": "2026-04-18T16:20:39Z",
         "last_http_status": 200,
-        "last_latency_ms": 8968,
+        "last_latency_ms": 6881,
         "last_error": "",
         "last_probe_model": "gpt-5.4",
         "last_probe_base_url": "https://api.univibe.cc/openai/v1",
@@ -622,7 +622,7 @@
             "model": "gpt-5.4",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 8968,
+            "latency_ms": 6881,
             "error": ""
           }
         ],
@@ -641,9 +641,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:41:24Z",
+        "last_checked_at": "2026-04-18T16:21:38Z",
         "last_http_status": 200,
-        "last_latency_ms": 3468,
+        "last_latency_ms": 11712,
         "last_error": "",
         "last_probe_model": "glm-4-flash",
         "last_probe_base_url": "https://open.bigmodel.cn/api/paas/v4",
@@ -654,8 +654,8 @@
             "model": "glm-4-flash",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 840,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:25.545+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 2114,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:40.589+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 1,
@@ -663,8 +663,8 @@
             "model": "GLM-4-FLASH",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 843,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:26.381+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 968,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:41.561+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 1,
@@ -672,8 +672,8 @@
             "model": "Glm-4-flash",
             "ok": false,
             "status_code": 404,
-            "latency_ms": 842,
-            "error": "{\"timestamp\":\"2026-04-17T19:41:27.230+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
+            "latency_ms": 1404,
+            "error": "{\"timestamp\":\"2026-04-18T16:21:42.959+00:00\",\"status\":404,\"error\":\"Not Found\",\"path\":\"/v4/v1/chat/completions\"}"
           },
           {
             "round": 1,
@@ -681,7 +681,7 @@
             "model": "glm-4-flash",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 3468,
+            "latency_ms": 11712,
             "error": ""
           }
         ],
@@ -698,9 +698,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:41:07Z",
+        "last_checked_at": "2026-04-18T16:21:10Z",
         "last_http_status": 200,
-        "last_latency_ms": 7305,
+        "last_latency_ms": 10447,
         "last_error": "",
         "last_probe_model": "kimi-k2.5",
         "last_probe_base_url": "https://api.moonshot.cn/v1",
@@ -711,7 +711,7 @@
             "model": "kimi-k2.5",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 7305,
+            "latency_ms": 10447,
             "error": ""
           }
         ],
@@ -731,9 +731,9 @@
         "priority": 1,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:40:06Z",
+        "last_checked_at": "2026-04-18T16:20:06Z",
         "last_http_status": 200,
-        "last_latency_ms": 1843,
+        "last_latency_ms": 3572,
         "last_error": "",
         "last_probe_model": "deepseek-chat",
         "last_probe_base_url": "https://api.deepseek.com/v1",
@@ -744,7 +744,7 @@
             "model": "deepseek-chat",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 1843,
+            "latency_ms": 3572,
             "error": ""
           }
         ],
@@ -761,9 +761,9 @@
         "priority": 2,
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 1000,
-        "last_checked_at": "2026-04-17T19:40:06Z",
+        "last_checked_at": "2026-04-18T16:20:06Z",
         "last_http_status": 200,
-        "last_latency_ms": 5250,
+        "last_latency_ms": 4006,
         "last_error": "",
         "last_probe_model": "deepseek-reasoner",
         "last_probe_base_url": "https://api.deepseek.com/v1",
@@ -774,7 +774,7 @@
             "model": "deepseek-reasoner",
             "ok": true,
             "status_code": 200,
-            "latency_ms": 5250,
+            "latency_ms": 4006,
             "error": ""
           }
         ],
@@ -794,9 +794,9 @@
         "status": "disabled",
         "rate_limit_enabled": true,
         "rate_limit_per_minute": 100,
-        "last_checked_at": "2026-04-17T19:41:02Z",
+        "last_checked_at": "2026-04-18T16:21:01Z",
         "last_http_status": 403,
-        "last_latency_ms": 448,
+        "last_latency_ms": 528,
         "last_error": "{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}",
         "last_probe_model": "gpt-5.4mini",
         "last_probe_base_url": "https://ai.td.ee/v1",
@@ -807,7 +807,7 @@
             "model": "GPT-5.4MINI",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 333,
+            "latency_ms": 739,
             "error": "Your request was blocked."
           },
           {
@@ -816,7 +816,7 @@
             "model": "Gpt-5.4mini",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 336,
+            "latency_ms": 484,
             "error": "Your request was blocked."
           },
           {
@@ -825,7 +825,7 @@
             "model": "gpt-5.4mini",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 412,
+            "latency_ms": 992,
             "error": "{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}"
           },
           {
@@ -834,7 +834,7 @@
             "model": "GPT-5.4MINI",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 421,
+            "latency_ms": 976,
             "error": "{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}"
           },
           {
@@ -843,7 +843,7 @@
             "model": "Gpt-5.4mini",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 392,
+            "latency_ms": 831,
             "error": "{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}"
           },
           {
@@ -852,7 +852,7 @@
             "model": "gpt-5.4mini",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 327,
+            "latency_ms": 1163,
             "error": "Your request was blocked."
           },
           {
@@ -861,7 +861,7 @@
             "model": "GPT-5.4MINI",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 328,
+            "latency_ms": 625,
             "error": "Your request was blocked."
           },
           {
@@ -870,11 +870,11 @@
             "model": "Gpt-5.4mini",
             "ok": false,
             "status_code": 403,
-            "latency_ms": 332,
+            "latency_ms": 684,
             "error": "Your request was blocked."
           }
         ],
-        "consecutive_failures": 258,
+        "consecutive_failures": 320,
         "health_status": "unhealthy",
         "priority": 1
       }

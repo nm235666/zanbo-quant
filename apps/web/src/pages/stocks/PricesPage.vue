@@ -29,7 +29,14 @@
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="submitSearch">查询日线</button>
-              <span class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--muted)]">支持按股票或时间区间快速回看</span>
+              <RouterLink
+                v-if="filters.ts_code && /^[0-9]{6}\.(SZ|SH|BJ)$/i.test(filters.ts_code)"
+                :to="`/research/decision?ts_code=${encodeURIComponent(filters.ts_code.toUpperCase())}&from=prices`"
+                class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              >
+                → 决策板
+              </RouterLink>
+              <span v-else class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs text-[var(--muted)]">支持按股票或时间区间快速回看</span>
             </div>
           </div>
 

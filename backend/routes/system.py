@@ -1,6 +1,54 @@
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
 from urllib.parse import parse_qs
+
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+METRICS_DAILY_DIR = ROOT_DIR / "docs" / "metrics" / "daily"
+_METRICS_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
+
+
+def _safe_rate_value(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _load_daily_metrics_items() -> list[dict]:
+    if not METRICS_DAILY_DIR.exists():
+        return []
+    items: list[dict] = []
+    for file_path in sorted(METRICS_DAILY_DIR.glob("*.json")):
+        m = _METRICS_DATE_RE.match(file_path.name)
+        if not m:
+            continue
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        items.append({
+            "date": str(payload.get("date") or m.group(1)),
+            "pipeline_success_rate": _safe_rate_value(payload.get("pipeline_success_rate")),
+            "traceability_rate": _safe_rate_value(payload.get("traceability_rate")),
+            "closure_rate": _safe_rate_value(payload.get("closure_rate")),
+            "sample_insufficient": bool(payload.get("sample_insufficient")),
+        })
+    items.sort(key=lambda x: str(x.get("date") or ""))
+    return items
+
+
+def _build_metrics_summary_payload() -> dict:
+    items = _load_daily_metrics_items()
+    trend_7d = items[-7:]
+    latest = trend_7d[-1] if trend_7d else None
+    return {"latest": latest, "trend_7d": trend_7d}
 
 
 def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
@@ -1020,6 +1068,15 @@ def dispatch_get(handler, parsed, host: str, deps: dict) -> bool:
             payload = deps["query_signal_quality_config"]()
         except Exception as exc:  # pragma: no cover
             handler._send_json({"error": f"信号质量配置查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json(payload)
+        return True
+
+    if parsed.path == "/api/metrics/summary":
+        try:
+            payload = _build_metrics_summary_payload()
+        except Exception as exc:
+            handler._send_json({"error": f"指标汇总查询失败: {exc}"}, status=500)
             return True
         handler._send_json(payload)
         return True

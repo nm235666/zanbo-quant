@@ -160,7 +160,7 @@
             :description="decisionData.keyword ? `聚焦关键词：${decisionData.keyword}` : '决策板以单票视角解释当前结论。'"
           >
             <div class="mt-3 flex flex-wrap gap-2">
-              <RouterLink v-if="resolvedTsCode" :to="`/research/decision?ts_code=${encodeURIComponent(resolvedTsCode)}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink v-if="resolvedTsCode" :to="`/research/decision?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 打开决策板
               </RouterLink>
               <RouterLink v-if="resolvedTsCode" :to="`/stocks/detail/${resolvedTsCode}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">

@@ -1,0 +1,91 @@
+{
+  "_comment": "BUG->CHECK rule registry — each P0/P1 bug maps to one structured check rule",
+  "version": "1.0.0",
+  "updated_at": "2026-04-18",
+  "rules": [
+    {
+      "rule_id": "B001",
+      "source_bug": "P0-decision-no-tscode",
+      "scope": ["confirm", "reject", "defer"],
+      "severity": "blocker",
+      "module": "decision_board",
+      "predicate": "ts_code must match /^[0-9]{6}\\.(SZ|SH|BJ)$/i",
+      "message": "confirm/reject/defer action requires a valid stock code",
+      "fix_hint": "Enter the full code, e.g. 000001.SZ",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "B002",
+      "source_bug": "P0-decision-no-note",
+      "scope": ["confirm", "reject"],
+      "severity": "blocker",
+      "module": "decision_board",
+      "predicate": "note.trim().length >= 3",
+      "message": "confirm/reject action must include a decision note",
+      "fix_hint": "Write at least one sentence explaining the reason",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "W001",
+      "source_bug": "P1-decision-short-note",
+      "scope": ["confirm", "reject"],
+      "severity": "warning",
+      "module": "decision_board",
+      "predicate": "note.trim().length >= 10",
+      "message": "Note is too short (< 10 chars); recommend adding more context for review",
+      "fix_hint": "Expand note to include signal source, risk points, and time window",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "W002",
+      "source_bug": "P1-decision-no-evidence",
+      "scope": ["confirm", "reject"],
+      "severity": "warning",
+      "module": "decision_board",
+      "predicate": "evidence_sources.trim().length > 0",
+      "message": "No evidence source provided; conclusion traceability is low",
+      "fix_hint": "Fill in evidence source field, e.g. multi-role analysis run_id=xxx",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "W003",
+      "source_bug": "P1-decision-dark-origin",
+      "scope": ["confirm", "reject"],
+      "severity": "warning",
+      "module": "decision_board",
+      "predicate": "decision_context_from.length > 0",
+      "message": "Action submitted via manual entry without linked upstream module",
+      "fix_hint": "Navigate to decision board from signal graph, news analysis, or multi-role analysis",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "I001",
+      "source_bug": null,
+      "scope": [],
+      "severity": "info",
+      "module": "decision_board",
+      "predicate": "snapshot_date.length > 0",
+      "message": "No snapshot date; action timestamp will be used as decision date",
+      "fix_hint": "Click 'Generate Snapshot' before submitting to bind to a specific snapshot",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    },
+    {
+      "rule_id": "I002",
+      "source_bug": null,
+      "scope": ["confirm", "reject"],
+      "severity": "info",
+      "module": "decision_board",
+      "predicate": "decision_context_from not in [\"\", \"decision_board\"]",
+      "message": "Action source is manual input; verify context is complete",
+      "fix_hint": "Use the arrow button from analysis results page to carry context automatically",
+      "owner": "decision-board",
+      "created_at": "2026-04-18"
+    }
+  ]
+}

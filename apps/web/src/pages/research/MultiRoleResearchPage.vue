@@ -2,23 +2,24 @@
   <AppShell title="多角色公司分析" subtitle="支持股票简称搜索、异步任务轮询、按角色查看和分角色下载。">
     <div class="space-y-4">
       <PageSection title="分析发起" subtitle="可以直接输 ts_code，也可以输股票简称，由前端自动解析第一条匹配结果。">
-        <div class="grid gap-3 xl:grid-cols-[1fr_140px_180px] md:grid-cols-2">
+        <div class="grid gap-3 xl:grid-cols-[1fr_220px_180px] md:grid-cols-2">
           <label class="text-sm font-semibold text-[var(--ink)] xl:col-span-1">
             股票代码 / 简称
             <input v-model="form.keyword" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3" placeholder="如 000001.SZ / 平安银行" />
           </label>
           <label class="text-sm font-semibold text-[var(--ink)]">
-            回看区间
-            <select v-model.number="form.lookback" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
-              <option :value="60">60 日</option>
-              <option :value="120">120 日</option>
-              <option :value="240">240 日</option>
+            分析档位
+            <select v-model="form.config_profile" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3">
+              <option value="quick">{{ ANALYSIS_PROFILES.quick.label }}</option>
+              <option value="standard">{{ ANALYSIS_PROFILES.standard.label }}</option>
+              <option value="deep">{{ ANALYSIS_PROFILES.deep.label }}</option>
             </select>
           </label>
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" :disabled="isPending" @click="runAnalysis">
             {{ isPending ? '任务创建中...' : '发起分析' }}
           </button>
         </div>
+        <div class="mt-2 text-xs text-[var(--muted)]">当前档位：{{ ANALYSIS_PROFILES[form.config_profile]?.hint }}</div>
         <label class="mt-3 flex items-center gap-2 text-sm text-[var(--muted)]">
           <input v-model="acceptAutoDegrade" type="checkbox" />
           允许自动降级完成（失败角色不阻塞全局汇总）
@@ -49,6 +50,10 @@
         <div v-if="taskPersistenceNotice" class="mt-1 text-sm text-[var(--muted)]">{{ taskPersistenceNotice }}</div>
         <div class="mt-2 text-sm text-[var(--muted)]">实际模型：{{ usedModel }}</div>
         <div v-if="attemptChain" class="mt-1 text-sm text-[var(--muted)]">尝试链路：{{ attemptChain }}</div>
+        <div v-if="lastUsedProfile" class="mt-1 text-sm text-[var(--muted)]">
+          分析档位：<span class="font-semibold text-[var(--ink)]">{{ lastUsedProfileLabel }}</span>
+          <span v-if="lastUsedProfileHint" class="ml-1 opacity-70">— {{ lastUsedProfileHint }}</span>
+        </div>
         <div v-if="quotaHint" class="mt-1 text-sm text-[var(--muted)]">今日额度：{{ quotaHint }}</div>
         <div v-if="pendingDecision" class="mt-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div>有角色任务失败，等待你的决策：重试 / 降级 / 终止。</div>
@@ -302,7 +307,16 @@ function downloadText(content: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-const form = reactive({ keyword: '000001.SZ', lookback: 120 })
+// Analysis depth profiles: quick/standard/deep
+// Determines lookback window, debate rounds, and evidence thresholds.
+const ANALYSIS_PROFILES = {
+  quick: { lookback: 30, max_research_debate_rounds: 1, max_risk_debate_rounds: 0, label: '快速（30日）', hint: '适合快速观察：较短回看期，单轮辩论，速度优先。' },
+  standard: { lookback: 120, max_research_debate_rounds: 1, max_risk_debate_rounds: 1, label: '标准（120日）', hint: '适合常规分析：均衡回看期，完整角色，推荐默认。' },
+  deep: { lookback: 240, max_research_debate_rounds: 2, max_risk_debate_rounds: 2, label: '深度（240日）', hint: '适合深度复盘：最长回看期，多轮辩论，耗时较长。' },
+} as const
+type AnalysisProfileKey = keyof typeof ANALYSIS_PROFILES
+
+const form = reactive({ keyword: '000001.SZ', lookback: 120, config_profile: 'standard' as AnalysisProfileKey })
 const fullMarkdown = ref('等待发起分析...')
 const actionMessage = ref('准备就绪')
 const roleSections = ref<Array<Record<string, any>>>([])
@@ -854,12 +868,15 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
     taskStatus.value = ''
     currentJobId.value = ''
     actionMessage.value = `已解析股票：${resolved.name || resolved.ts_code}，正在创建分析任务...`
+    const profileKey = (form.config_profile || 'standard') as AnalysisProfileKey
+    const profileSettings = ANALYSIS_PROFILES[profileKey] || ANALYSIS_PROFILES.standard
     const payload = await triggerMultiRoleTaskV3({
       ts_code: resolved.ts_code,
-      lookback: form.lookback,
+      lookback: profileSettings.lookback,
+      config_profile: profileKey,
       accept_auto_degrade: acceptAutoDegrade.value,
-      max_research_debate_rounds: 1,
-      max_risk_debate_rounds: 1,
+      max_research_debate_rounds: profileSettings.max_research_debate_rounds,
+      max_risk_debate_rounds: profileSettings.max_risk_debate_rounds,
       early_stop: true,
     })
     const jobId = String(payload.job_id || '')
@@ -895,9 +912,16 @@ function startLiveStream(jobId: string, resolved?: { ts_code: string; name: stri
 
 const isPending = computed(() => mutation.isPending.value)
 
+// Track the profile used for the last submitted analysis (for result display)
+const lastUsedProfile = ref<AnalysisProfileKey>('standard')
+
 function runAnalysis() {
+  lastUsedProfile.value = (form.config_profile || 'standard') as AnalysisProfileKey
   mutation.mutate()
 }
+
+const lastUsedProfileLabel = computed(() => ANALYSIS_PROFILES[lastUsedProfile.value]?.label || lastUsedProfile.value)
+const lastUsedProfileHint = computed(() => ANALYSIS_PROFILES[lastUsedProfile.value]?.hint || '')
 
 async function submitDecision(action: 'retry' | 'degrade' | 'abort') {
   if (!currentJobId.value || decisionPending.value) return

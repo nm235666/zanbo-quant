@@ -297,6 +297,14 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=((PYTHON_BIN, str(ROOT_DIR / "db_health_check.py")),),
     ),
     JobDefinition(
+        job_key="collect_daily_metrics",
+        name="每日指标证据化",
+        category="metrics",
+        schedule_expr="0 23 * * *",
+        description="生成主链路成功率、决策可追踪率、闭环完成率的每日 JSON/MD 指标快照",
+        commands=((PYTHON_BIN, str(ROOT_DIR / "jobs" / "collect_daily_metrics.py")),),
+    ),
+    JobDefinition(
         job_key="llm_provider_nodes_probe",
         name="LLM 节点全模型巡检",
         category="maintenance",

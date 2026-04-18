@@ -140,12 +140,15 @@
             </template>
           </StatePanel>
 
-          <div v-if="graphWeakData && !graphEmpty" class="mb-4 rounded-[24px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(239,245,248,0.9)_100%)] p-4">
+          <div v-if="graphWeakData && !graphEmpty" class="mb-4 rounded-[24px] border border-amber-200 bg-amber-50/70 p-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <div class="text-sm font-bold text-[var(--ink)]">当前中心数据较弱</div>
-                <div class="mt-1 max-w-[60ch] text-sm leading-6 text-[var(--muted)]">
-                  图谱已保留当前中心，但节点和关系不足以支撑完整浏览。建议切换到一个更强的主题或行业中心继续查看主干关系。
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="text-sm font-bold text-amber-900">当前中心数据较弱</div>
+                  <span class="rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">来源等级：降级</span>
+                </div>
+                <div class="mt-1 max-w-[60ch] text-sm leading-6 text-amber-700">
+                  图谱已保留当前中心，但节点和关系不足以支撑完整浏览。数据可信度下降：当前展示为部分数据，非完整主源输出。建议切换到一个更强的主题或行业中心继续查看主干关系。
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">

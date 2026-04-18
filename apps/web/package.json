@@ -11,7 +11,10 @@
     "smoke:e2e:core": "playwright test tests/e2e/auth.spec.ts tests/e2e/navigation.spec.ts tests/e2e/stocks.spec.ts tests/e2e/signals.spec.ts tests/e2e/intelligence.spec.ts tests/e2e/research.spec.ts tests/e2e/chatrooms.spec.ts tests/e2e/system.spec.ts tests/e2e/responsive.spec.ts tests/e2e/smoke.spec.ts --config ./playwright.smoke.config.ts",
     "smoke:e2e:write-boundary": "playwright test tests/e2e/write-boundary.spec.ts --config ./playwright.smoke.config.ts",
     "smoke:e2e:all": "playwright test --config ./playwright.smoke.config.ts",
-    "smoke:e2e:screenshots": "playwright test --config ./playwright.regression.config.ts"
+    "smoke:e2e:screenshots": "playwright test --config ./playwright.regression.config.ts",
+    "regression:gate": "bash ../../scripts/regression_gate.sh",
+    "regression:gate:smoke": "bash ../../scripts/regression_gate.sh --smoke-only",
+    "regression:gate:screenshots": "bash ../../scripts/regression_gate.sh --screenshots-only"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
