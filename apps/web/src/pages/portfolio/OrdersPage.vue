@@ -20,6 +20,10 @@
           </div>
         </template>
 
+        <div v-if="filterDecisionActionId" class="mb-3 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          <span class="font-semibold">当前过滤：决策动作 {{ filterDecisionActionId }}</span>
+          <RouterLink to="/portfolio/orders" class="ml-auto text-blue-500 underline">清除过滤</RouterLink>
+        </div>
         <div v-if="isPending" class="py-8 text-center text-sm text-[var(--muted)]">加载中...</div>
         <div v-else-if="isError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
           加载订单失败：{{ String(error) }}
@@ -79,7 +83,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
@@ -97,6 +101,10 @@ const STATUS_TABS: StatusTab[] = [
   { key: 'cancelled', label: '已取消' },
 ]
 
+const route = useRoute()
+
+const filterDecisionActionId = computed(() => String(route.query.decision_action_id || '').trim())
+
 const activeStatus = ref('')
 
 const activeTab = computed(() => STATUS_TABS.find((t) => t.key === activeStatus.value))
@@ -108,8 +116,12 @@ const {
   error,
   refetch,
 } = useQuery({
-  queryKey: computed(() => ['portfolio-orders', activeStatus.value]),
-  queryFn: () => fetchPortfolioOrders({ status: activeStatus.value || undefined, limit: 100 }),
+  queryKey: computed(() => ['portfolio-orders', activeStatus.value, filterDecisionActionId.value]),
+  queryFn: () => fetchPortfolioOrders({
+    status: activeStatus.value || undefined,
+    limit: 100,
+    decision_action_id: filterDecisionActionId.value || undefined,
+  }),
 })
 
 const orders = computed<PortfolioOrder[]>(() => {

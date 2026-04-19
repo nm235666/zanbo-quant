@@ -37,7 +37,7 @@ export async function fetchPortfolioPositions() {
   return data
 }
 
-export async function fetchPortfolioOrders(params?: { status?: string; limit?: number }) {
+export async function fetchPortfolioOrders(params?: { status?: string; limit?: number; decision_action_id?: string }) {
   const { data } = await http.get('/api/portfolio/orders', { params })
   return data
 }

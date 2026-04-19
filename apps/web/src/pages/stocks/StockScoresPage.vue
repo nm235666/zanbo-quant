@@ -12,7 +12,7 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
               {{ isFetching ? '查询中...' : '更新评分看板' }}
             </button>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" :to="workbenchEntryTo">
+            <RouterLink id="scores-workbench-cta" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" :to="workbenchEntryTo">
               进入决策工作台
             </RouterLink>
           </div>
@@ -36,6 +36,14 @@
         <StatCard title="行业筛选" :value="filters.industry || '全部'" hint="当前行业维度" />
         <StatCard title="市场筛选" :value="filters.market || '全部'" hint="当前市场维度" />
         <StatCard title="评分日期" :value="filters.score_date || '最新'" hint="为空则按最新快照" />
+      </div>
+
+      <!-- Sticky decision entry CTA — always visible regardless of scroll/data state -->
+      <div class="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 shadow-sm">
+        <span class="text-sm font-semibold text-emerald-800">评分筛选完成后，进入决策工作台做判断</span>
+        <RouterLink id="scores-workbench-cta-sticky" :to="workbenchEntryTo" class="shrink-0 rounded-xl bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-800">
+          进入决策工作台 →
+        </RouterLink>
       </div>
 
       <PageSection title="筛选器" subtitle="按行业、市场、关键词与日期筛选评分结果。">

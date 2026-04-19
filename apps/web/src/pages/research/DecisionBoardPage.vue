@@ -709,7 +709,7 @@ const runSnapshotMutation = useMutation({
 })
 
 const actionMutation = useMutation({
-  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string; _gate_audit?: string }) => {
+  mutationFn: (payload: { action_type: 'confirm' | 'reject' | 'defer' | 'watch' | 'review'; ts_code: string; stock_name?: string; note?: string; _gate_audit?: string; idempotency_key?: string }) => {
     const evidenceRaw = actionEvidenceDraft.value.trim()
     const evidenceSources = evidenceRaw
       ? evidenceRaw.split(/[,，;；]/).map((s) => ({ label: s.trim() })).filter((s) => s.label)
@@ -752,6 +752,12 @@ const actionMutation = useMutation({
       gateAudit,
     )
     message.value = trace.action_id ? `人工确认记录已保存（${trace.action_id}）。` : '人工确认记录已保存。'
+    // Show execution task if auto-created
+    if (data?.execution_task?.order_id) {
+      message.value = `动作已记录 (${data?.trace?.action_id || ''})，执行任务已自动创建：${data.execution_task.order_id}`
+    } else if (data?.execution_task_warning) {
+      message.value = `动作已记录，执行任务创建提示：${data.execution_task_warning}`
+    }
     await refreshAll()
   },
   onError: (error: Error) => {
@@ -918,6 +924,8 @@ function runSnapshot() {
 }
 
 function submitManualAction(actionType: 'confirm' | 'reject' | 'defer' | 'watch' | 'review', tsCode: string, note: string, stockName = '') {
+  // Submit lock: prevent duplicate submissions while mutation is in flight
+  if (isActionPending.value) return
   const normalizedTsCode = String(tsCode || '').trim().toUpperCase()
   // Set pending action type so gate can evaluate
   pendingGateActionType.value = actionType
@@ -954,6 +962,7 @@ function submitManualAction(actionType: 'confirm' | 'reject' | 'defer' | 'watch'
     note: String(note || actionNoteDraft.value || '').trim(),
     stock_name: String(stockName || normalizedTsCode).trim(),
     _gate_audit: gateAudit,
+    idempotency_key: `${actionType}-${normalizedTsCode}-${Date.now()}`,
   })
 }
 

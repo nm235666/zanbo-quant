@@ -21,6 +21,7 @@
 | `docs/uzi_skill_reuse_final_architecture_2026-04-18.md` | 架构设计 | 终局能力定义变更 | 能力约束过时 | 2026-04-18 |
 | `docs/decision_productization_batches_A_to_C_2026-04-18.md` | 产品执行 | 批次策略/验收变更 | 批次边界不再可执行 | 2026-04-18 |
 | `docs/current_project_gap_audit_2026-04-18.md` | 质量审计 | 缺口复盘更新 | 问题清单失真 | 2026-04-18 |
+| `docs/functional_gap_crosscheck_2026-04-18.md` | 质量审计 | 外部评价对照/功能缺口更新 | 对照结论与代码现状失真 | 2026-04-18 |
 | `docs/document_lifecycle_rules_2026-04-18.md` | 工程治理 | 文档流程规则变更 | 规则无法约束回流 | 2026-04-18 |
 | `docs/repo_cleanup_execution_report_2026-04-18.md` | 工程治理 | 仓库减负再执行 | 与实际清理状态不一致 | 2026-04-18 |
 | `docs/consolidated_change_log_2026-04.md` | 工程治理 | 融合调整发生 | 无法追溯融合历史 | 2026-04-18 |
@@ -29,6 +30,7 @@
 
 - `docs/decision_productization_batches_A_to_C_2026-04-18.md`：当前产品化改造唯一执行入口（替代多份阶段计划）。
 - `docs/current_project_gap_audit_2026-04-18.md`：当前不足项唯一审计入口（替代多份阶段性审计快照）。
+- `docs/functional_gap_crosscheck_2026-04-18.md`：功能缺点与外部评价逐条对照入口（用于查缺补漏与口径统一）。
 - `docs/repo_cleanup_execution_report_2026-04-18.md`：仓库减负执行与资产去向唯一入口。
 - `docs/consolidated_change_log_2026-04.md`：融合动作变更日志入口。
 

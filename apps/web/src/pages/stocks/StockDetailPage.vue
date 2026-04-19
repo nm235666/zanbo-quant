@@ -163,6 +163,15 @@
       </PageSection>
 
       <PageSection title="决策视角" subtitle="把现有评分、财务、估值、趋势和风险结果压成可执行语言。">
+        <template #action>
+          <button
+            class="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50"
+            :disabled="quickInsightLoading"
+            @click="runQuickInsight"
+          >
+            {{ quickInsightLoading ? '分析中...' : '⚡ 快速分析' }}
+          </button>
+        </template>
         <div class="grid gap-4 xl:grid-cols-2">
           <InfoCard
             :title="decisionScore.position_label || '暂未进入决策池'"
@@ -192,6 +201,16 @@
               </RouterLink>
             </div>
           </InfoCard>
+        </div>
+        <div v-if="quickInsightResult || quickInsightError" class="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm">
+          <div class="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-600">⚡ 快速分析结果</div>
+          <div v-if="quickInsightError" class="mt-1 text-rose-600">{{ quickInsightError }}</div>
+          <template v-else-if="quickInsightResult">
+            <div class="mt-1 font-medium text-[var(--ink)]">{{ quickInsightResult.view }}</div>
+            <div v-if="quickInsightResult.risk" class="mt-1 text-xs text-[var(--muted)]">风险：{{ quickInsightResult.risk }}</div>
+            <div v-if="quickInsightResult.suggested_action" class="mt-1 text-xs font-semibold text-cyan-700">建议：{{ quickInsightResult.suggested_action }}</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">置信度：{{ quickInsightResult.confidence_level }} · {{ quickInsightResult.elapsed_ms }}ms</div>
+          </template>
         </div>
       </PageSection>
 
@@ -423,6 +442,9 @@ const multiRoleState = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 const multiRoleAttempts = ref<Array<Record<string, any>>>([])
 const activeMultiRoleJobId = ref('')
 const chartsReady = ref(false)
+const quickInsightLoading = ref(false)
+const quickInsightResult = ref<Record<string, unknown> | null>(null)
+const quickInsightError = ref<string | null>(null)
 const detailTabs = [
   { key: 'score', label: '评分结构' },
   { key: 'fundamental', label: '基本面与估值' },
@@ -804,6 +826,33 @@ function runMultiRole() {
   multiRoleResult.value = '任务已创建，正在后台生成分析...'
   multiRoleAttempts.value = []
   multiRoleMutation.mutate()
+}
+
+async function runQuickInsight() {
+  if (!resolvedTsCode.value || quickInsightLoading.value) return
+  quickInsightLoading.value = true
+  quickInsightError.value = null
+  quickInsightResult.value = null
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8500)
+  try {
+    const res = await fetch('/api/llm/quick-insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ts_code: resolvedTsCode.value }),
+      signal: controller.signal,
+    })
+    const data = await res.json()
+    quickInsightResult.value = data
+    if (data.status === 'degraded' || !res.ok) {
+      quickInsightError.value = data.error || '快速分析受限'
+    }
+  } catch (e) {
+    quickInsightError.value = e instanceof Error && e.name === 'AbortError' ? '快速分析超时（>8.5s），请尝试深度工作流' : '快速分析失败'
+  } finally {
+    clearTimeout(timeoutId)
+    quickInsightLoading.value = false
+  }
 }
 
 function persistCurrentMultiRoleTask(result: Record<string, any>) {

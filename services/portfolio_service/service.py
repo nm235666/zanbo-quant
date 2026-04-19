@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -11,7 +12,14 @@ PORTFOLIO_POSITIONS_TABLE = "portfolio_positions"
 PORTFOLIO_REVIEWS_TABLE = "portfolio_reviews"
 
 VALID_ORDER_STATUSES = {"planned", "executed", "cancelled", "partial"}
-VALID_ACTION_TYPES = {"buy", "sell", "add", "reduce", "close"}
+VALID_ACTION_TYPES = {"buy", "sell", "add", "reduce", "close", "watch", "defer"}
+
+ORDER_TO_EXECUTION_STATUS: dict[str, str] = {
+    "planned": "planned",
+    "partial": "executing",
+    "executed": "done",
+    "cancelled": "cancelled",
+}
 
 
 def _utc_now() -> str:
@@ -122,6 +130,7 @@ def list_positions() -> dict[str, Any]:
 def list_orders(
     *,
     status: str = "",
+    decision_action_id: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -130,13 +139,17 @@ def list_orders(
         try:
             if not _table_exists(conn, PORTFOLIO_ORDERS_TABLE):
                 return {"items": [], "total": 0, "limit": limit, "offset": offset}
-            where = ""
+            conditions: list[str] = []
             params: list[Any] = []
             if status and status in VALID_ORDER_STATUSES:
-                where = "WHERE status = ?"
+                conditions.append("status = ?")
                 params.append(status)
+            if decision_action_id:
+                conditions.append("decision_action_id = ?")
+                params.append(decision_action_id)
+            where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
             count_row = conn.execute(
-                f"SELECT COUNT(*) FROM {PORTFOLIO_ORDERS_TABLE} {where}", params
+                f"SELECT COUNT(*) FROM {PORTFOLIO_ORDERS_TABLE} {where_clause}", params
             ).fetchone()
             total = int(count_row[0] or 0) if count_row else 0
             rows = conn.execute(
@@ -145,7 +158,7 @@ def list_orders(
                        size, status, decision_action_id, note, executed_at,
                        created_at, updated_at
                 FROM {PORTFOLIO_ORDERS_TABLE}
-                {where}
+                {where_clause}
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
                 """,
@@ -201,6 +214,33 @@ def create_order(
         return {"ok": False, "error": str(exc)}
 
 
+def _writeback_to_decision_action(conn, decision_action_id: str, execution_status: str) -> None:
+    """Write portfolio order execution status back to the linked decision action.
+    Failure is silently swallowed — must never block the order update itself.
+    """
+    if not decision_action_id:
+        return
+    try:
+        row = conn.execute(
+            "SELECT action_payload_json FROM decision_actions WHERE id = ? LIMIT 1",
+            (decision_action_id,),
+        ).fetchone()
+        if not row:
+            return
+        d = _row_to_dict(row)
+        try:
+            payload = json.loads(str(d.get("action_payload_json") or "{}"))
+        except Exception:
+            payload = {}
+        payload["execution_status"] = execution_status
+        conn.execute(
+            "UPDATE decision_actions SET action_payload_json = ? WHERE id = ?",
+            (json.dumps(payload, ensure_ascii=False), decision_action_id),
+        )
+    except Exception:
+        pass  # Writeback failure must not block caller
+
+
 def update_order(
     order_id: str,
     *,
@@ -238,6 +278,18 @@ def update_order(
                 f"UPDATE {PORTFOLIO_ORDERS_TABLE} SET {', '.join(set_parts)} WHERE id = ?",
                 params,
             )
+            # Writeback execution status to linked decision action
+            if status is not None and status in ORDER_TO_EXECUTION_STATUS:
+                try:
+                    order_row = conn.execute(
+                        f"SELECT decision_action_id FROM {PORTFOLIO_ORDERS_TABLE} WHERE id = ? LIMIT 1",
+                        (order_id,),
+                    ).fetchone()
+                    da_id = str(_row_to_dict(order_row).get("decision_action_id") or "") if order_row else ""
+                    if da_id:
+                        _writeback_to_decision_action(conn, da_id, ORDER_TO_EXECUTION_STATUS[status])
+                except Exception:
+                    pass  # Writeback failure must not block order update
         finally:
             conn.close()
         return {"ok": True, "id": order_id}

@@ -21,6 +21,11 @@ DEFAULT_DB_PATH = ROOT_DIR / "stock_codes.db"
 CN_TZ = timezone(timedelta(hours=8))
 CLOSURE_ACTIONS = {"confirm", "reject", "defer", "review"}
 
+# Metric gate thresholds — falling below these triggers a non-zero exit (blocking gate)
+GATE_PIPELINE_SUCCESS_RATE_MIN = 0.85   # E2E smoke must pass >= 85%
+GATE_TRACEABILITY_RATE_MIN = 0.70       # >= 70% decision records must have evidence trace
+GATE_CLOSURE_RATE_MIN = 0.50            # >= 50% decisions must reach a closure state
+
 
 def _cn_today_str() -> str:
     return datetime.now(timezone.utc).astimezone(CN_TZ).date().isoformat()
@@ -343,7 +348,42 @@ def main() -> int:
     target_date = _parse_target_date(args.date)
     result = collect_daily_metrics(target_date=target_date, allow_smoke_run=not bool(args.skip_smoke_run))
     print(json.dumps(result, ensure_ascii=False))
-    return 0 if result.get("ok") else 1
+
+    if not result.get("ok"):
+        return 1
+
+    # Gate check — sample_insufficient means we skip threshold enforcement
+    if result.get("sample_insufficient"):
+        return 0
+
+    gate_failures: list[str] = []
+    pipeline_rate = result.get("pipeline_success_rate")
+    traceability_rate = result.get("traceability_rate")
+    closure_rate = result.get("closure_rate")
+
+    if pipeline_rate is not None and pipeline_rate < GATE_PIPELINE_SUCCESS_RATE_MIN:
+        gate_failures.append(
+            f"pipeline_success_rate {pipeline_rate:.2%} < threshold {GATE_PIPELINE_SUCCESS_RATE_MIN:.0%}"
+        )
+    if traceability_rate is not None and traceability_rate < GATE_TRACEABILITY_RATE_MIN:
+        gate_failures.append(
+            f"traceability_rate {traceability_rate:.2%} < threshold {GATE_TRACEABILITY_RATE_MIN:.0%}"
+        )
+    if closure_rate is not None and closure_rate < GATE_CLOSURE_RATE_MIN:
+        gate_failures.append(
+            f"closure_rate {closure_rate:.2%} < threshold {GATE_CLOSURE_RATE_MIN:.0%}"
+        )
+
+    if gate_failures:
+        print(
+            json.dumps(
+                {"gate": "FAIL", "failures": gate_failures},
+                ensure_ascii=False,
+            )
+        )
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":

@@ -90,6 +90,41 @@
         </div>
       </div>
 
+      <!-- Role capability matrix -->
+      <div class="mt-6">
+        <div class="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">角色能力对照</div>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-[var(--line)] text-left">
+                <th class="pb-2 pr-4 font-semibold text-[var(--ink)]">功能 / 路由</th>
+                <th class="pb-2 pr-4 text-center font-semibold text-[var(--ink)]">admin</th>
+                <th class="pb-2 pr-4 text-center font-semibold text-[var(--ink)]">pro</th>
+                <th class="pb-2 text-center font-semibold text-[var(--ink)]">limited</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-[var(--line)]">
+              <tr v-for="cap in CAPABILITY_MATRIX" :key="cap.route">
+                <td class="py-2 pr-4">
+                  <span class="font-medium text-[var(--ink)]">{{ cap.label }}</span>
+                  <span class="ml-1 font-mono text-[var(--muted)]">{{ cap.route }}</span>
+                </td>
+                <td class="py-2 pr-4 text-center">
+                  <span :class="cap.admin ? 'text-emerald-600' : 'text-rose-400'">{{ cap.admin ? '✓' : '✗' }}</span>
+                </td>
+                <td class="py-2 pr-4 text-center">
+                  <span :class="cap.pro ? 'text-emerald-600' : 'text-rose-400'">{{ cap.pro ? '✓' : '✗' }}</span>
+                </td>
+                <td class="py-2 text-center">
+                  <span :class="cap.limited ? 'text-emerald-600' : 'text-rose-400'">{{ cap.limited ? '✓' : '✗' }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-2 text-xs text-[var(--muted)]">✓ = 可访问，✗ = 需升级权限。如需调整权限，请联系管理员。</p>
+      </div>
+
       <div class="mt-5 flex flex-wrap gap-2">
         <RouterLink :to="primaryEntry" class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white">{{ primaryEntryLabel }}</RouterLink>
         <RouterLink
@@ -225,6 +260,20 @@ const permissionCatalog = computed(() => {
 
 const enabledGroups = computed(() => groupPermissions(permissionCatalog.value.filter((item) => authStore.effectivePermissions.includes(item.code))))
 const lockedGroups = computed(() => groupPermissions(permissionCatalog.value.filter((item) => !authStore.effectivePermissions.includes(item.code))))
+
+const CAPABILITY_MATRIX = [
+  { label: '决策工作台', route: '/research/workbench', admin: true, pro: true, limited: false },
+  { label: '投研决策板', route: '/research/decision', admin: true, pro: true, limited: true },
+  { label: '候选漏斗', route: '/research/funnel', admin: true, pro: true, limited: false },
+  { label: '任务收件箱', route: '/research/task-inbox', admin: true, pro: true, limited: false },
+  { label: '股票评分', route: '/stocks/scores', admin: true, pro: true, limited: true },
+  { label: '市场结论', route: '/market/conclusion', admin: true, pro: true, limited: false },
+  { label: '信号图谱', route: '/signals/graph', admin: true, pro: true, limited: false },
+  { label: '组合管理', route: '/portfolio/*', admin: true, pro: true, limited: false },
+  { label: '用户管理', route: '/system/users', admin: true, pro: false, limited: false },
+  { label: '数据源监控', route: '/system/source-monitor', admin: true, pro: false, limited: false },
+  { label: '任务运维', route: '/system/jobs', admin: true, pro: false, limited: false },
+]
 
 const PERMISSION_HINT_LABELS: Record<string, string> = {
   admin_users: '用户与邀请码管理',

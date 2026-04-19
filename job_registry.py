@@ -539,6 +539,17 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         commands=((PYTHON_BIN, str(ROOT_DIR / "generate_standard_research_report.py"), "--report-type", "market", "--subject-key", "market_overview", "--report-date", "__CN_DATE__", "--model", "auto_market_snapshot_v1"),),
     ),
     JobDefinition(
+        job_key="import_strategy_reports",
+        name="导入策略研报到 research_reports",
+        category="data_import",
+        schedule_expr="0 7 * * *",
+        enabled=1,
+        description="从 external/strategy 同步研报内容写入 research_reports，含日期/重复/空内容校验",
+        commands=(
+            bash_cmd("python3 jobs/import_strategy_reports.py --error-sample-limit 5"),
+        ),
+    ),
+    JobDefinition(
         job_key="chatroom_tagging_safe",
         name="群聊低风险标签刷新",
         category="chatrooms",

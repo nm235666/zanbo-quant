@@ -41,8 +41,9 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             handler._send_json({"ok": False, "error": "limit/offset 必须是整数"}, status=400)
             return True
         limit = max(1, min(limit, 200))
+        decision_action_id = str(params.get("decision_action_id", [""])[0] or "").strip()
         try:
-            payload = list_orders(status=status, limit=limit, offset=offset)
+            payload = list_orders(status=status, decision_action_id=decision_action_id, limit=limit, offset=offset)
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"订单查询失败: {exc}"}, status=500)
             return True

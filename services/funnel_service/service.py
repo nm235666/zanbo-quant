@@ -25,6 +25,16 @@ VALID_STATES = {
 
 TERMINAL_STATES = {"confirmed", "rejected", "executed", "reviewed"}
 
+# Priority rank: higher number = higher authority
+TRIGGER_SOURCE_PRIORITY: dict[str, int] = {
+    "decision_action": 5,
+    "researcher": 4,
+    "execution_feedback": 3,
+    "system_rule": 2,
+    "ai_screen": 1,
+    "signal": 0,
+}
+
 # Valid transitions: from_state -> set of valid to_states
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "ingested": {"amplified", "rejected"},
@@ -285,6 +295,27 @@ def transition_candidate(
                     "current_state": current_state,
                     "current_version": current_version,
                 }
+            # Terminal state protection: only higher-priority sources can overwrite
+            if current_state in TERMINAL_STATES:
+                incoming_priority = TRIGGER_SOURCE_PRIORITY.get(trigger_source, 0)
+                # Find the priority of the trigger_source that last set the terminal state
+                last_terminal_source = trigger_source  # default
+                if _table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
+                    last_row = conn.execute(
+                        f"SELECT trigger_source FROM {FUNNEL_TRANSITIONS_TABLE} "
+                        f"WHERE candidate_id = ? AND to_state = ? ORDER BY id DESC LIMIT 1",
+                        (candidate_id, current_state),
+                    ).fetchone()
+                    if last_row:
+                        last_terminal_source = str(_row_to_dict(last_row).get("trigger_source") or "signal")
+                last_priority = TRIGGER_SOURCE_PRIORITY.get(last_terminal_source, 0)
+                if incoming_priority <= last_priority:
+                    return {
+                        "ok": False,
+                        "error": f"终态保护：{trigger_source}(优先级{incoming_priority})不能覆盖已由{last_terminal_source}(优先级{last_priority})设定的终态 {current_state}",
+                        "current_state": current_state,
+                        "blocked_by_priority": True,
+                    }
             # Validate transition
             allowed = VALID_TRANSITIONS.get(current_state, set())
             if to_state not in allowed:
@@ -321,6 +352,7 @@ def transition_candidate(
                 "from_state": current_state,
                 "to_state": to_state,
                 "state_version": new_version,
+                "trigger_source_priority": TRIGGER_SOURCE_PRIORITY.get(trigger_source, 0),
             }
         finally:
             conn.close()
