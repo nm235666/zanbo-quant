@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { NavSurface } from '../app/navigation'
 
 export type ToastTone = 'success' | 'error' | 'info'
 
@@ -11,13 +12,24 @@ export interface UiToast {
 
 export const useUiStore = defineStore('ui', {
   state: () => ({
-    sidebarOpen: true,
+    appSidebarOpen: true,
+    adminSidebarOpen: true,
     mobileNavOpen: false,
     toasts: [] as UiToast[],
   }),
   actions: {
-    toggleSidebar() {
-      this.sidebarOpen = !this.sidebarOpen
+    isSidebarOpen(surface: NavSurface) {
+      return surface === 'admin' ? this.adminSidebarOpen : this.appSidebarOpen
+    },
+    setSidebarOpen(surface: NavSurface, open: boolean) {
+      if (surface === 'admin') {
+        this.adminSidebarOpen = open
+        return
+      }
+      this.appSidebarOpen = open
+    },
+    toggleSidebar(surface: NavSurface) {
+      this.setSidebarOpen(surface, !this.isSidebarOpen(surface))
     },
     openMobileNav() {
       this.mobileNavOpen = true

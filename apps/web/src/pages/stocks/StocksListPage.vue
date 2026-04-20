@@ -12,7 +12,7 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
               {{ isFetching ? '查询中...' : '刷新候选池' }}
             </button>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/stocks/scores">
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/app/stocks/scores">
               打开综合评分
             </RouterLink>
           </div>
@@ -110,17 +110,17 @@
               <StatusBadge :value="row.list_status" :label="listStatusLabel(row.list_status)" />
             </template>
             <div class="mt-3">
-              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">查看详情</RouterLink>
+              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--brand)]" :to="`/app/stocks/detail/${row.ts_code}`">查看详情</RouterLink>
             </div>
           </InfoCard>
         </div>
 
         <DataTable class="hidden lg:block" :columns="columns" :rows="stocks?.items || []" row-key="ts_code" empty-text="暂无股票结果">
           <template #cell-ts_code="{ row }">
-            <RouterLink class="font-bold text-[var(--brand)]" :to="`/stocks/detail/${row.ts_code}`">{{ row.ts_code }}</RouterLink>
+            <RouterLink class="font-bold text-[var(--brand)]" :to="`/app/stocks/detail/${row.ts_code}`">{{ row.ts_code }}</RouterLink>
           </template>
           <template #cell-name="{ row }">
-            <RouterLink class="font-semibold" :to="`/stocks/detail/${row.ts_code}`">{{ row.name }}</RouterLink>
+            <RouterLink class="font-semibold" :to="`/app/stocks/detail/${row.ts_code}`">{{ row.name }}</RouterLink>
           </template>
           <template #cell-list_status="{ row }">
             <StatusBadge :value="row.list_status" :label="listStatusLabel(row.list_status)" />

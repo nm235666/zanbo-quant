@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="研究工作台" subtitle="量化投研指挥中心：今日重点、待处理动作、风险预警与最近决策一览。">
+  <AppShell title="研究工作台" subtitle="研究用户主入口：先完成今日判断，再进入决策、执行与跟踪。">
     <div class="space-y-4">
       <!-- Hero header with CTA -->
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -7,50 +7,200 @@
           {{ todayDateLabel }}
         </div>
         <RouterLink
-          to="/research/decision"
+          to="/app/decision"
           class="rounded-2xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
         >
           进入决策工作台 →
         </RouterLink>
       </div>
 
+      <!-- 今日6问 -->
+      <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-5 py-4">
+        <div class="mb-3 flex items-center justify-between">
+          <div class="text-sm font-bold text-[var(--ink)]">今日6问（3分钟判断清单）</div>
+          <span class="rounded-full border border-[var(--line)] px-2.5 py-0.5 text-xs text-[var(--muted)]">每日必答</span>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-2">
+          <RouterLink v-for="q in dailyQuestionCards" :key="q.to" :to="q.to"
+            class="group flex items-start gap-2.5 rounded-xl border border-transparent px-3 py-2.5 transition hover:border-[var(--line)] hover:bg-white">
+            <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--line)] text-xs font-bold text-[var(--muted)]">{{ q.n }}</span>
+            <span class="min-w-0">
+              <span class="text-[13px] leading-5 text-[var(--ink)]">{{ q.question }}</span>
+              <span class="mt-0.5 block text-xs leading-5 text-[var(--muted)] truncate">{{ q.answer }}</span>
+              <span
+                class="mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                :class="q.status === 'answered' ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : q.status === 'not_initialized' ? 'border-amber-200 bg-amber-100 text-amber-700' : 'border-sky-200 bg-sky-100 text-sky-700'"
+              >
+                {{ q.statusLabel }}
+              </span>
+            </span>
+          </RouterLink>
+        </div>
+      </div>
+
+      <!-- 宏观三周期状态 -->
+      <PageSection title="宏观三周期" subtitle="基调判断：长期状态决定防守/进攻取向。">
+        <div class="mb-3 grid gap-2 sm:grid-cols-3">
+          <div class="rounded-xl border px-3 py-2" :class="macroFlowStatus.calc.done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+            <div class="text-[11px] font-semibold text-[var(--muted)]">系统计算</div>
+            <div class="mt-0.5 text-xs font-semibold" :class="macroFlowStatus.calc.done ? 'text-emerald-700' : 'text-amber-700'">{{ macroFlowStatus.calc.text }}</div>
+          </div>
+          <div class="rounded-xl border px-3 py-2" :class="macroFlowStatus.review.done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+            <div class="text-[11px] font-semibold text-[var(--muted)]">人工复核确认</div>
+            <div class="mt-0.5 text-xs font-semibold" :class="macroFlowStatus.review.done ? 'text-emerald-700' : 'text-amber-700'">{{ macroFlowStatus.review.text }}</div>
+          </div>
+          <div class="rounded-xl border px-3 py-2" :class="macroFlowStatus.sink.done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+            <div class="text-[11px] font-semibold text-[var(--muted)]">沉淀复盘</div>
+            <div class="mt-0.5 text-xs font-semibold" :class="macroFlowStatus.sink.done ? 'text-emerald-700' : 'text-amber-700'">{{ macroFlowStatus.sink.text }}</div>
+          </div>
+        </div>
+        <div v-if="regime" class="grid gap-3 md:grid-cols-3">
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs text-[var(--muted)]">短期 1-4周</div>
+            <div class="text-base font-bold" :class="regimeStateClass(regime.short_term_state)">
+              {{ regimeStateLabel(regime.short_term_state) }}
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--muted)]">{{ ((regime.short_term_confidence ?? 0) * 100).toFixed(0) }}% 可信度</div>
+          </div>
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs text-[var(--muted)]">中期 1-6月</div>
+            <div class="text-base font-bold" :class="regimeStateClass(regime.medium_term_state)">
+              {{ regimeStateLabel(regime.medium_term_state) }}
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--muted)]">{{ ((regime.medium_term_confidence ?? 0) * 100).toFixed(0) }}% 可信度</div>
+          </div>
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs text-[var(--muted)]">长期 6-24月</div>
+            <div class="text-base font-bold" :class="regimeStateClass(regime.long_term_state)">
+              {{ regimeStateLabel(regime.long_term_state) }}
+            </div>
+            <div class="mt-0.5 text-xs text-[var(--muted)]">{{ ((regime.long_term_confidence ?? 0) * 100).toFixed(0) }}% 可信度</div>
+          </div>
+        </div>
+        <div v-if="allocation?.conflict_ruling" class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          裁决: {{ allocation.conflict_ruling }}
+        </div>
+        <div v-if="!regime" class="py-4 text-sm text-[var(--muted)]">
+          {{ macroWorkbenchEmptyText }}
+          <RouterLink to="/app/macro-regime" class="ml-1 text-[var(--brand)] underline">前往处理</RouterLink>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <RouterLink to="/app/macro-regime" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            三周期详情 →
+          </RouterLink>
+          <RouterLink to="/app/allocation" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+            配置动作 →
+          </RouterLink>
+        </div>
+      </PageSection>
+
+      <!-- 三层股池 -->
+      <PageSection title="三层股池" subtitle="系统机会池 → 用户关注池（漏斗）→ 持仓池 流转状态。">
+        <div class="grid gap-3 sm:grid-cols-3">
+          <RouterLink to="/app/signals/overview" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
+            <div class="text-xs font-semibold text-[var(--muted)] mb-1">系统机会池</div>
+            <div class="text-lg font-bold text-[var(--ink)]">{{ signalsTotal != null ? `${signalsTotal} 信号` : '信号 + 评分' }}</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">全市场机会发现层</div>
+          </RouterLink>
+          <RouterLink to="/app/funnel" class="group rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 transition hover:border-emerald-400 text-center">
+            <div class="text-xs font-semibold text-emerald-700 mb-1">用户关注池</div>
+            <div class="text-lg font-bold text-emerald-800">{{ funnelTotal }} 候选</div>
+            <div class="mt-1 text-xs text-emerald-700">候选漏斗研究承接层</div>
+          </RouterLink>
+          <RouterLink to="/app/positions" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
+            <div class="text-xs font-semibold text-[var(--muted)] mb-1">持仓池</div>
+            <div class="text-lg font-bold text-[var(--ink)]">{{ positionsTotal }} 持仓</div>
+            <div class="mt-1 text-xs text-[var(--muted)]">实际仓位管理层</div>
+          </RouterLink>
+        </div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-3">
+          <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+            关注池总数：<span class="font-semibold text-[var(--ink)]">{{ funnelMetrics.candidateCount }}</span>
+            <span class="ml-2">转化率：<span class="font-semibold text-[var(--ink)]">{{ funnelMetrics.conversionRate }}</span></span>
+          </div>
+          <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+            平均决策周期：<span class="font-semibold text-[var(--ink)]">{{ funnelMetrics.avgDays }}</span>
+          </div>
+          <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+            关键状态：<span class="font-semibold text-[var(--ink)]">{{ funnelStateSummary }}</span>
+          </div>
+        </div>
+      </PageSection>
+
+      <!-- 今日短线主题 Top N -->
+      <PageSection title="今日短线主题" :subtitle="`Top ${topN}，排序：时效性 > 信号强度 > 资金确认度 > 冲突风险`">
+        <template #action>
+          <select v-model.number="topN" class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold">
+            <option :value="3">Top 3</option>
+            <option :value="5">Top 5</option>
+            <option :value="10">Top 10</option>
+          </select>
+          <RouterLink to="/app/signals/themes" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+            查看全部主题
+          </RouterLink>
+        </template>
+        <div v-if="topThemes.length" class="grid gap-3 sm:grid-cols-3">
+          <div v-for="(theme, idx) in topThemes" :key="theme.id || idx"
+            class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold text-[var(--muted)]">Top {{ (idx as number) + 1 }}</span>
+              <span :class="themeDirectionClass(theme.direction)" class="rounded-full px-2 py-0.5 text-xs font-semibold">
+                {{ themeDirectionLabel(theme.direction) }}
+              </span>
+            </div>
+            <div class="text-sm font-bold text-[var(--ink)] truncate">{{ theme.theme_name || theme.name || theme.keyword || '-' }}</div>
+            <div v-if="theme.heat_level || theme.strength" class="mt-1 text-xs text-[var(--muted)]">
+              热度: {{ theme.heat_level || theme.strength || '-' }}
+            </div>
+          </div>
+        </div>
+        <div v-else class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-6 text-center text-sm text-[var(--muted)]">
+          暂无主题数据，<RouterLink to="/app/signals/themes" class="text-[var(--brand)] underline">前往信号中心</RouterLink>
+        </div>
+        <div class="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <div class="text-xs font-semibold text-sky-700">今日短线核心结论</div>
+          <div class="mt-1 text-sm text-sky-900 leading-6">{{ coreThemeConclusion }}</div>
+          <div v-if="coreThemeConflict" class="mt-1 text-xs text-amber-700">冲突裁决：{{ coreThemeConflict }}</div>
+        </div>
+      </PageSection>
+
       <!-- 今日重点 -->
-      <PageSection title="今日重点" subtitle="当前重点研究方向与核心链接。">
+      <PageSection title="今日重点结论" subtitle="不是流程描述，而是今天可直接执行的重点。">
         <div class="grid gap-3 sm:grid-cols-3">
           <InfoCard
-            title="市场结论"
-            meta="今日交易主线"
-            description="查看宏观+行业+新闻汇总后的今日交易结论，包含候选方向与风险提示。"
+            title="核心主线"
+            meta="今日应优先关注"
+            :description="todayFocus.mainline"
           >
             <RouterLink
-              to="/market/conclusion"
+              to="/app/market"
               class="mt-2 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
               查看市场结论 →
             </RouterLink>
           </InfoCard>
           <InfoCard
-            title="候选漏斗"
-            meta="候选股票全周期管理"
-            description="从进入到确认的完整漏斗，查看各阶段候选数量与最新流转记录。"
+            title="关键风险"
+            meta="今天最不能忽略"
+            :description="todayFocus.risk"
           >
             <RouterLink
-              to="/research/funnel"
+              to="/app/signals/overview"
               class="mt-2 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
-              查看候选漏斗 →
+              查看风险信号 →
             </RouterLink>
           </InfoCard>
           <InfoCard
-            title="多角色分析"
-            meta="AI驱动深度分析"
-            description="宏观、股票、行业、汇率、国际、风险六角色协同分析，支持任务异步跟踪。"
+            title="优先动作"
+            meta="今天第一步做什么"
+            :description="todayFocus.action"
           >
             <RouterLink
-              to="/research/multi-role"
+              :to="todayFocus.actionTo"
               class="mt-2 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
-              发起分析 →
+              立即执行 →
             </RouterLink>
           </InfoCard>
         </div>
@@ -60,7 +210,7 @@
       <PageSection title="待处理动作" subtitle="需要你审批或跟进的任务。">
         <template #action>
           <RouterLink
-            to="/research/task-inbox"
+            to="/app/research/task-inbox"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             任务收件箱
@@ -72,14 +222,22 @@
           加载待处理动作失败，请刷新页面重试。
         </div>
         <div v-else-if="pendingActions.length === 0" class="rounded-2xl border border-dashed border-[var(--line)] bg-gray-50 px-4 py-6 text-center">
-          <div class="text-sm font-semibold text-[var(--ink)]">暂无待处理动作</div>
-          <div class="mt-1 text-xs text-[var(--muted)]">所有任务已处理，或尚未发起分析任务。</div>
+          <div class="text-sm font-semibold text-[var(--ink)]">当前没有积压动作，给你 3 个可执行建议</div>
+          <div class="mt-2 space-y-2 text-left">
+            <div v-for="(item, idx) in suggestedActions" :key="item.to + idx" class="rounded-xl border border-[var(--line)] bg-white px-3 py-2">
+              <div class="text-xs font-semibold text-[var(--muted)]">建议 {{ idx + 1 }}</div>
+              <div class="mt-0.5 text-sm text-[var(--ink)]">{{ item.text }}</div>
+              <RouterLink :to="item.to" class="mt-1 inline-flex text-xs font-semibold text-[var(--brand)] hover:underline">
+                去执行 →
+              </RouterLink>
+            </div>
+          </div>
           <div class="mt-3 flex justify-center gap-2">
-            <RouterLink to="/research/multi-role" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
-              发起多角色分析
+            <RouterLink to="/app/decision" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
+              录入第一条动作
             </RouterLink>
-            <RouterLink to="/research/decision" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
-              打开决策看板
+            <RouterLink to="/app/funnel" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+              从候选池挑 1 个
             </RouterLink>
           </div>
         </div>
@@ -96,7 +254,7 @@
             <div class="flex items-center gap-2">
               <StatusBadge :value="action.action_type" />
               <RouterLink
-                to="/research/decision"
+                to="/app/decision"
                 class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
               >
                 处理
@@ -107,24 +265,24 @@
       </PageSection>
 
       <!-- 风险预警 -->
-      <PageSection title="风险预警" subtitle="当前异常信号与系统风险提示。">
+      <PageSection title="风险预警" subtitle="先处理研究侧可见风险；治理排障信息只保留为摘要，不作为主链入口。">
         <template #action>
           <RouterLink
-            to="/signals/overview"
+            to="/app/signals/overview"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             查看信号图谱
           </RouterLink>
         </template>
         <div class="rounded-2xl border border-dashed border-[var(--line)] bg-gray-50 px-4 py-6 text-center">
-          <div class="text-sm font-semibold text-emerald-700">系统正常，暂无异常风险信号</div>
-          <div class="mt-1 text-xs text-[var(--muted)]">数据源与信号链路均正常运行。</div>
+          <div class="text-sm font-semibold text-emerald-700">研究侧当前无异常风险信号</div>
+          <div class="mt-1 text-xs text-[var(--muted)]">信号与市场结论未发现明显冲突；更深的链路治理已下沉到后台管理模式。</div>
           <div class="mt-3 flex justify-center gap-2">
-            <RouterLink to="/system/source-monitor" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
-              查看数据源监控
-            </RouterLink>
-            <RouterLink to="/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               查看信号总览
+            </RouterLink>
+            <RouterLink to="/app/market" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+              查看市场结论
             </RouterLink>
           </div>
         </div>
@@ -134,7 +292,7 @@
       <PageSection title="最近决策" subtitle="最近录入的决策动作记录。">
         <template #action>
           <RouterLink
-            to="/research/decision"
+            to="/app/decision"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             查看完整决策历史
@@ -181,7 +339,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
@@ -189,10 +347,22 @@ import PageSection from '../../shared/ui/PageSection.vue'
 import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import { fetchDecisionActions } from '../../services/api/decision'
+import { fetchLatestRegime, fetchRegimeHistory, REGIME_STATE_LABELS } from '../../services/api/macro_regime'
+import { fetchLatestAllocation } from '../../services/api/portfolio_allocation'
+import { fetchFunnelCandidates, fetchFunnelMetrics } from '../../services/api/funnel'
+import { fetchPortfolioPositions } from '../../services/api/portfolio'
+import { fetchThemeHotspots, fetchInvestmentSignals } from '../../services/api/signals'
+import { fetchMarketConclusion } from '../../services/api/market'
 
 const todayDateLabel = computed(() => {
   return new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })
 })
+
+const TOPN_KEY = 'workbench_theme_topn'
+const topN = ref<3 | 5 | 10>(
+  (() => { const v = localStorage.getItem(TOPN_KEY); return v === '5' ? 5 : v === '10' ? 10 : 3 })()
+)
+watch(topN, (v) => localStorage.setItem(TOPN_KEY, String(v)))
 
 const {
   data: actionsData,
@@ -212,29 +382,375 @@ const allActions = computed<any[]>(() => {
 })
 
 const pendingActions = computed(() =>
-  allActions.value.filter((a: any) => ['watch', 'pending'].includes(a.execution_status || a.action_type || '')).slice(0, 5),
+  allActions.value
+    .filter((a: any) => {
+      const type = String(a.action_type || '').toLowerCase()
+      const status = String(a.payload?.execution_status || a.execution_status || '').toLowerCase()
+      // Show: confirmed actions pending execution, watch-type actions
+      return (type === 'confirm' && (!status || status === 'planned')) ||
+             type === 'watch' ||
+             status === 'planned'
+    })
+    .slice(0, 5)
 )
 
 const recentDecisions = computed(() => allActions.value.slice(0, 5))
 
+const { data: regimeData } = useQuery({
+  queryKey: ['macro-regime-workbench'],
+  queryFn: fetchLatestRegime,
+})
+
+const { data: regimeHistoryData } = useQuery({
+  queryKey: ['macro-regime-history-workbench'],
+  queryFn: () => fetchRegimeHistory({ page: 1, page_size: 50 }),
+})
+
+const { data: allocationData } = useQuery({
+  queryKey: ['portfolio-allocation-workbench'],
+  queryFn: fetchLatestAllocation,
+})
+
+const { data: funnelData } = useQuery({
+  queryKey: ['funnel-workbench'],
+  queryFn: () => fetchFunnelCandidates({ limit: 200 }),
+})
+
+const { data: funnelMetricsData } = useQuery({
+  queryKey: ['funnel-metrics-workbench'],
+  queryFn: fetchFunnelMetrics,
+})
+
+const { data: positionsData } = useQuery({
+  queryKey: ['positions-workbench'],
+  queryFn: fetchPortfolioPositions,
+})
+
+const { data: marketConclusionData } = useQuery({
+  queryKey: ['market-conclusion-workbench'],
+  queryFn: fetchMarketConclusion,
+  refetchInterval: 300_000,
+})
+
+const { data: signalsData } = useQuery({
+  queryKey: ['signals-count-workbench'],
+  queryFn: () => fetchInvestmentSignals({ limit: 1 }),
+  refetchInterval: 300_000,
+})
+
+const signalsTotal = computed(() => {
+  const raw = signalsData.value as any
+  if (!raw) return null
+  return raw.total ?? raw.count ?? (Array.isArray(raw.signals) ? raw.signals.length : null) ?? (Array.isArray(raw.items) ? raw.items.length : null)
+})
+
+const regime = computed(() => regimeData.value?.regime ?? null)
+const allocation = computed(() => allocationData.value?.allocation ?? null)
+const funnelTotal = computed(() => (funnelData.value as any)?.total ?? 0)
+const positionsTotal = computed(() => (positionsData.value as any)?.total ?? 0)
+const marketConclusion = computed(() => (marketConclusionData.value as any) || {})
+const marketConclusionStatus = computed(() => String(marketConclusion.value?.status || '').trim() || 'empty')
+const regimeStatus = computed(() => String((regimeData.value as any)?.status || '').trim() || 'empty')
+const allocationStatus = computed(() => String((allocationData.value as any)?.status || '').trim() || 'empty')
+
+function regimeStateLabel(state?: string): string {
+  return state ? (REGIME_STATE_LABELS[state] ?? state) : '未知'
+}
+
+function regimeStateClass(state?: string): string {
+  if (!state) return 'text-[var(--muted)]'
+  const map: Record<string, string> = {
+    expansion: 'text-emerald-700', recovery: 'text-teal-700',
+    slowdown: 'text-amber-700', volatile: 'text-yellow-700',
+    risk_rising: 'text-orange-700', contraction: 'text-red-700',
+  }
+  return map[state] ?? 'text-[var(--muted)]'
+}
+
+
+const dailyQuestions = [
+  { n: 1, question: '今天最该关注的短线主题是什么', to: '/app/signals/themes' },
+  { n: 2, question: '关注池里哪些标的应新开仓', to: '/app/funnel' },
+  { n: 3, question: '每只新开仓标的建议仓位是多少', to: '/app/allocation' },
+  { n: 4, question: '持仓池里哪些标的应减仓/清仓', to: '/app/positions' },
+  { n: 5, question: '卖出原因：止盈/止损/失效/风险切换', to: '/app/decision' },
+  { n: 6, question: '宏观状态是否变化，组合层该怎么应对', to: '/app/macro-regime' },
+]
+
+const { data: themesData } = useQuery({
+  queryKey: ['theme-hotspots-workbench', topN],
+  queryFn: () => fetchThemeHotspots({ page: 1, page_size: topN.value, direction: 'bullish' }),
+})
+
+const topThemes = computed(() => {
+  const raw = themesData.value
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.slice(0, topN.value)
+  if (Array.isArray((raw as any).items)) return (raw as any).items.slice(0, topN.value)
+  return []
+})
+
+function themeDirectionLabel(direction?: string): string {
+  const map: Record<string, string> = { bullish: '多', bearish: '空', neutral: '中性', mixed: '混合' }
+  return direction ? (map[direction] ?? direction) : '-'
+}
+
+function themeDirectionClass(direction?: string): string {
+  if (direction === 'bullish') return 'bg-emerald-100 text-emerald-700'
+  if (direction === 'bearish') return 'bg-red-100 text-red-700'
+  return 'bg-stone-100 text-stone-600'
+}
+
+function shortText(text: string, max = 40): string {
+  const normalized = String(text || '').trim()
+  if (!normalized) return ''
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized
+}
+
+const funnelCandidates = computed<any[]>(() => {
+  const raw = funnelData.value as any
+  if (!raw) return []
+  if (Array.isArray(raw.items)) return raw.items.slice(0, 3)
+  if (Array.isArray(raw.candidates)) return raw.candidates.slice(0, 3)
+  if (Array.isArray(raw)) return raw.slice(0, 3)
+  return []
+})
+
+const funnelMetrics = computed(() => {
+  const m = (funnelMetricsData.value as any) || {}
+  const candidateCount = m?.candidate_count ?? funnelTotal.value
+  const conversionRate = m?.conversion_rate != null ? `${(Number(m.conversion_rate) * 100).toFixed(1)}%` : '-'
+  const avgDays = m?.avg_days_to_decision != null ? `${Number(m.avg_days_to_decision).toFixed(1)} 天` : '-'
+  return { candidateCount, conversionRate, avgDays }
+})
+
+const funnelStateSummary = computed(() => {
+  const list = funnelCandidates.value
+  if (!list.length) return '暂无候选'
+  const stateCount: Record<string, number> = {}
+  for (const item of list) {
+    const key = String(item?.current_state || 'unknown')
+    stateCount[key] = (stateCount[key] || 0) + 1
+  }
+  const entries = Object.entries(stateCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k, v]) => `${k}:${v}`)
+  return entries.join(' / ')
+})
+
+const coreThemeConclusion = computed(() => {
+  const tradingTheme = String(marketConclusion.value?.trading_theme || '').trim()
+  if (tradingTheme) return tradingTheme
+  if (marketConclusionStatus.value === 'not_initialized') return '市场结论链路尚未初始化，当前无法稳定给出今日主线。'
+  if (marketConclusionStatus.value === 'insufficient_evidence') return '市场证据不足，已用主题热点做降级判断。'
+  if (topThemes.value.length > 0) {
+    const first = topThemes.value[0] as any
+    const firstName = String(first?.theme_name || first?.name || first?.keyword || '').trim()
+    const heat = first?.heat_level || first?.strength
+    const heatText = heat ? `（热度 ${heat}）` : ''
+    const restNames = topThemes.value.slice(1, 3)
+      .map((t: any) => String(t?.theme_name || t?.name || t?.keyword || '').trim())
+      .filter(Boolean)
+    const rest = restNames.length ? `，次选：${restNames.join(' / ')}` : ''
+    return `主线：${firstName}${heatText}${rest}`
+  }
+  return '暂无主题数据，建议先检查主题信号与市场结论输入。'
+})
+
+const coreThemeConflict = computed(() => {
+  const note = String(marketConclusion.value?.conflict_note || '').trim()
+  if (note) return shortText(note, 80)
+  if (allocation.value?.conflict_ruling) return shortText(String(allocation.value.conflict_ruling), 80)
+  return ''
+})
+
+const todayFocus = computed(() => {
+  const mainline = coreThemeConclusion.value
+  const riskList = Array.isArray(marketConclusion.value?.main_risks) ? marketConclusion.value.main_risks : []
+  const risk = riskList.length > 0
+    ? String(riskList[0])
+    : marketConclusionStatus.value === 'ready'
+      ? '当前未识别到需要前置披露的高优先级风险。'
+      : '风险侧证据不足，建议先去市场结论或信号总览补核。'
+  if (pendingActions.value.length > 0) {
+    const first = pendingActions.value[0]
+    return {
+      mainline,
+      risk,
+      action: `先处理待办动作：${first.ts_code || '-'} ${shortText(String(first.note || ''), 26)}`.trim(),
+      actionTo: '/app/decision',
+    }
+  }
+  if (funnelTotal.value > 0) {
+    return {
+      mainline,
+      risk,
+      action: `关注池有 ${funnelTotal.value} 个候选，先选 1 个进入决策板。`,
+      actionTo: '/app/funnel',
+    }
+  }
+  return {
+    mainline,
+    risk,
+    action: '暂无现成动作，先从主题榜挑 1 个标的建立首条决策记录。',
+    actionTo: '/app/signals/themes',
+  }
+})
+
+const macroFlowStatus = computed(() => {
+  const historyItems = Array.isArray((regimeHistoryData.value as any)?.items) ? (regimeHistoryData.value as any).items : []
+  const hasSystemCalcInput = !!String(marketConclusion.value?.trading_theme || '').trim() || topThemes.value.length > 0
+  const hasManualReview = !!regime.value
+  const sinkCount = historyItems.filter((item: any) => !!item?.outcome_rating).length
+  return {
+    calc: {
+      done: hasSystemCalcInput,
+      text: hasSystemCalcInput ? '已生成计算结论' : '待生成计算结论',
+    },
+    review: {
+      done: hasManualReview,
+      text: hasManualReview ? '已完成人工复核' : '待人工复核确认',
+    },
+    sink: {
+      done: sinkCount > 0,
+      text: sinkCount > 0 ? `已沉淀 ${sinkCount} 条复盘` : '待沉淀复盘结果',
+    },
+  }
+})
+
+const macroWorkbenchEmptyText = computed(() => {
+  if (regimeStatus.value === 'not_initialized') return '宏观三周期尚未初始化，系统还没有首条已确认状态。'
+  if (regimeStatus.value === 'insufficient_evidence') return '宏观三周期已有部分输入，但还不足以形成稳定状态。'
+  return '暂无三周期状态。'
+})
+
+const suggestedActions = computed(() => {
+  const list: Array<{ text: string; to: string }> = []
+  if (topThemes.value.length > 0) {
+    const first = topThemes.value[0]
+    list.push({
+      text: `围绕主题「${String(first?.theme_name || first?.name || first?.keyword || '-') }」建立第一条决策动作。`,
+      to: '/app/decision',
+    })
+  }
+  if (funnelTotal.value > 0) {
+    list.push({
+      text: `从关注池 ${funnelTotal.value} 个候选中，先挑 1 个进入待决策状态。`,
+      to: '/app/funnel',
+    })
+  }
+  if (allocation.value) {
+    list.push({
+      text: `按当前配置口径（单票上限 ${allocation.value.max_single_position_pct ?? '-'}%）补齐仓位建议。`,
+      to: '/app/allocation',
+    })
+  } else {
+    list.push({
+      text: '先完成长线配置录入，避免短线动作没有账户级仓位口径。',
+      to: '/app/allocation',
+    })
+  }
+  return list.slice(0, 3)
+})
+
+const trimActions = computed<any[]>(() => allActions.value.filter((item: any) =>
+  ['confirm', 'reject', 'defer', 'watch', 'review'].includes(String(item?.action_type || '').toLowerCase()),
+))
+
+const dailyQuestionCards = computed(() => {
+  const topThemeNames = topThemes.value
+    .slice(0, 3)
+    .map((theme: any) => String(theme?.theme_name || theme?.name || theme?.keyword || '').trim())
+    .filter(Boolean)
+
+  const q1Status = topThemeNames.length > 0
+    ? 'answered'
+    : marketConclusionStatus.value === 'not_initialized'
+      ? 'not_initialized'
+      : 'insufficient_evidence'
+  const q1Answer = topThemeNames.length
+    ? `Top${topThemeNames.length}：${topThemeNames.join(' / ')}`
+    : q1Status === 'not_initialized'
+      ? '主题主线链路尚未初始化'
+      : '主题证据不足，建议先查看信号主题'
+
+  const funnelNames = funnelCandidates.value
+    .map((item: any) => String(item?.name || item?.ts_code || '').trim())
+    .filter(Boolean)
+  const q2Status = funnelTotal.value > 0 ? 'answered' : 'insufficient_evidence'
+  const q2Answer = funnelTotal.value > 0
+    ? `关注池 ${funnelTotal.value} 个，优先：${funnelNames.length ? funnelNames.join(' / ') : '请打开候选漏斗查看'}`
+    : '关注池当前没有可开仓候选，建议先从市场结论或信号进入'
+
+  const q3Status = allocation.value
+    ? 'answered'
+    : allocationStatus.value === 'not_initialized'
+      ? 'not_initialized'
+      : 'insufficient_evidence'
+  const q3Answer = allocation.value
+    ? `单票上限 ${allocation.value.max_single_position_pct ?? '-'}% · 现金目标 ${allocation.value.cash_ratio_pct ?? '-'}%`
+    : q3Status === 'not_initialized'
+      ? '仓位口径尚未初始化'
+      : '仓位建议证据不足，需先确认长线配置'
+
+  const reduceActions = trimActions.value.filter((item: any) =>
+    ['reject', 'defer', 'review'].includes(String(item?.action_type || '').toLowerCase()),
+  )
+  const q4Status = positionsTotal.value <= 0
+    ? 'not_initialized'
+    : reduceActions.length > 0 ? 'answered' : 'insufficient_evidence'
+  const q4Answer = positionsTotal.value <= 0
+    ? '持仓池为空，当前没有减仓/清仓任务'
+    : reduceActions.length > 0
+      ? `当前持仓 ${positionsTotal.value} 个，最近 ${reduceActions.length} 条调整动作待确认`
+      : `当前持仓 ${positionsTotal.value} 个，但尚未形成明确减仓/清仓结论`
+
+  const sellReasonAction = reduceActions[0]
+  const q5Status = sellReasonAction ? 'answered' : 'insufficient_evidence'
+  const q5Answer = sellReasonAction
+    ? `${String(sellReasonAction?.action_type || '').toUpperCase()}：${shortText(String(sellReasonAction?.note || '')) || '已记录动作，建议补充理由'}`
+    : '暂无卖出/减仓理由，建议补齐决策动作与复盘说明'
+
+  const q6Status = regime.value
+    ? 'answered'
+    : regimeStatus.value === 'not_initialized'
+      ? 'not_initialized'
+      : 'insufficient_evidence'
+  const q6Answer = regime.value
+    ? `短${regimeStateLabel(regime.value.short_term_state)} / 中${regimeStateLabel(regime.value.medium_term_state)} / 长${regimeStateLabel(regime.value.long_term_state)}${allocation.value?.conflict_ruling ? ' · 已给冲突裁决' : ''}`
+    : q6Status === 'not_initialized'
+      ? '宏观三周期尚未初始化'
+      : '宏观状态证据不足，尚未形成稳定结论'
+
+  return [
+    { ...dailyQuestions[0], answer: q1Answer, answered: q1Status === 'answered', status: q1Status, statusLabel: q1Status === 'answered' ? '已回答' : q1Status === 'not_initialized' ? '未初始化' : '证据不足' },
+    { ...dailyQuestions[1], answer: q2Answer, answered: q2Status === 'answered', status: q2Status, statusLabel: q2Status === 'answered' ? '已回答' : '证据不足' },
+    { ...dailyQuestions[2], answer: q3Answer, answered: q3Status === 'answered', status: q3Status, statusLabel: q3Status === 'answered' ? '已回答' : q3Status === 'not_initialized' ? '未初始化' : '证据不足' },
+    { ...dailyQuestions[3], answer: q4Answer, answered: q4Status === 'answered', status: q4Status, statusLabel: q4Status === 'answered' ? '已回答' : q4Status === 'not_initialized' ? '未建持仓' : '证据不足' },
+    { ...dailyQuestions[4], answer: q5Answer, answered: q5Status === 'answered', status: q5Status, statusLabel: q5Status === 'answered' ? '已回答' : '待补理由' },
+    { ...dailyQuestions[5], answer: q6Answer, answered: q6Status === 'answered', status: q6Status, statusLabel: q6Status === 'answered' ? '已回答' : q6Status === 'not_initialized' ? '未初始化' : '证据不足' },
+  ]
+})
+
 const quickNavItems = [
   {
-    to: '/market/conclusion',
+    to: '/app/market',
     label: '市场结论',
     description: '今日交易主线、主要风险与候选方向',
   },
   {
-    to: '/research/funnel',
+    to: '/app/funnel',
     label: '候选漏斗',
     description: '候选股票全生命周期状态管理',
   },
   {
-    to: '/research/decision',
+    to: '/app/decision',
     label: '决策工作台',
     description: '短名单执行、动作审批与验证结果',
   },
   {
-    to: '/research/multi-role',
+    to: '/app/research/multi-role',
     label: '多角色分析',
     description: 'AI六角色协同深度公司分析',
   },

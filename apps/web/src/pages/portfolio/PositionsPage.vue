@@ -4,7 +4,7 @@
       <PageSection title="持仓列表" subtitle="当前所有活跃持仓。">
         <template #action>
           <RouterLink
-            to="/research/decision"
+            to="/app/decision"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             前往决策工作台
@@ -20,7 +20,7 @@
           <div class="text-base font-semibold text-[var(--ink)]">暂无持仓</div>
           <div class="mt-1 text-sm text-[var(--muted)]">在决策工作台确认交易后，持仓将出现在这里。</div>
           <RouterLink
-            to="/research/decision"
+            to="/app/decision"
             class="mt-4 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-4 py-1.5 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             前往决策工作台 →
@@ -47,7 +47,7 @@
               >
                 <td class="py-3 pr-4 font-semibold text-[var(--ink)]">
                   <RouterLink
-                    :to="`/stocks/detail/${pos.ts_code}`"
+                    :to="`/app/stocks/detail/${pos.ts_code}`"
                     class="transition hover:text-[var(--brand)]"
                   >
                     {{ pos.ts_code }}

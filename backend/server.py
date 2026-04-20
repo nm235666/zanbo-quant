@@ -152,6 +152,9 @@ from backend.routes import market as market_routes
 from backend.routes import funnel as funnel_routes
 from backend.routes import portfolio as portfolio_routes
 from backend.routes import llm_quick_insight as llm_quick_insight_routes
+from backend.routes import macro_regime as macro_regime_routes
+from backend.routes import portfolio_allocation as portfolio_allocation_routes
+from backend.routes import analytics as analytics_routes
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "8000"))
@@ -367,6 +370,7 @@ ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
     "/stocks/detail/:tsCode?": "stocks_advanced",
     "/stocks/prices": "stocks_advanced",
     "/macro": "macro_advanced",
+    "/macro/regime": "research_advanced",
     "/intelligence/global-news": "news_read",
     "/intelligence/cn-news": "news_read",
     "/intelligence/stock-news": "stock_news_read",
@@ -395,6 +399,7 @@ ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
     "/system/database-audit": "admin_system",
     "/system/invites": "admin_users",
     "/system/users": "admin_users",
+    "/portfolio/allocation": "research_advanced",
 }
 NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
     {
@@ -7982,8 +7987,14 @@ class ApiHandler(BaseHTTPRequestHandler):
             return _has("multi_role_analyze")
         if path.startswith("/api/stocks") or path in {"/api/stock-detail", "/api/prices", "/api/minline", "/api/stock-scores", "/api/stock-scores/filters"}:
             return _has("stocks_advanced")
+        if path.startswith("/api/macro/regime"):
+            return _has("macro_advanced") or _has("research_advanced")
         if path.startswith("/api/macro"):
             return _has("macro_advanced")
+        if path.startswith("/api/portfolio/allocation"):
+            return _has("research_advanced")
+        if path.startswith("/api/portfolio"):
+            return _has("research_advanced") or _has("stocks_advanced")
         if path == "/api/news/daily-summaries":
             return _has("daily_summary_read")
         if path in {"/api/news", "/api/news/sources"}:
@@ -8291,7 +8302,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if portfolio_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if macro_regime_routes.dispatch_post(self, parsed, payload, deps):
+            return
+        if portfolio_allocation_routes.dispatch_post(self, parsed, payload, deps):
+            return
         if llm_quick_insight_routes.dispatch_post(self, parsed, payload, deps):
+            return
+        if analytics_routes.dispatch_post(self, parsed, payload, deps):
             return
 
         self._send_json({"error": "Not Found"}, status=404)
@@ -8329,6 +8346,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         deps = self._route_deps()
         deps["auth_context"] = auth_ctx
         if portfolio_routes.dispatch_patch(self, parsed, payload, deps):
+            return
+        if macro_regime_routes.dispatch_patch(self, parsed, payload, deps):
             return
         self._send_json({"error": "Not Found"}, status=404)
 
@@ -8379,6 +8398,10 @@ class ApiHandler(BaseHTTPRequestHandler):
         if funnel_routes.dispatch_get(self, parsed, deps):
             return
         if portfolio_routes.dispatch_get(self, parsed, deps):
+            return
+        if macro_regime_routes.dispatch_get(self, parsed, deps):
+            return
+        if portfolio_allocation_routes.dispatch_get(self, parsed, deps):
             return
 
         if self._serve_frontend_static(parsed):

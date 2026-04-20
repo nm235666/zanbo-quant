@@ -24,17 +24,22 @@ async function login(page: Page, role: keyof typeof credentials) {
   await page.waitForURL((url) => !url.pathname.endsWith('/login'))
 }
 
-test('admin 登录后落到 dashboard', async ({ page }) => {
+test('admin 登录后落到 admin dashboard', async ({ page }) => {
   await login(page, 'admin')
-  await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByText('研究优先队列')).toBeVisible()
+  await expect(page).toHaveURL(/\/admin\/dashboard$/)
+  await expect(page.locator('[data-shell-surface="admin"]')).toBeVisible()
+  await expect(page.locator('[data-shell-switch="admin"]')).toBeVisible()
+  await expect(page.getByText('业务热点摘要')).toBeVisible()
 })
 
 test('pro 默认落点正确且可打开评分总览', async ({ page }) => {
   await login(page, 'pro')
-  await expect(page).toHaveURL(/\/research\/workbench$/)
-  await page.goto('/research/scoreboard')
-  await expect(page).toHaveURL(/\/research\/scoreboard$/)
+  await expect(page).toHaveURL(/\/app\/workbench$/)
+  await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
+  await expect(page.locator('[data-shell-switch="app"]')).toHaveCount(0)
+  await page.goto('/app/research/scoreboard')
+  await expect(page).toHaveURL(/\/app\/research\/scoreboard$/)
+  await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   await expect(page.locator('header').getByText('评分总览')).toBeVisible()
   await expect(page.getByRole('heading', { name: '自动短名单' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '入选理由' })).toBeVisible()
@@ -53,10 +58,19 @@ test('limited 默认落点正确且无权限页跳 upgrade', async ({ page }) =>
 
 test('三个主研究页首屏可渲染', async ({ page }) => {
   await login(page, 'pro')
-  for (const path of ['/research/scoreboard', '/stocks/scores', '/research/decision']) {
+  for (const path of ['/app/research/scoreboard', '/app/stocks/scores', '/app/decision']) {
     await page.goto(path)
     await expect(page).toHaveURL(new RegExp(path.replace(/\//g, '\\/')))
     await expect(page.locator('#main-content')).toBeVisible()
+    await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
   }
+})
+
+test('旧路径访问会显式跳到新语义地址', async ({ page }) => {
+  await login(page, 'pro')
+  await page.goto('/research/workbench')
+  await expect(page).toHaveURL(/\/app\/workbench$/)
+  await page.goto('/portfolio/orders')
+  await expect(page).toHaveURL(/\/app\/orders$/)
 })

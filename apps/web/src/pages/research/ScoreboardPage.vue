@@ -6,8 +6,8 @@
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="refetch()">
             {{ isFetching ? '刷新中...' : '刷新总览' }}
           </button>
-          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/research/decision">打开决策看板</RouterLink>
-          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/stocks/scores">查看股票评分列表</RouterLink>
+          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/decision">打开决策看板</RouterLink>
+          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/stocks/scores">查看股票评分列表</RouterLink>
         </div>
 
         <StatePanel
@@ -27,10 +27,10 @@
           class="mt-4"
           tone="warning"
           title="当前还没有可展示的短名单"
-          description="可以先去股票综合评分或决策看板确认最新快照是否已经生成。"
+          :description="shortlistEmptyDescription"
         >
           <template #action>
-            <RouterLink class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" to="/stocks/scores">去看股票评分</RouterLink>
+            <RouterLink class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" to="/app/stocks/scores">去看股票评分</RouterLink>
           </template>
         </StatePanel>
 
@@ -42,13 +42,13 @@
           :description="`以下数据源当前缺失或未准备好：${degradedSources.join('、')}。页面仍会继续展示已有评分结果。`"
         >
           <template #action>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]" to="/research/decision">去看执行视角</RouterLink>
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]" to="/app/decision">去看执行视角</RouterLink>
           </template>
         </StatePanel>
       </PageSection>
 
       <div class="grid gap-4 lg:grid-cols-4 md:grid-cols-2">
-        <StatCard title="市场模式" :value="macroRegime.label || '数据不足'" :hint="`模式 ${macroRegime.mode || '-'}`" />
+        <StatCard title="市场模式" :value="macroRegime.label || '证据不足'" :hint="macroRegimeHint" />
         <StatCard title="市场总分" :value="formatNumber(macroRegime.score, 1)" :hint="snapshotDateLabel" />
         <StatCard title="行业榜" :value="String(industryScores.length || 0)" :hint="`Top 行业 ${topIndustry || '-'}`" />
         <StatCard title="自动短名单" :value="String(shortlist.length || 0)" :hint="`理由包 ${reasonPacketCount}`" />
@@ -56,7 +56,7 @@
 
       <div class="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <PageSection title="宏观评分卡" subtitle="把全局评分快照翻译成可以立即理解的市场模式。">
-          <InfoCard :title="macroRegime.label || '数据不足'" :meta="`总分 ${formatNumber(macroRegime.score, 1)} · 模式 ${macroRegime.mode || '-'}`" :description="macroRegime.summary || '暂无市场模式摘要。'">
+          <InfoCard :title="macroRegime.label || '证据不足'" :meta="`总分 ${formatNumber(macroRegime.score, 1)} · 模式 ${macroRegime.mode || '-'}`" :description="macroRegimeDescription">
             <div class="mt-3 flex flex-wrap gap-2 text-xs">
               <span v-for="item in macroRegime.factors || []" :key="item" class="metric-chip">{{ item }}</span>
             </div>
@@ -64,7 +64,7 @@
         </PageSection>
 
         <PageSection title="行业评分榜" subtitle="保留行业上下文，避免只盯单票分数。">
-          <DataTable :columns="industryColumns" :rows="industryScores" row-key="industry" empty-text="暂无行业评分数据" caption="行业评分榜">
+          <DataTable :columns="industryColumns" :rows="industryScores" row-key="industry" :empty-text="industryEmptyText" caption="行业评分榜">
             <template #cell-score="{ row }">{{ formatNumber(row.score, 2) }}</template>
             <template #cell-top_stocks="{ row }">
               <div class="space-y-1">
@@ -80,7 +80,7 @@
       <PageSection title="自动短名单" subtitle="优先展示高分样本，并给出建议动作和下钻入口。">
         <DataTable :columns="shortlistColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无自动短名单" caption="自动短名单">
           <template #cell-ts_code="{ row }">
-            <RouterLink :to="`/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
+            <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
               {{ row.name || row.ts_code || '-' }}
             </RouterLink>
             <div class="mt-1 text-xs text-[var(--muted)]">{{ row.ts_code || '-' }}</div>
@@ -90,10 +90,10 @@
           <template #cell-position_label="{ row }"><StatusBadge :value="row.position_label || 'muted'" :label="row.position_label || '-'"/></template>
           <template #cell_actions="{ row }">
             <div class="flex flex-wrap gap-2">
-              <RouterLink :to="`/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 股票详情
               </RouterLink>
-              <RouterLink :to="`/research/decision?ts_code=${encodeURIComponent(row.ts_code || '')}`" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink :to="`/app/decision?ts_code=${encodeURIComponent(row.ts_code || '')}`" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 执行视角
               </RouterLink>
             </div>
@@ -148,7 +148,7 @@
           </InfoCard>
         </div>
         <div v-else class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--muted)]">
-          当前还没有理由包可展示。
+          {{ reasonPacketEmptyText }}
         </div>
       </PageSection>
     </div>
@@ -213,6 +213,29 @@ const degradedSources = computed(() =>
 const topIndustry = computed(() => industryScores.value[0]?.industry || '')
 const snapshotDateLabel = computed(() => `快照 ${payload.value.snapshot_date || '-'}`)
 const reasonPacketCount = computed(() => Object.keys(payload.value.reason_packets || {}).length)
+const shortlistEmptyDescription = computed(() => {
+  if (degradedSources.value.length) return `当前短名单为空，主要因为这些输入缺失或未准备好：${degradedSources.value.join('、')}。`
+  return '当前没有命中短名单，可能是无信号、无评分、过滤条件过严，或最新快照尚未生成。'
+})
+const macroRegimeHint = computed(() => {
+  if (macroRegime.value?.mode) return `模式 ${macroRegime.value.mode}`
+  if (degradedSources.value.length) return `缺口 ${degradedSources.value.slice(0, 2).join(' / ')}`
+  return '等待模式快照'
+})
+const macroRegimeDescription = computed(() => {
+  if (macroRegime.value?.summary) return macroRegime.value.summary
+  if (degradedSources.value.length) return `当前无法形成稳定市场模式摘要，缺失来源：${degradedSources.value.join('、')}。`
+  return '暂无市场模式摘要，需确认评分快照、宏观模式与行业评分是否已生成。'
+})
+const industryEmptyText = computed(() => {
+  if (degradedSources.value.includes('industry_scores')) return '行业评分缺失，当前无法生成行业排序。'
+  return '暂无行业评分数据'
+})
+const reasonPacketEmptyText = computed(() => {
+  if (!shortlist.value.length) return '当前没有短名单，因此没有对应理由包。'
+  if (degradedSources.value.length) return `理由包暂未生成，可能缺失来源：${degradedSources.value.join('、')}。`
+  return '当前还没有理由包可展示，可能尚未生成或未命中当前短名单。'
+})
 
 function resolvePacket(tsCode: string): ReasonPacket {
   return (payload.value.reason_packets || {})[tsCode] || { ts_code: tsCode, status: 'empty' }

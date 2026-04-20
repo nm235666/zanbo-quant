@@ -65,7 +65,7 @@
                 {{ isFetching ? '查询中...' : '应用筛选' }}
               </button>
               <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" @click="resetFilters">恢复默认筛选</button>
-              <RouterLink class="rounded-2xl border border-[var(--brand)] bg-white px-4 py-3 text-sm font-semibold text-[var(--brand)]" to="/research/workbench?from=signals_overview">
+              <RouterLink class="rounded-2xl border border-[var(--brand)] bg-white px-4 py-3 text-sm font-semibold text-[var(--brand)]" to="/app/workbench?from=signals_overview">
                 进入决策工作台
               </RouterLink>
             </div>
@@ -128,7 +128,7 @@
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)]" @click="goTimeline(row)">信号时间线</button>
-              <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)]" @click="goStateTimeline(row)">状态时间线</button>
+              <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)]" @click="goRelatedObject(row)">查看对象</button>
             </div>
           </InfoCard>
         </div>
@@ -154,7 +154,7 @@
           <template #cell_actions="{ row }">
             <div class="flex flex-wrap gap-2">
               <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goTimeline(row)">信号时间线</button>
-              <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goStateTimeline(row)">状态时间线</button>
+              <button class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]" @click="goRelatedObject(row)">查看对象</button>
             </div>
           </template>
         </DataTable>
@@ -246,13 +246,17 @@ function sourceSummary(row: Record<string, any>) {
 }
 
 function goTimeline(row: Record<string, any>) {
-  router.push({ path: '/signals/timeline', query: { signal_key: row.signal_key } })
+  router.push({ path: '/app/signals/timeline', query: { signal_key: row.signal_key } })
 }
 
-function goStateTimeline(row: Record<string, any>) {
-  const scope = row.signal_type === 'theme' ? 'theme' : 'stock'
-  const signalKey = scope === 'theme' && !String(row.signal_key || '').startsWith('theme:') ? `theme:${row.subject_name}` : row.signal_key
-  router.push({ path: '/signals/state-timeline', query: { signal_scope: scope, signal_key: signalKey } })
+function goRelatedObject(row: Record<string, any>) {
+  const tsCode = String(row.ts_code || '').trim().toUpperCase()
+  const subjectName = String(row.subject_name || '').trim()
+  if (row.signal_type === 'stock' && tsCode) {
+    router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
+    return
+  }
+  router.push({ path: '/app/signals/themes', query: { keyword: subjectName } })
 }
 
 function applyFilters() {

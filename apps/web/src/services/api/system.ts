@@ -207,12 +207,14 @@ export type NavigationGroupItem = {
   label: string
   desc: string
   permission: AppPermission | string
+  surface?: 'app' | 'admin'
 }
 
 export type NavigationGroupPayload = {
   id: string
   title: string
   order: number
+  surface?: 'app' | 'admin'
   items: NavigationGroupItem[]
 }
 

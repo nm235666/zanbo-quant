@@ -53,6 +53,41 @@
 - 优先补齐：
   - 明确 `confirm/reject/defer/watch` 到执行任务的自动映射与回写规则。
 
+### P0-5 核心判断页存在“结构性空白页”
+
+- 表面现状：页面框架、标题、卡片和 CTA 已存在，视觉上像是可用的结论页或动作页。  
+- 实际缺口：多页依赖的聚合结果未真正灌满，导致页面长期大面积显示 `暂无数据 / 数据不足 / 暂无记录`，属于“页面有了、结论没形成”。  
+- 影响：
+  - 前端展示业务会出现“能打开但不能判断”的假完成态
+  - smoke 通过也不能证明主链成立
+  - 用户无法在 `3 分钟判断` 与 `5 分钟动作` 目标内完成任务
+- 已验证高优先级页面：
+  - `/app/market`
+  - `/app/workbench`
+  - `/app/research/scoreboard`
+  - `/app/decision`
+  - `/app/macro-regime`
+  - `/app/allocation`
+- 证据：
+  - [structural_empty_pages_audit_2026-04-20.md](/home/zanbo/zanbotest/docs/structural_empty_pages_audit_2026-04-20.md)
+  - `apps/web/src/pages/market/MarketConclusionPage.vue`
+  - `apps/web/src/pages/research/ResearchWorkbenchPage.vue`
+  - `apps/web/src/pages/research/ScoreboardPage.vue`
+  - `apps/web/src/pages/research/DecisionBoardPage.vue`
+  - `apps/web/src/pages/macro/MacroRegimePage.vue`
+  - `apps/web/src/pages/portfolio/AllocationPage.vue`
+- 优先补齐：
+  - 先按“前端字段等待 -> 接口返回 -> 后端聚合根因”逐页排查
+  - 优先修 `market/workbench/decision/macro-regime/allocation`
+  - 当前进度：
+    - `market` 已开始切到真实主表并补显式状态字段
+    - `workbench` 已开始把“六问”状态化
+    - `scoreboard/decision` 已开始把泛化空文案拆成根因型说明
+    - `macro-regime/allocation` 已开始区分 `ready / insufficient_evidence / not_initialized`
+  - 仍未完成：
+    - P0 页的“核心区块有答案”覆盖率还没有门禁化
+    - 决策到执行的真实承接、宏观到配置的自动生成质量仍需继续补强
+
 ---
 
 ## 3. P1 不足项（补齐后明显更顺手）
@@ -122,9 +157,9 @@
 
 1. 候选漏斗并发裁决优先级落代码（P0-1）  
 2. 决策动作自动承接执行任务（P0-4）  
-3. 市场结论冲突裁决算法化（P0-2）  
-4. Quick Insight 硬 SLA 与输入边界守护（P0-3）  
-5. 主线新增页面 e2e 全覆盖并接门禁（P1-1）  
+3. 结构性空白页逐页修实（P0-5）  
+4. 市场结论冲突裁决算法化（P0-2）  
+5. Quick Insight 硬 SLA 与输入边界守护（P0-3）  
 
 ---
 
@@ -134,3 +169,28 @@
 - 目标态参考：`docs/project_final_state_projection_2026-04-15.md`  
 - 批次执行参考：`docs/decision_productization_batches_A_to_C_2026-04-18.md`  
 - 终局能力参考：`docs/uzi_skill_reuse_final_architecture_2026-04-18.md`  
+- 数据价值缺口参考：`docs/underutilized_data_audit_2026-04-20.md`
+- 结构性空白页参考：`docs/structural_empty_pages_audit_2026-04-20.md`
+
+---
+
+## 7. 补充说明：部分缺口的根因是“已有数据未进入主链”
+
+当前项目的部分功能缺口，并不只是“还没有某个模块”或“还没有某个页面”，而是系统里已经有一批高价值数据，但还没有被压缩成主链可执行能力。
+
+典型表现包括：
+
+- 有资金流数据，但还没有稳定转成买入确认、减仓触发和仓位压缩规则
+- 有风险情景数据，但还没有稳定转成动作卡中的失效条件与风控约束
+- 有公司事件数据，但还没有稳定转成事件驱动型候选晋级、观察或卖出理由
+- 有日报总结、群聊元数据、信号状态机、主题映射等数据，但仍停留在展示、摘要或治理层
+
+这类问题的特点是：
+
+- 表面上看“能力已经有了”
+- 实际上还没有进入 `workbench / market / funnel / decision / positions / allocation / review` 主链
+- 因而没有真正转成“今天买什么、卖什么、仓位多少、为什么、何时失效、宏观怎么应对”的用户可见结果
+
+详细的数据价值缺口、优先级和主链落点，统一以
+`docs/underutilized_data_audit_2026-04-20.md`
+为准。

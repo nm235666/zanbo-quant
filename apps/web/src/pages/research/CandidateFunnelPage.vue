@@ -67,13 +67,13 @@
           <div class="text-sm font-semibold text-[var(--ink)]">候选池暂无标的</div>
           <div class="mt-2 text-xs text-[var(--muted)]">候选标的尚未进入漏斗，或当前筛选条件无结果。</div>
           <div class="mt-4 flex flex-wrap justify-center gap-2">
-            <RouterLink to="/market/conclusion" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
+            <RouterLink to="/app/market" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
               查看市场结论获取方向
             </RouterLink>
-            <RouterLink to="/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               从信号中发现候选
             </RouterLink>
-            <RouterLink to="/chatrooms/investment" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/chatrooms/investment" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               从群聊候选池导入
             </RouterLink>
           </div>

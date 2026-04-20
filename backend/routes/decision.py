@@ -301,25 +301,41 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             action_payload["execution_status"] = execution_status
         if review_conclusion:
             action_payload["review_conclusion"] = review_conclusion
+        # Optional action card fields (Section 6.2)
+        position_recommendation = str(payload.get("position_recommendation", "") or "").strip()
+        expiry_condition = str(payload.get("expiry_condition", "") or "").strip()
+        priority = str(payload.get("priority", "") or "medium").strip()
+        if position_recommendation:
+            action_payload["position_recommendation"] = position_recommendation
+        if expiry_condition:
+            action_payload["expiry_condition"] = expiry_condition
+        if priority and priority in ("high", "medium", "low"):
+            action_payload["priority"] = priority
+        # Section 6.3: Standardized account-level position fields
+        position_pct_range = str(payload.get("position_pct_range", "") or "").strip()
+        target_position_pct = payload.get("target_position_pct")
+        risk_budget_pct = payload.get("risk_budget_pct")
+        if position_pct_range:
+            action_payload["position_pct_range"] = position_pct_range
+        if target_position_pct is not None:
+            try:
+                action_payload["target_position_pct"] = float(target_position_pct)
+            except (TypeError, ValueError):
+                pass
+        if risk_budget_pct is not None:
+            try:
+                action_payload["risk_budget_pct"] = float(risk_budget_pct)
+            except (TypeError, ValueError):
+                pass
+        # Mark whether position info is complete (used by gate logic)
+        has_position_info = bool(position_pct_range or action_payload.get("position_recommendation"))
+        action_payload["position_info_complete"] = has_position_info
+        if action_type in ("confirm",) and not has_position_info:
+            evidence_warnings.append("建议填写账户仓位区间（如 5-8%），可执行动作缺少仓位信息将降低执行追溯完整性")
         if idempotency_key:
             action_payload["idempotency_key"] = idempotency_key
-            # Check for duplicate idempotency key in recent actions
-            try:
-                from db_compat import get_db_connection
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT id FROM decision_actions WHERE action_payload_json::text LIKE %s ORDER BY created_at DESC LIMIT 1",
-                    (f'%"idempotency_key": "{idempotency_key}"%',)
-                )
-                existing = cur.fetchone()
-                cur.close()
-                conn.close()
-                if existing:
-                    handler._send_json({"ok": True, "action_id": existing[0], "deduplicated": True, "message": "重复提交已忽略（幂等键匹配）"})
-                    return True
-            except Exception:
-                pass  # If dedup check fails, proceed normally
+            # Idempotency dedup is now handled at the service layer in record_decision_action
+            # using a dedicated DB column + unique index — no LIKE query needed here.
         try:
             result = deps["record_decision_action"](
                 action_type=action_type,
@@ -371,6 +387,12 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
                         "auto_created": True,
                     }
                     # Writeback initial execution_status = "planned" to the decision action
+                else:
+                    # create_order returned ok=False — surface the failure in the response
+                    response["execution_task_warning"] = (
+                        f"执行任务自动创建失败: {order_result.get('error', '未知错误')} "
+                        f"（决策记录已保存，需手动创建执行任务）"
+                    )
                     try:
                         from db_compat import connect as _db_connect
                         import json as _json

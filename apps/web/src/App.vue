@@ -5,11 +5,13 @@
     </Transition>
   </RouterView>
   <AppToastContainer />
+  <AppDialogHost />
 </template>
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import { useRealtimeBus } from './shared/realtime/useRealtimeBus'
+import AppDialogHost from './shared/ui/AppDialogHost.vue'
 import AppToastContainer from './shared/ui/AppToastContainer.vue'
 
 useRealtimeBus()

@@ -10,10 +10,16 @@
       <div
         v-if="blockedContext"
         class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900"
+        data-upgrade-blocked="true"
+        :data-upgrade-mode="blockedContext.mode"
       >
         <div class="text-xs uppercase tracking-[0.14em] text-amber-700">当前受限任务</div>
         <div class="mt-1 text-base font-bold">{{ blockedContext.title }}</div>
         <div class="mt-2 leading-6">{{ blockedContext.message }}</div>
+        <div class="mt-2 rounded-xl border border-amber-300 bg-white/80 px-3 py-2 text-xs text-amber-900">
+          <div class="font-semibold">受限模式：{{ blockedContext.modeLabel }}</div>
+          <div class="mt-1 leading-5 text-amber-800">{{ blockedContext.modeHint }}</div>
+        </div>
         <div v-if="blockedContext.required.length" class="mt-3 flex flex-wrap gap-2 text-xs">
           <span class="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-800">
             需要权限：{{ blockedContext.required.join('、') }}
@@ -129,14 +135,14 @@
         <RouterLink :to="primaryEntry" class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white">{{ primaryEntryLabel }}</RouterLink>
         <RouterLink
           v-if="canUseTrend"
-          to="/research/trend"
+          to="/app/research/trend"
           class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
         >
           进入走势分析
         </RouterLink>
         <RouterLink
           v-if="canUseMultiRole"
-          to="/research/multi-role"
+          to="/app/research/multi-role"
           class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
         >
           进入多角色分析
@@ -172,6 +178,9 @@ type UpgradeBlockedContext = {
   missing: string[]
   message: string
   alternatives: Array<{ to: string; label: string }>
+  mode: 'app' | 'admin' | 'shared'
+  modeLabel: string
+  modeHint: string
 }
 
 const authStore = useAuthStore()
@@ -229,7 +238,11 @@ const primaryEntry = computed(() =>
     dynamicNavigationGroups: authStore.dynamicNavigationGroups,
   }),
 )
-const primaryEntryLabel = computed(() => (role.value === 'admin' ? '进入总控台' : '返回可用首页'))
+const primaryEntryLabel = computed(() => {
+  if (blockedFrom.value.startsWith('/admin/')) return '返回后台管理首页'
+  if (blockedFrom.value.startsWith('/app/')) return '返回研究工作台'
+  return role.value === 'admin' ? '进入总控台' : '返回可用首页'
+})
 const canUseTrend = computed(() => hasPermissionByEffective(authStore.effectivePermissions, role.value, 'trend_analyze'))
 const canUseMultiRole = computed(() => hasPermissionByEffective(authStore.effectivePermissions, role.value, 'multi_role_analyze'))
 const blockedFrom = computed(() => readQueryString(route.query as Record<string, unknown>, 'from', ''))
@@ -262,17 +275,19 @@ const enabledGroups = computed(() => groupPermissions(permissionCatalog.value.fi
 const lockedGroups = computed(() => groupPermissions(permissionCatalog.value.filter((item) => !authStore.effectivePermissions.includes(item.code))))
 
 const CAPABILITY_MATRIX = [
-  { label: '决策工作台', route: '/research/workbench', admin: true, pro: true, limited: false },
-  { label: '投研决策板', route: '/research/decision', admin: true, pro: true, limited: true },
-  { label: '候选漏斗', route: '/research/funnel', admin: true, pro: true, limited: false },
-  { label: '任务收件箱', route: '/research/task-inbox', admin: true, pro: true, limited: false },
-  { label: '股票评分', route: '/stocks/scores', admin: true, pro: true, limited: true },
-  { label: '市场结论', route: '/market/conclusion', admin: true, pro: true, limited: false },
-  { label: '信号图谱', route: '/signals/graph', admin: true, pro: true, limited: false },
-  { label: '组合管理', route: '/portfolio/*', admin: true, pro: true, limited: false },
-  { label: '用户管理', route: '/system/users', admin: true, pro: false, limited: false },
-  { label: '数据源监控', route: '/system/source-monitor', admin: true, pro: false, limited: false },
-  { label: '任务运维', route: '/system/jobs', admin: true, pro: false, limited: false },
+  { label: '决策工作台', route: '/app/workbench', admin: true, pro: true, limited: false },
+  { label: '投研决策板', route: '/app/decision', admin: true, pro: true, limited: true },
+  { label: '候选漏斗', route: '/app/funnel', admin: true, pro: true, limited: false },
+  { label: '任务收件箱', route: '/app/research/task-inbox', admin: true, pro: true, limited: false },
+  { label: '股票评分', route: '/app/stocks/scores', admin: true, pro: true, limited: true },
+  { label: '市场结论', route: '/app/market', admin: true, pro: true, limited: false },
+  { label: '信号图谱', route: '/app/signals/graph', admin: true, pro: true, limited: false },
+  { label: '组合管理', route: '/app/positions | /app/orders | /app/review | /app/allocation', admin: true, pro: true, limited: false },
+  { label: '宏观三周期状态', route: '/app/macro-regime', admin: true, pro: true, limited: false },
+  { label: '长线配置动作', route: '/app/allocation', admin: true, pro: true, limited: false },
+  { label: '用户管理', route: '/admin/system/users', admin: true, pro: false, limited: false },
+  { label: '数据源监控', route: '/admin/system/source-monitor', admin: true, pro: false, limited: false },
+  { label: '任务运维', route: '/admin/system/jobs-ops', admin: true, pro: false, limited: false },
 ]
 
 const PERMISSION_HINT_LABELS: Record<string, string> = {
@@ -293,83 +308,106 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
   const path = String(raw.split('?')[0] || '').trim()
   if (!path) return null
   const defaultAlternatives = [{ to: primaryEntry.value, label: primaryEntryLabel.value }]
-  const newsAlternatives = [{ to: '/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
-  const stockNewsAlternatives = [{ to: '/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
+  const newsAlternatives = [{ to: '/app/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
+  const stockNewsAlternatives = [{ to: '/app/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
   const rules: Array<{ test: (pathName: string) => boolean; title: string; required: string[]; alternatives: Array<{ to: string; label: string }> }> = [
     {
-      test: (pathName) => pathName === '/dashboard',
+      test: (pathName) => pathName === '/dashboard' || pathName === '/admin/dashboard',
       title: '访问总控台',
       required: ['admin_system'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName === '/intelligence/global-news' || pathName === '/intelligence/cn-news',
+      test: (pathName) =>
+        pathName === '/intelligence/global-news' ||
+        pathName === '/intelligence/cn-news' ||
+        pathName === '/app/intelligence/global-news' ||
+        pathName === '/app/intelligence/cn-news',
       title: '访问资讯中心',
       required: ['news_read'],
       alternatives: defaultAlternatives,
     },
     {
-      test: (pathName) => pathName === '/intelligence/stock-news',
+      test: (pathName) => pathName === '/intelligence/stock-news' || pathName === '/app/intelligence/stock-news',
       title: '访问个股新闻',
       required: ['stock_news_read'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName === '/intelligence/daily-summaries',
+      test: (pathName) => pathName === '/intelligence/daily-summaries' || pathName === '/app/intelligence/daily-summaries',
       title: '访问新闻日报总结',
       required: ['daily_summary_read'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/system/users') || pathName.startsWith('/system/invites'),
+      test: (pathName) =>
+        pathName.startsWith('/system/users') ||
+        pathName.startsWith('/system/invites') ||
+        pathName.startsWith('/admin/system/users') ||
+        pathName.startsWith('/admin/system/invites'),
       title: '访问用户与邀请码管理',
       required: ['admin_users'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/system/'),
+      test: (pathName) => pathName.startsWith('/system/') || pathName.startsWith('/admin/system/'),
       title: '访问系统管理模块',
       required: ['admin_system'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/macro'),
+      test: (pathName) => pathName.startsWith('/macro') || pathName.startsWith('/app/macro'),
       title: '访问宏观研究看板',
       required: ['macro_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/chatrooms/'),
+      test: (pathName) => pathName.startsWith('/chatrooms/') || pathName.startsWith('/app/chatrooms/'),
       title: '访问群聊投资分析',
       required: ['chatrooms_advanced'],
       alternatives: stockNewsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/research/multi-role') || pathName.startsWith('/research/roundtable'),
+      test: (pathName) =>
+        pathName.startsWith('/research/multi-role') ||
+        pathName.startsWith('/research/roundtable') ||
+        pathName.startsWith('/app/research/multi-role') ||
+        pathName.startsWith('/app/research/roundtable'),
       title: '访问多角色研究',
       required: ['multi_role_analyze'],
-      alternatives: [{ to: '/research/trend', label: '先看走势分析' }, ...defaultAlternatives],
+      alternatives: [{ to: '/app/research/trend', label: '先看走势分析' }, ...defaultAlternatives],
     },
     {
-      test: (pathName) => pathName.startsWith('/research/trend'),
+      test: (pathName) => pathName.startsWith('/research/trend') || pathName.startsWith('/app/research/trend'),
       title: '访问走势分析',
       required: ['trend_analyze'],
-      alternatives: [{ to: '/research/scoreboard', label: '先看评分总览' }, ...defaultAlternatives],
+      alternatives: [{ to: '/app/research/scoreboard', label: '先看评分总览' }, ...defaultAlternatives],
     },
     {
-      test: (pathName) => pathName.startsWith('/research/'),
+      test: (pathName) =>
+        pathName.startsWith('/research/') ||
+        pathName === '/app/workbench' ||
+        pathName === '/app/funnel' ||
+        pathName === '/app/decision' ||
+        pathName.startsWith('/app/research/') ||
+        pathName === '/app/market' ||
+        pathName === '/app/positions' ||
+        pathName === '/app/orders' ||
+        pathName === '/app/review' ||
+        pathName === '/app/allocation' ||
+        pathName === '/app/macro-regime',
       title: '访问高级投研能力',
       required: ['research_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/signals/'),
+      test: (pathName) => pathName.startsWith('/signals/') || pathName.startsWith('/app/signals/'),
       title: '访问信号研究与图谱',
       required: ['signals_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/stocks/'),
+      test: (pathName) => pathName.startsWith('/stocks/') || pathName.startsWith('/app/stocks/'),
       title: '访问股票高级模块',
       required: ['stocks_advanced'],
       alternatives: stockNewsAlternatives,
@@ -379,12 +417,38 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
   if (!matched) return null
   const required = matched.required
   const missing = required.filter((code) => !authStore.effectivePermissions.includes(code))
+  let mode: 'app' | 'admin' | 'shared' = 'shared'
+  if (path.startsWith('/admin/')) mode = 'admin'
+  else if (path.startsWith('/app/')) mode = 'app'
+  else if (path.startsWith('/system/') || path === '/dashboard') mode = 'admin'
+  else if (
+    path.startsWith('/research/') ||
+    path.startsWith('/portfolio/') ||
+    path.startsWith('/stocks/') ||
+    path.startsWith('/signals/') ||
+    path.startsWith('/intelligence/') ||
+    path.startsWith('/chatrooms/') ||
+    path.startsWith('/market/') ||
+    path.startsWith('/macro')
+  ) {
+    mode = 'app'
+  }
+  const modeLabel = mode === 'admin' ? '后台管理模式' : mode === 'app' ? '用户模式' : '公共共享页层'
+  const modeHint =
+    mode === 'admin'
+      ? '该页面属于后台治理主链，只有管理员或拥有 admin 权限的账号可访问；若仅需研究任务，可回到研究工作台继续主链。'
+      : mode === 'app'
+        ? '该页面属于研究主链，升级后可在用户模式内直接继续；若只是浏览资讯，可回到公开资讯中心。'
+        : '该页面属于公共共享页，不属于用户或后台主链，通常可通过登录、回调或升级继续。'
   return {
     title: matched.title,
     required: required.map((code) => PERMISSION_HINT_LABELS[code] || code),
     missing: missing.map((code) => PERMISSION_HINT_LABELS[code] || code),
     message: `系统已拦截“${path}”访问，当前账号权限不足。升级后可继续这条业务链路。`,
     alternatives: matched.alternatives,
+    mode,
+    modeLabel,
+    modeHint,
   }
 })
 

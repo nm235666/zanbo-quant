@@ -23,7 +23,7 @@ def _handle_quick_insight(handler, payload: dict) -> None:
     NOTE: This endpoint MUST NOT call any LLM — DB reads only.
     """
     import concurrent.futures
-    from db_compat import get_db_connection
+    import db_compat as _db
 
     ts_code = str(payload.get("ts_code", "") or "").strip().upper()
     if not ts_code:
@@ -51,31 +51,39 @@ def _handle_quick_insight(handler, payload: dict) -> None:
             "evidence_used": [],
             "status": "ok",
         }
-        conn = get_db_connection()
+        conn = _db.connect()
         cur = conn.cursor()
         try:
-            # Try to get decision score
+            # Try to get decision score (using stock_scores_daily as the real score source)
             try:
                 cur.execute(
                     """
-                    SELECT position_label, total_score, reason, risk
-                    FROM decision_stocks
-                    WHERE ts_code = %s
+                    SELECT score_grade, total_score, news_score, risk_score
+                    FROM stock_scores_daily
+                    WHERE ts_code = ?
                     ORDER BY score_date DESC LIMIT 1
                     """,
                     (ts_code,),
                 )
                 row = cur.fetchone()
                 if row:
-                    position_label, total_score, reason, risk = row
+                    score_grade, total_score, news_score, risk_score = row
+                    total_num = float(total_score or 0)
+                    risk_num = float(risk_score or 0)
+                    news_num = float(news_score or 0)
                     result["view"] = (
-                        f"{position_label or '中性'}: "
-                        f"{reason or '综合评分 ' + str(round(total_score or 0, 1))}"
+                        f"{score_grade or '中性'}：综合评分 {round(total_num, 1)}"
+                        f"（新闻 {round(news_num, 1)} · 风险 {round(risk_num, 1)}）"
                     )
-                    result["risk"] = risk or "无明确风险提示"
-                    result["evidence_used"].append("decision_score")
+                    if risk_num < 40:
+                        result["risk"] = f"风险评分偏低（{round(risk_num, 1)}），建议复核风险事件侧"
+                    elif risk_num > 70:
+                        result["risk"] = f"风险评分较高（{round(risk_num, 1)}），可作为加仓参考"
+                    else:
+                        result["risk"] = f"风险评分中性（{round(risk_num, 1)}）"
+                    result["evidence_used"].append("stock_scores_daily")
                     result["confidence_level"] = (
-                        "高" if total_score and total_score > 70 else "中"
+                        "高" if total_num > 70 else ("低" if total_num < 40 else "中")
                     )
                 else:
                     result["missing_evidence"].append("决策评分")
@@ -87,9 +95,9 @@ def _handle_quick_insight(handler, payload: dict) -> None:
                 cur.execute(
                     """
                     SELECT signal_type, signal_strength, direction
-                    FROM investment_signals
-                    WHERE ts_code = %s
-                    ORDER BY signal_date DESC LIMIT 1
+                    FROM investment_signal_tracker
+                    WHERE ts_code = ?
+                    ORDER BY latest_signal_date DESC LIMIT 1
                     """,
                     (ts_code,),
                 )
@@ -134,7 +142,7 @@ def _handle_quick_insight(handler, payload: dict) -> None:
             "view": f"{ts_code} 快速结论暂不可用（查询超时）",
             "risk": None,
             "suggested_action": "启动深度工作流",
-            "missing_evidence": ["decision_score", "investment_signal"],
+            "missing_evidence": ["决策评分", "投资信号"],
             "evidence_used": [],
             "elapsed_ms": elapsed_ms,
             "timeout": True,
@@ -142,7 +150,7 @@ def _handle_quick_insight(handler, payload: dict) -> None:
         return
 
     # Evidence completeness check
-    has_decision_score = "decision_score" in result.get("evidence_used", [])
+    has_decision_score = "stock_scores_daily" in result.get("evidence_used", [])
     has_signal = "investment_signal" in result.get("evidence_used", [])
 
     if not has_decision_score and not has_signal:

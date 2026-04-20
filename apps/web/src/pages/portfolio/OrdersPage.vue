@@ -22,7 +22,7 @@
 
         <div v-if="filterDecisionActionId" class="mb-3 flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
           <span class="font-semibold">当前过滤：决策动作 {{ filterDecisionActionId }}</span>
-          <RouterLink to="/portfolio/orders" class="ml-auto text-blue-500 underline">清除过滤</RouterLink>
+          <RouterLink to="/app/orders" class="ml-auto text-blue-500 underline">清除过滤</RouterLink>
         </div>
         <div v-if="isPending" class="py-8 text-center text-sm text-[var(--muted)]">加载中...</div>
         <div v-else-if="isError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
@@ -53,7 +53,7 @@
               >
                 <td class="py-3 pr-4 font-semibold text-[var(--ink)]">
                   <RouterLink
-                    :to="`/stocks/detail/${order.ts_code}`"
+                    :to="`/app/stocks/detail/${order.ts_code}`"
                     class="transition hover:text-[var(--brand)]"
                   >
                     {{ order.ts_code }}

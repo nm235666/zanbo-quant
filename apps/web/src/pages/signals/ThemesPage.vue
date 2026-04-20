@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="主题热点引擎" subtitle="主题热度、方向、预期、股票映射和状态机时间线统一收束。">
+  <AppShell title="主题热点引擎" subtitle="主题热度、方向、预期与股票映射统一收束；治理态状态机已下沉后台管理模式。">
     <div class="space-y-4">
       <div class="page-hero-grid">
         <div class="page-hero-card">
@@ -12,7 +12,7 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
               {{ isFetching ? '查询中...' : '刷新主题池' }}
             </button>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/signals/graph">
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/app/signals/graph">
               打开产业链图谱
             </RouterLink>
           </div>
@@ -115,7 +115,7 @@
           <template #action>
             <div class="flex flex-wrap gap-2">
               <button type="button" class="rounded-2xl bg-stone-800 px-4 py-2 text-white" @click="goSignalTimeline">信号时间线</button>
-              <button type="button" class="rounded-2xl bg-blue-700 px-4 py-2 text-white" @click="goStateTimeline">状态时间线</button>
+              <button type="button" class="rounded-2xl bg-blue-700 px-4 py-2 text-white" @click="goSignalOverview">主题信号总览</button>
               <button type="button" class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-white" @click="downloadImage">下载链路图</button>
             </div>
           </template>
@@ -235,21 +235,21 @@ function openDetail(item: Record<string, any>) {
 
 function goSignalTimeline() {
   if (!selectedItem.value) return
-  router.push({ path: '/signals/timeline', query: { signal_key: `theme:${selectedItem.value.theme_name}` } })
+  router.push({ path: '/app/signals/timeline', query: { signal_key: `theme:${selectedItem.value.theme_name}` } })
 }
 
-function goStateTimeline() {
+function goSignalOverview() {
   if (!selectedItem.value) return
-  router.push({ path: '/signals/state-timeline', query: { signal_scope: 'theme', signal_key: `theme:${selectedItem.value.theme_name}` } })
+  router.push({ path: '/app/signals/overview', query: { keyword: selectedItem.value.theme_name, signal_group: 'non_stock' } })
 }
 
 function goStock(stock: Record<string, any>) {
   const tsCode = String(stock.ts_code || '').trim().toUpperCase()
   if (tsCode) {
-    router.push({ path: `/stocks/detail/${encodeURIComponent(tsCode)}` })
+    router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
     return
   }
-  router.push({ path: '/stocks/list', query: { keyword: stock.stock_name || '' } })
+  router.push({ path: '/app/stocks/list', query: { keyword: stock.stock_name || '' } })
 }
 
 async function downloadImage() {

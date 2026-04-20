@@ -275,7 +275,7 @@ function buildRelatedLinks(item: Record<string, any> | null) {
   }
   if (String(item.report_type || '') === 'theme') {
     pushLink('theme', item.subject_key, `主题热点 · ${item.subject_name || item.subject_key}`)
-    pushLink('theme-state', `theme:${item.subject_key}`, '查看主题状态时间线')
+    pushLink('theme-state', `theme:${item.subject_key}`, '查看主题研究视图')
   }
   ;(parseJsonArray(context.theme_rows) || []).slice(0, 4).forEach((row) => {
     const themeName = Array.isArray(row) ? row[0] : row?.theme_name
@@ -290,19 +290,19 @@ function buildRelatedLinks(item: Record<string, any> | null) {
 
 function goLink(link: { type: string; value: string }) {
   if (link.type === 'stock') {
-    router.push({ path: `/stocks/detail/${encodeURIComponent(link.value)}` })
+    router.push({ path: `/app/stocks/detail/${encodeURIComponent(link.value)}` })
     return
   }
   if (link.type === 'signal') {
-    router.push({ path: '/signals/timeline', query: { signal_key: link.value } })
+    router.push({ path: '/app/signals/timeline', query: { signal_key: link.value } })
     return
   }
   if (link.type === 'theme') {
-    router.push({ path: '/signals/themes', query: { keyword: link.value } })
+    router.push({ path: '/app/signals/themes', query: { keyword: link.value } })
     return
   }
   if (link.type === 'theme-state') {
-    router.push({ path: '/signals/state-timeline', query: { signal_scope: 'theme', signal_key: link.value } })
+    router.push({ path: '/app/signals/themes', query: { keyword: link.value.replace(/^theme:/, '') } })
   }
 }
 

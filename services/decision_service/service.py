@@ -507,6 +507,25 @@ def _ensure_tables(conn) -> None:
         f"CREATE INDEX IF NOT EXISTS idx_{DECISION_STRATEGY_CANDIDATE_TABLE}_run ON {DECISION_STRATEGY_CANDIDATE_TABLE}(run_id, rank ASC, id ASC)"
     )
     conn.commit()
+    _ensure_decision_idempotency_column(conn)
+
+
+def _ensure_decision_idempotency_column(conn) -> None:
+    """Add idempotency_key column + unique index to decision_actions (idempotent)."""
+    try:
+        conn.execute(
+            "ALTER TABLE decision_actions ADD COLUMN IF NOT EXISTS idempotency_key TEXT DEFAULT NULL"
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_decision_actions_idem_key
+            ON decision_actions (idempotency_key)
+            WHERE idempotency_key IS NOT NULL
+            """
+        )
+        conn.commit()
+    except Exception:
+        pass  # Column may already exist in some environments
 
 
 def _get_control_row(conn) -> dict[str, Any]:
@@ -2448,13 +2467,24 @@ def record_decision_action(
         normalized_note = str(note or "").strip()
         normalized_actor = str(actor or "").strip() or "anonymous"
         normalized_snapshot_date = str(snapshot_date or "").strip() or _today_cn()
+        # Extract idempotency_key from payload for DB-level dedup (NOT stored only in JSON blob)
+        idempotency_key = str(payload.get("idempotency_key") or "").strip() if isinstance(payload, dict) else ""
         payload_json = json.dumps(payload or {}, ensure_ascii=False, default=str)
         now = _utc_now()
+        # DB-level idempotency check using dedicated column
+        if idempotency_key:
+            existing_row = conn.execute(
+                f"SELECT id FROM {DECISION_ACTION_TABLE} WHERE idempotency_key = ? LIMIT 1",
+                (idempotency_key,),
+            ).fetchone()
+            if existing_row:
+                existing_id = existing_row[0]
+                return {"ok": True, "id": existing_id, "action_id": f"action-{existing_id}", "deduplicated": True}
         conn.execute(
             f"""
             INSERT INTO {DECISION_ACTION_TABLE} (
-                action_type, ts_code, stock_name, note, actor, snapshot_date, action_payload_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                action_type, ts_code, stock_name, note, actor, snapshot_date, action_payload_json, idempotency_key, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 normalized_action_type,
@@ -2464,6 +2494,7 @@ def record_decision_action(
                 normalized_actor,
                 normalized_snapshot_date,
                 payload_json,
+                idempotency_key if idempotency_key else None,
                 now,
             ),
         )

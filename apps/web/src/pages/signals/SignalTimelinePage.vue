@@ -26,7 +26,7 @@
 
       <PageSection title="时间线结果" subtitle="图表用于总览，下面保留逐条事件明细。">
         <div v-if="filters.signal_key && !filteredEvents.length" class="mb-3 rounded-[18px] border border-[var(--line)] bg-[rgba(255,255,255,0.72)] px-4 py-3 text-sm text-[var(--muted)]">
-          当前 signal_key 暂无事件记录：<strong>{{ filters.signal_key }}</strong>。可切换到“状态时间线”查看状态机事件。
+          当前 signal_key 暂无事件记录：<strong>{{ filters.signal_key }}</strong>。可回到信号总览或主题页继续查看当前对象的研究侧信息。
         </div>
         <div class="space-y-2">
           <InfoCard

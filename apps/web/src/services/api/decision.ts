@@ -95,6 +95,18 @@ export async function recordDecisionAction(payload: {
   execution_status?: string
   /** Free-text review conclusion, recorded after action is evaluated */
   review_conclusion?: string
+  /** Section 6.2: Suggested position size, e.g. "5%-8%" */
+  position_recommendation?: string
+  /** Section 6.2: Condition under which this action card expires/invalidates */
+  expiry_condition?: string
+  /** Section 6.2: Priority level for this action card */
+  priority?: 'high' | 'medium' | 'low'
+  /** Section 6.3: Account-level position range, e.g. "5-8" meaning 5%-8% of portfolio */
+  position_pct_range?: string
+  /** Section 6.3: Specific target position percentage, e.g. 6.5 */
+  target_position_pct?: number
+  /** Section 6.3: Risk budget allocated to this position */
+  risk_budget_pct?: number
 }) {
   const { data } = await http.post('/api/decision/actions', payload)
   return data

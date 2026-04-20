@@ -31,7 +31,7 @@
               </div>
             </div>
             <RouterLink
-              :to="`/research/multi-role?job_id=${job.job_id || job.id}`"
+              :to="`/app/research/multi-role?job_id=${job.job_id || job.id}`"
               class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-xs font-semibold text-white transition hover:opacity-90"
             >
               审批
@@ -68,7 +68,7 @@
               </div>
             </div>
             <RouterLink
-              :to="`/research/multi-role?job_id=${job.job_id || job.id}&retry=1`"
+              :to="`/app/research/multi-role?job_id=${job.job_id || job.id}&retry=1`"
               class="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-100"
             >
               重试
@@ -108,7 +108,7 @@
               </div>
             </div>
             <RouterLink
-              to="/portfolio/review"
+              to="/app/review"
               class="rounded-2xl border border-teal-300 bg-teal-50 px-4 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
             >
               复盘

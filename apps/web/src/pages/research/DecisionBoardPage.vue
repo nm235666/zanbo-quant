@@ -15,7 +15,7 @@
             <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isSnapshotPending" @click="runSnapshot">
               {{ isSnapshotPending ? '生成中...' : '生成快照' }}
             </button>
-            <RouterLink to="/portfolio/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
               执行任务
             </RouterLink>
           </div>
@@ -194,7 +194,7 @@
               <div class="flex items-baseline gap-2">
                 <RouterLink
                   v-if="item.ts_code"
-                  :to="`/stocks/detail/${item.ts_code}`"
+                  :to="`/app/stocks/detail/${item.ts_code}`"
                   class="block truncate text-sm font-semibold text-[var(--ink)] hover:underline"
                 >
                   {{ item.stock_name || item.ts_code }}
@@ -216,7 +216,7 @@
                     'bg-gray-100 text-gray-500': item.execution_status === 'cancelled',
                   }"
                 >{{ { planned: '待执行', executing: '执行中', done: '已完成', cancelled: '已取消' }[item.execution_status as string] || '未关联' }}</span>
-                <RouterLink v-if="item.execution_status" :to="`/portfolio/orders?decision_action_id=${item.id}`" class="text-xs text-[var(--brand)] hover:underline">查看执行</RouterLink>
+                <RouterLink v-if="item.execution_status" :to="`/app/orders?decision_action_id=${item.id}`" class="text-xs text-[var(--brand)] hover:underline">查看执行</RouterLink>
               </div>
               <div v-if="item.note" class="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{{ item.note }}</div>
             </div>
@@ -271,7 +271,7 @@
               <span v-else class="text-[var(--muted)]">-</span>
               <RouterLink
                 v-if="row.payload?.context?.job_id"
-                :to="`/research/multi-role?restore_job=${row.payload.context.job_id}`"
+                :to="`/app/research/multi-role?restore_job=${row.payload.context.job_id}`"
                 class="rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-xs text-[var(--brand)] hover:underline"
               >
                 原始分析
@@ -279,7 +279,7 @@
             </div>
           </template>
         </DataTable>
-        <div v-else class="mt-3 text-sm text-[var(--muted)]">暂无裁决记录（需要 confirm 或 reject 类型的决策动作）。</div>
+        <div v-else class="mt-3 text-sm text-[var(--muted)]">{{ verdictEmptyText }}</div>
       </PageSection>
 
       <div class="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -309,7 +309,7 @@
               <div class="mt-3 flex flex-wrap gap-2">
                 <RouterLink
                   v-if="focusStock.ts_code"
-                  :to="`/stocks/detail/${focusStock.ts_code}`"
+                  :to="`/app/stocks/detail/${focusStock.ts_code}`"
                   class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                 >
                   打开股票详情
@@ -334,7 +334,7 @@
             </div>
           </InfoCard>
 
-          <InfoCard class="mt-3" title="验证层概览" :meta="validation.source || '-'" :description="validation.summary || '暂无验证数据'">
+          <InfoCard class="mt-3" title="验证层概览" :meta="validation.source || '-'" :description="validationDescription">
             <template #badge>
               <StatusBadge :value="validation.status || 'muted'" :label="validation.status || '-'" />
             </template>
@@ -382,7 +382,7 @@
           </div>
           <DataTable :columns="stockColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无短名单股票" caption="股票短名单">
             <template #cell-ts_code="{ row }">
-              <RouterLink :to="`/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
+              <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
                 {{ row.name || row.ts_code || '-' }}
               </RouterLink>
               <div class="mt-1 text-xs text-[var(--muted)]">{{ row.ts_code || '-' }}</div>
@@ -392,7 +392,7 @@
             <template #cell-position_label="{ row }"><StatusBadge :value="row.position_label || 'muted'" :label="row.position_label || '-'"/></template>
             <template #cell_actions="{ row }">
               <div class="flex flex-wrap gap-2">
-                <RouterLink :to="`/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                   股票详情
                 </RouterLink>
                 <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:opacity-60" :disabled="isActionPending" @click="submitManualAction('confirm', row.ts_code, `短名单确认：${row.name || row.ts_code || '-'}`, row.name || row.ts_code || '')">
@@ -430,6 +430,34 @@
         <div class="mt-3 grid gap-3 xl:grid-cols-2">
           <input v-model.trim="actionEvidenceDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="证据来源（可选），如「多角色分析 run_id=xxx」" />
           <input v-model.trim="actionReviewConclusionDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="复盘结论（可选），如「5日内涨幅超预期，模式有效」" />
+        </div>
+        <!-- 建议仓位 + 失效条件 + 优先级 (Section 6.2) -->
+        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            建议仓位（可选）
+            <input v-model="actionPositionPct"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
+              placeholder="如 5-8%（账户仓位区间）" />
+            <div v-if="positionSizeHint" class="mt-1 text-xs text-emerald-700">{{ positionSizeHint }}</div>
+            <div v-if="positionWarningVisible" class="mt-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              确认动作建议填写账户仓位区间（如 5-8%），否则执行追溯将标记为"仓位未完整"
+            </div>
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            失效条件（可选）
+            <input v-model="actionExpiryCondition"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
+              placeholder="如：收盘跌破5日线失效" />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            优先级
+            <select v-model="actionPriority"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm">
+              <option value="high">高</option>
+              <option value="medium">中</option>
+              <option value="low">低</option>
+            </select>
+          </label>
         </div>
         <QualityGate
           v-if="gateVisible"
@@ -477,6 +505,10 @@
               <span class="font-semibold text-[var(--muted)]">证据：</span>
               <span v-for="(ev, ei) in actionEvidenceSources(item)" :key="ei" class="metric-chip text-[11px]">{{ ev }}</span>
             </div>
+            <div v-if="item?.payload?.position_recommendation || item?.action_payload?.position_recommendation"
+              class="mt-0.5 text-xs text-sky-700">
+              仓位: {{ item?.payload?.position_recommendation || item?.action_payload?.position_recommendation }}
+            </div>
             <div v-if="actionReviewConclusion(item)" class="mt-2 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
               <span class="font-semibold">复盘：</span>{{ actionReviewConclusion(item) }}
             </div>
@@ -490,7 +522,7 @@
               </RouterLink>
               <RouterLink
                 v-if="item.ts_code"
-                :to="`/stocks/detail/${item.ts_code}`"
+                :to="`/app/stocks/detail/${item.ts_code}`"
                 class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
               >
                 查看股票详情
@@ -499,7 +531,7 @@
           </InfoCard>
         </div>
         <div v-else class="rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--muted)]">
-          暂无人工确认记录。
+          {{ manualConfirmEmptyText }}
         </div>
       </PageSection>
 
@@ -556,6 +588,7 @@ import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import QualityGate from '../../shared/ui/QualityGate.vue'
 import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
+import { fetchLatestAllocation } from '../../services/api/portfolio_allocation'
 import type { DecisionTraceReceipt } from '../../services/api/decision'
 import { fetchStockPrices } from '../../services/api/stocks'
 import { formatNumber } from '../../shared/utils/format'
@@ -594,6 +627,11 @@ const actionTsCodeDraft = ref('000001.SZ')
 const actionNoteDraft = ref('已确认')
 const actionEvidenceDraft = ref('')
 const actionReviewConclusionDraft = ref('')
+const actionPositionPct = ref('')     // e.g. "5%-8%"
+const actionExpiryCondition = ref('') // e.g. "收盘跌破5日线失效"
+const actionPriority = ref('medium')  // high/medium/low
+const actionPositionPctRange = ref('')    // e.g. "5-8"
+const actionTargetPositionPct = ref('')   // e.g. "6.5"
 const message = ref('')
 const snapshotStatus = ref<ActionStatus>('idle')
 const snapshotStatusText = ref('')
@@ -674,6 +712,24 @@ const calibrationQuery = useQuery({
   refetchInterval: () => (document.visibilityState === 'visible' ? 120_000 : 600_000),
 })
 
+const { data: allocationData } = useQuery({
+  queryKey: ['portfolio-allocation-decision'],
+  queryFn: fetchLatestAllocation,
+})
+const currentAllocation = computed(() => (allocationData.value as any)?.allocation ?? null)
+const positionSizeHint = computed(() => {
+  const alloc = currentAllocation.value
+  if (!alloc) return ''
+  return `当前单票上限 ${alloc.max_single_position_pct ?? 8}%，建议区间 ${Math.max(1, Math.floor((alloc.max_single_position_pct ?? 8) / 2))}%–${alloc.max_single_position_pct ?? 8}%`
+})
+
+// Section 6.3: Show warning when confirm is pending but no position info is filled
+const positionWarningVisible = computed(() =>
+  pendingGateActionType.value === 'confirm' &&
+  !actionPositionPct.value.trim() &&
+  !actionPositionPctRange.value.trim()
+)
+
 const toggleKillSwitchMutation = useMutation({
   mutationFn: (allowTrading: boolean) => setDecisionKillSwitch({ allow_trading: allowTrading, reason: killReasonDraft.value }),
   onSuccess: async () => {
@@ -730,6 +786,11 @@ const actionMutation = useMutation({
       },
       evidence_sources: evidenceSources,
       review_conclusion: reviewConclusion,
+      position_recommendation: actionPositionPct.value.trim() || undefined,
+      position_pct_range: actionPositionPctRange.value.trim() || undefined,
+      target_position_pct: actionTargetPositionPct.value ? Number(actionTargetPositionPct.value) : undefined,
+      expiry_condition: actionExpiryCondition.value.trim() || undefined,
+      priority: (actionPriority.value || 'medium') as 'high' | 'medium' | 'low',
     })
   },
   onSuccess: async (payload) => {
@@ -758,6 +819,8 @@ const actionMutation = useMutation({
     } else if (data?.execution_task_warning) {
       message.value = `动作已记录，执行任务创建提示：${data.execution_task_warning}`
     }
+    actionPositionPctRange.value = ''
+    actionTargetPositionPct.value = ''
     await refreshAll()
   },
   onError: (error: Error) => {
@@ -1132,13 +1195,31 @@ function actionReviewConclusion(item: Record<string, any>) {
 }
 
 const reviewItems = computed(() => calibrationItems.value.slice(0, 20))
+const validationDescription = computed(() => {
+  if (String(validation.value.summary || '').trim()) return String(validation.value.summary)
+  if (validation.value.latest?.error_message || validation.value.latest?.error_code) {
+    return `最近一次验证未完成：${validation.value.latest.error_message || validation.value.latest.error_code}`
+  }
+  if ((validation.value.done ?? 0) > 0 || (validation.value.error ?? 0) > 0) {
+    return `已回写 done ${validation.value.done ?? 0} / error ${validation.value.error ?? 0}，但还没有结构化验证摘要。`
+  }
+  return '暂无验证数据，可能是尚未触发验证、验证未回写，或当前快照没有产生可验证对象。'
+})
+const verdictEmptyText = computed(() => {
+  if (recentActions.value.length > 0) return '已有动作记录，但当前还没有 confirm / reject 类型的裁决，说明决策链停在观察或复核阶段。'
+  return '暂无裁决记录，说明当前还没有形成真正进入确认/拒绝分支的决策动作。'
+})
+const manualConfirmEmptyText = computed(() => {
+  if (recentActions.value.length > 0) return '当前已有动作，但还没有可回查的人工确认记录，可能尚未确认、未回写，或仍停留在观察/复核状态。'
+  return '暂无人工确认记录，因为当前尚未形成需要人工确认的决策动作。'
+})
 
 function actionRestoreLink(item: Record<string, any>) {
   const source = actionSource(item)
   const jobId = actionJobId(item)
   if (!jobId) return ''
-  if (source === 'multi_role_v3') return `/research/multi-role?restore_job=${encodeURIComponent(jobId)}`
-  if (source === 'chief_roundtable') return `/research/roundtable?job_id=${encodeURIComponent(jobId)}`
+  if (source === 'multi_role_v3') return `/app/research/multi-role?restore_job=${encodeURIComponent(jobId)}`
+  if (source === 'chief_roundtable') return `/app/research/roundtable?job_id=${encodeURIComponent(jobId)}`
   return ''
 }
 

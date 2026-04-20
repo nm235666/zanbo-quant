@@ -40,7 +40,7 @@
           </label>
           <div class="flex items-end gap-2">
             <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">查询</button>
-            <RouterLink to="/research/workbench?from=chatrooms_investment" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/workbench?from=chatrooms_investment" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
               进入决策工作台
             </RouterLink>
           </div>
@@ -223,7 +223,7 @@ function goDecisionFromChatroom(target: Record<string, any>, _roomItem?: Record<
     query.evidence = `[群聊倾向] ${name.slice(0, 30)}${biasLabel ? ' · ' + biasLabel : ''}`
     query.note = `群聊触发观察 · ${name.slice(0, 20)}${bias ? ' · ' + bias : ''}`
   }
-  router.push({ path: '/research/decision', query })
+  router.push({ path: '/app/decision', query })
 }
 
 watch(

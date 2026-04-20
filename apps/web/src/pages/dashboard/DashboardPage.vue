@@ -1,7 +1,7 @@
 <template>
-  <AppShell title="总控台" subtitle="把研究优先级、热点对象和关键数据健康度压进一个更轻的首页入口。">
+  <AppShell title="总控台" subtitle="后台治理首页：先看系统健康、积压与告警，再进入监控、任务和审计。">
     <div class="space-y-4">
-      <PageSection title="核心状态" subtitle="先判断今天最值得看什么，再决定是否进入更重的系统监控页面。">
+      <PageSection title="核心状态" subtitle="优先确认系统是否健康、数据是否可用，再决定要下钻哪个治理页。">
         <StatePanel
           v-if="dashboardError"
           tone="danger"
@@ -26,8 +26,8 @@
           description="当前没有拿到首页摘要，可以先刷新，或直接进入数据库审计和任务调度中心。"
         >
           <template #action>
-            <RouterLink to="/system/database-audit" class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white hover:bg-[var(--brand-ink)] transition">数据库审计</RouterLink>
-            <RouterLink to="/system/jobs-ops" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)] hover:bg-gray-50 transition">任务调度中心</RouterLink>
+            <RouterLink to="/admin/system/database-audit" class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white hover:bg-[var(--brand-ink)] transition">数据库审计</RouterLink>
+            <RouterLink to="/admin/system/jobs-ops" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)] hover:bg-gray-50 transition">任务调度中心</RouterLink>
           </template>
         </StatePanel>
         <div v-if="dashboard" class="grid gap-4 2xl:grid-cols-[1.05fr_0.95fr]">
@@ -43,10 +43,10 @@
               <span class="metric-chip text-[var(--muted)]">{{ formatDateTime(dashboard.generated_at).slice(5) }}</span>
             </div>
           </div>
-          <!-- 今日优先 -->
+          <!-- 业务波动摘要 -->
           <div class="rounded-xl border border-[var(--line)] bg-gradient-to-b from-[rgba(15,97,122,0.06)] to-white p-4 shadow-sm">
-            <div class="text-sm font-bold text-[var(--ink)]">今日优先研究对象</div>
-            <div class="mt-1 text-sm text-[var(--muted)]">优先判断评分领先标的、候选池和高重要新闻。</div>
+            <div class="text-sm font-bold text-[var(--ink)]">业务波动摘要</div>
+            <div class="mt-1 text-sm text-[var(--muted)]">总控台只摘要业务热点与异常线索，不承担研究主入口职责。</div>
             <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <InfoCard
                 v-for="item in priorityCards"
@@ -54,8 +54,6 @@
                 :title="item.title"
                 :meta="item.meta"
                 :description="item.description"
-                class="cursor-pointer"
-                @click="item.onClick?.()"
               >
                 <template #badge>
                   <StatusBadge :value="item.badgeTone" :label="item.badgeLabel" />
@@ -66,22 +64,20 @@
         </div>
       </PageSection>
 
-      <!-- 今日决策工作台 -->
-      <PageSection title="今日决策工作台" subtitle="决策待办、风险提示与最新动作，直达执行。">
+      <!-- 决策链路摘要 -->
+      <PageSection title="决策链路摘要" subtitle="这里只做监控摘要，不直接承接研究决策动作。">
         <div class="grid gap-3 sm:grid-cols-3">
-          <!-- Kill Switch 风险 -->
-          <RouterLink to="/research/decision" class="group rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[var(--brand)]/30 block">
+          <div class="rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm">
             <div class="flex items-center justify-between">
               <div class="text-xs font-bold text-[var(--muted)] uppercase tracking-wide">风险指示</div>
               <StatusBadge :value="killSwitchTone" :label="killSwitchLabel" />
             </div>
             <div class="mt-2 text-sm font-semibold text-[var(--ink)]">{{ killSwitch.reason || '当前无风险备注' }}</div>
-            <div class="mt-1 text-xs text-[var(--muted)]">点击进入决策板确认当前市场模式与仓位策略。</div>
-          </RouterLink>
-          <!-- 决策待办 -->
-          <RouterLink to="/research/decision" class="group rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md block">
+            <div class="mt-1 text-xs text-[var(--muted)]">若风险持续异常，应进入任务或审计页核查规则、数据和任务状态。</div>
+          </div>
+          <div class="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-4 shadow-sm">
             <div class="flex items-center justify-between">
-              <div class="text-xs font-bold text-amber-700 uppercase tracking-wide">决策待办</div>
+              <div class="text-xs font-bold text-amber-700 uppercase tracking-wide">待处理动作摘要</div>
               <StatusBadge value="warning" :label="`${pendingActions.length} 项`" />
             </div>
             <div v-if="pendingActions.length" class="mt-2 space-y-1">
@@ -92,11 +88,10 @@
               </div>
             </div>
             <div v-else class="mt-2 text-sm text-amber-700">暂无待处理观察/复核动作。</div>
-          </RouterLink>
-          <!-- 最新动作 -->
-          <RouterLink to="/research/decision" class="group rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-[var(--brand)]/30 block">
+          </div>
+          <div class="rounded-xl border border-[var(--line)] bg-white px-4 py-4 shadow-sm">
             <div class="flex items-center justify-between">
-              <div class="text-xs font-bold text-[var(--muted)] uppercase tracking-wide">最新动作</div>
+              <div class="text-xs font-bold text-[var(--muted)] uppercase tracking-wide">最新动作留痕</div>
               <StatusBadge value="brand" :label="`${recentVerdicts.length} 条`" />
             </div>
             <div v-if="recentVerdicts.length" class="mt-2 space-y-1">
@@ -106,12 +101,20 @@
               </div>
             </div>
             <div v-else class="mt-2 text-sm text-[var(--muted)]">暂无裁决动作记录。</div>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <RouterLink to="/admin/system/jobs-ops" class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-ink)]">
+            查看任务治理
+          </RouterLink>
+          <RouterLink to="/admin/system/database-audit" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+            查看数据审计
           </RouterLink>
         </div>
       </PageSection>
 
       <div class="grid gap-4 2xl:grid-cols-[1.35fr_0.65fr]">
-        <PageSection title="研究优先队列" subtitle="通过单一队列视角快速切换，把今天先研究什么说清楚。">
+        <PageSection title="业务热点摘要" subtitle="用于感知业务侧波动来源，不作为研究用户的工作台入口。">
           <div class="mb-3 flex flex-wrap gap-2">
             <button 
               class="rounded-full border px-3 py-2 text-xs font-semibold transition-all duration-200" 
@@ -142,8 +145,6 @@
               :title="item.title"
               :meta="item.meta"
               :description="item.description"
-              class="cursor-pointer"
-              @click="item.onClick?.()"
             >
               <template #badge>
                 <StatusBadge :value="item.badgeValue" :label="item.badgeLabel" />
@@ -152,7 +153,7 @@
           </TransitionGroup>
         </PageSection>
 
-        <PageSection title="快捷入口" subtitle="更重的运维和审计内容直接下沉到对应页面处理。">
+        <PageSection title="治理快捷入口" subtitle="所有下一步动作都落在后台治理页，不再从这里借道研究页面。">
           <div class="grid gap-3">
             <RouterLink 
               v-for="item in quickLinks" 
@@ -183,7 +184,7 @@
           </div>
         </PageSection>
 
-        <PageSection title="近期输出与直达入口" subtitle="首页只保留业务侧最常用的沉淀结果和处理入口。">
+        <PageSection title="近期输出与治理提示" subtitle="保留业务沉淀摘要，用来辅助治理判断，而不是承接研究流转。">
           <div class="grid gap-3">
             <InfoCard 
               title="新闻未评分" 
@@ -224,7 +225,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
@@ -236,7 +237,6 @@ import { fetchDecisionActions, fetchDecisionKillSwitch } from '../../services/ap
 import { formatDate, formatDateTime } from '../../shared/utils/format'
 import { useUiStore } from '../../stores/ui'
 
-const router = useRouter()
 const ui = useUiStore()
 const queueTab = ref<'scores' | 'candidates' | 'news'>('scores')
 
@@ -307,11 +307,11 @@ function decisionActionLabel(type: string) { return ACTION_LABEL_MAP[String(type
 function decisionActionTone(type: string) { return ACTION_TONE_MAP[String(type || '').toLowerCase()] || 'muted' }
 
 const quickLinks = [
-  { to: '/system/source-monitor', title: '数据源监控', desc: '排查实时链路、进程状态和 worker 健康度。' },
-  { to: '/system/jobs-ops', title: '任务调度中心', desc: '查看任务列表、dry-run、运行记录与告警。' },
-  { to: '/system/database-audit', title: '数据库审计', desc: '查看缺口、重复、未评分与陈旧数据。' },
-  { to: '/intelligence/stock-news', title: '个股新闻积压', desc: '直接处理未评分个股新闻与采集动作。' },
-  { to: '/intelligence/daily-summaries', title: '日报总结工作台', desc: '主动生成日报、查看模型链路与导出。' },
+  { to: '/admin/system/source-monitor', title: '数据源监控', desc: '排查实时链路、进程状态和 worker 健康度。' },
+  { to: '/admin/system/jobs-ops', title: '任务调度中心', desc: '查看任务列表、dry-run、运行记录与告警。' },
+  { to: '/admin/system/database-audit', title: '数据库审计', desc: '查看缺口、重复、未评分与陈旧数据。' },
+  { to: '/admin/system/llm-providers', title: 'LLM 节点管理', desc: '排查 provider、限流、联通性与默认路由。' },
+  { to: '/admin/system/users', title: '用户与权限', desc: '查看用户、配额、会话与角色分配状态。' },
 ]
 
 const priorityCards = computed(() => {
@@ -325,7 +325,6 @@ const priorityCards = computed(() => {
       description: topScore ? `行业内总分 ${Number(topScore.industry_total_score ?? topScore.total_score ?? 0).toFixed(1)}` : '等待评分数据',
       badgeTone: 'brand',
       badgeLabel: '评分领先',
-      onClick: topScore?.ts_code ? () => goStockDetail(topScore.ts_code) : undefined,
     },
     {
       title: topCandidate?.candidate_name || '暂无候选池热点',
@@ -333,15 +332,13 @@ const priorityCards = computed(() => {
       description: topCandidate ? `净分 ${topCandidate.net_score ?? 0}` : '等待候选池数据',
       badgeTone: topCandidate?.dominant_bias || 'info',
       badgeLabel: topCandidate?.dominant_bias || '候选池',
-      onClick: topCandidate ? () => goCandidate(topCandidate) : undefined,
     },
     {
       title: topNews?.title || '暂无高重要新闻',
       meta: topNews ? `${topNews.source || '-'} · ${formatDateTime(topNews.pub_date)}` : '资讯优先级',
-      description: topNews ? '优先阅读这条高重要度新闻，判断是否影响今日研究路径。' : '等待新闻数据',
+      description: topNews ? '这条资讯值得被后台重点观察，必要时再通知研究侧跟进。' : '等待新闻数据',
       badgeTone: topNews?.llm_finance_importance || 'muted',
       badgeLabel: topNews?.llm_finance_importance || '资讯',
-      onClick: topNews ? () => router.push('/intelligence/global-news') : undefined,
     },
   ]
 })
@@ -355,7 +352,6 @@ const activeQueueItems = computed(() => {
       description: `行业内总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`,
       badgeValue: 'info',
       badgeLabel: `总分 ${Number(item.industry_total_score ?? item.total_score ?? 0).toFixed(1)}`,
-      onClick: item.ts_code ? () => goStockDetail(item.ts_code) : undefined,
     }))
   }
   if (queueTab.value === 'candidates') {
@@ -366,17 +362,15 @@ const activeQueueItems = computed(() => {
       description: `净分 ${item.net_score ?? 0}`,
       badgeValue: item.dominant_bias || 'muted',
       badgeLabel: item.dominant_bias || '-',
-      onClick: () => goCandidate(item),
     }))
   }
   return (dashboard.value?.important_news || []).slice(0, 10).map((item: Record<string, any>) => ({
     key: `news-${item.id}`,
     title: item.title || '-',
     meta: `${item.source || '-'} · ${formatDateTime(item.pub_date)}`,
-    description: '优先判断是否影响今日研究路径。',
+    description: '优先确认是否需要触发数据补齐、规则核查或人工复核。',
     badgeValue: item.llm_finance_importance || 'muted',
     badgeLabel: item.llm_finance_importance || '未评级',
-    onClick: () => router.push('/intelligence/global-news'),
   }))
 })
 
@@ -402,20 +396,6 @@ async function reload() {
   }
 }
 
-function goStockDetail(tsCode: unknown) {
-  const code = String(tsCode || '').trim()
-  if (!code) return
-  router.push({ path: `/stocks/detail/${encodeURIComponent(code)}` })
-}
-
-function goCandidate(item: Record<string, any>) {
-  const name = String(item.candidate_name || '').trim()
-  if (String(item.candidate_type || '').trim() === '主题') {
-    router.push({ path: '/signals/themes', query: { keyword: name } })
-    return
-  }
-  router.push({ path: '/chatrooms/candidates', query: { keyword: name } })
-}
 </script>
 
 <style scoped>

@@ -3,6 +3,7 @@
 - 更新时间：`2026-04-10 UTC`
 - 数据库：`PostgreSQL 主库`
 - 文档定位：这是一份“项目全景图”，重点回答“我们现在有什么、这些数据怎么流转、系统每天自动在做什么”。
+- 当前前端结构说明：当前页面仍以单一应用承载，但后续信息架构与验收将按“用户模式 / 后台管理模式 / 公共共享页层”组织；详细规则见 [前端双模式重构执行方案](/home/zanbo/zanbotest/docs/frontend_dual_mode_refactor_plan_2026-04-20.md)。
 
 ## 1. 目前系统已经具备的能力
 
@@ -168,45 +169,53 @@
 ## 3. 前端页面清单
 
 > 说明：前端路由以 `apps/web/src/app/router.ts` 为准；下面列的是当前主入口页面。`/stocks/minline` 目前已重定向到 `/stocks/prices`，不再作为独立主入口维护。
+> 当前页面清单仍按现有真实路径列出，但后续将重构为“用户模式 / 后台管理模式 / 公共共享页层”三层结构。研究、判断、决策、执行、复盘相关页面归用户模式；权限、任务、配置、监控、审计相关页面归后台管理模式；登录、升级、错误、回调页归公共共享页层。
 
-| 页面 | 主要用途 |
-| --- | --- |
-| `/login` | 登录、注册、重置密码入口。 |
-| `/upgrade` | 权限不足时的升级/引导页。 |
-| `/dashboard` | Admin 轻量首页，聚合研究优先队列、热点对象、关键健康摘要与系统页面快捷入口。 |
-| `/stocks/list` | 股票列表查询。 |
-| `/stocks/scores` | 股票综合评分列表。 |
-| `/stocks/detail/:tsCode?` | 单只股票详情页。 |
-| `/stocks/prices` | 日线价格查询。 |
-| `/intelligence/stock-news` | 个股新闻查询。 |
-| `/intelligence/global-news` | 国际财经资讯。 |
-| `/intelligence/cn-news` | 国内财经资讯。 |
-| `/intelligence/daily-summaries` | 新闻日报总结。 |
-| `/research/reports` | 标准投研报告查询。 |
-| `/research/scoreboard` | 评分总览，聚合宏观模式、行业评分、自动短名单和入选理由。 |
-| `/research/decision` | 投研决策板，聚合评分、短名单、执行提示、验证和开关。 |
-| `/research/quant-factors` | 自研双引擎 AI 因子挖掘与回测工作台（business/research，A 股日频）。 |
-| `/research/trend` | LLM 股票走势分析。 |
-| `/research/multi-role` | LLM 多角色公司分析。 |
-| `/macro` | 宏观数据展示。 |
-| `/chatrooms/overview` | 群聊总览。 |
-| `/chatrooms/chatlog` | 群聊聊天记录查询。 |
-| `/chatrooms/investment` | 群聊投资倾向总览。 |
-| `/chatrooms/candidates` | 股票候选池（近 7 天累计）。 |
-| `/signals/overview` | 投资信号总览。 |
-| `/signals/themes` | 主题热点与主题维度信号。 |
-| `/signals/graph` | 产业链图谱，浏览主题 / 行业 / 股票关系。 |
-| `/signals/timeline` | 信号时间线。 |
-| `/signals/audit` | 信号审计视图。 |
-| `/signals/quality-config` | 信号质量规则与屏蔽配置。 |
-| `/signals/state-timeline` | 信号状态机时间线。 |
-| `/system/source-monitor` | 数据源与运行进程监控。 |
-| `/system/jobs-ops` | 任务定义、运行记录与告警。 |
-| `/system/llm-providers` | LLM provider 管理。 |
-| `/system/permissions` | 角色权限策略与日配额配置。 |
-| `/system/database-audit` | 数据库质量监控与审计。 |
-| `/system/invites` | 邀请码管理。 |
-| `/system/users` | 用户、会话、配额与审计日志管理。 |
+| 页面 | 模式归属 | 主要用途 |
+| --- | --- | --- |
+| `/login` | 公共共享页层 | 登录、注册、重置密码入口。 |
+| `/upgrade` | 公共共享页层 | 权限不足时的升级/引导页。 |
+| `/dashboard` | 后台管理模式 | Admin 总控台，聚合系统健康、业务波动摘要、关键健康摘要与治理页面快捷入口。 |
+| `/stocks/list` | 用户模式 | 股票列表查询。 |
+| `/stocks/scores` | 用户模式 | 股票综合评分列表。 |
+| `/stocks/detail/:tsCode?` | 用户模式 | 单只股票详情页。 |
+| `/stocks/prices` | 用户模式 | 日线价格查询。 |
+| `/intelligence/stock-news` | 用户模式 | 个股新闻查询。 |
+| `/intelligence/global-news` | 用户模式 | 国际财经资讯。 |
+| `/intelligence/cn-news` | 用户模式 | 国内财经资讯。 |
+| `/intelligence/daily-summaries` | 用户模式 | 新闻日报总结。 |
+| `/research/workbench` | 用户模式 | 研究用户默认工作台与主入口。 |
+| `/research/reports` | 用户模式 | 标准投研报告查询。 |
+| `/research/scoreboard` | 用户模式 | 评分总览，聚合宏观模式、行业评分、自动短名单和入选理由。 |
+| `/research/funnel` | 用户模式 | 候选漏斗与候选流转管理。 |
+| `/research/decision` | 用户模式 | 投研决策板，聚合评分、短名单、执行提示、验证和开关。 |
+| `/research/quant-factors` | 用户模式 | 自研双引擎 AI 因子挖掘与回测工作台（business/research，A 股日频）。 |
+| `/research/trend` | 用户模式 | LLM 股票走势分析。 |
+| `/research/multi-role` | 用户模式 | LLM 多角色公司分析。 |
+| `/market/conclusion` | 用户模式 | 市场结论单口径输出页。 |
+| `/portfolio/positions` | 用户模式 | 持仓结构与仓位查看。 |
+| `/portfolio/orders` | 用户模式 | 执行单与执行状态跟踪。 |
+| `/portfolio/review` | 用户模式 | 复盘与策略修正。 |
+| `/portfolio/allocation` | 用户模式 | 长线配置动作与组合层应对。 |
+| `/macro` | 用户模式 | 宏观数据展示。 |
+| `/chatrooms/overview` | 用户模式 | 群聊总览。 |
+| `/chatrooms/chatlog` | 用户模式 | 群聊聊天记录查询。 |
+| `/chatrooms/investment` | 用户模式 | 群聊投资倾向总览。 |
+| `/chatrooms/candidates` | 用户模式 | 股票候选池（近 7 天累计）。 |
+| `/signals/overview` | 用户模式 | 投资信号总览。 |
+| `/signals/themes` | 用户模式 | 主题热点与主题维度信号。 |
+| `/signals/graph` | 用户模式 | 产业链图谱，浏览主题 / 行业 / 股票关系。 |
+| `/signals/timeline` | 用户模式 | 信号时间线。 |
+| `/signals/audit` | 后台管理模式 | 信号审计视图。 |
+| `/signals/quality-config` | 后台管理模式 | 信号质量规则与屏蔽配置。 |
+| `/signals/state-timeline` | 后台管理模式 | 信号状态机时间线。 |
+| `/system/source-monitor` | 后台管理模式 | 数据源与运行进程监控。 |
+| `/system/jobs-ops` | 后台管理模式 | 任务定义、运行记录与告警。 |
+| `/system/llm-providers` | 后台管理模式 | LLM provider 管理。 |
+| `/system/permissions` | 后台管理模式 | 角色权限策略与日配额配置。 |
+| `/system/database-audit` | 后台管理模式 | 数据库质量监控与审计。 |
+| `/system/invites` | 后台管理模式 | 邀请码管理。 |
+| `/system/users` | 后台管理模式 | 用户、会话、配额与审计日志管理。 |
 
 ## 4. 现在系统的数据流转方式
 

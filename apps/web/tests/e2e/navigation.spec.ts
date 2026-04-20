@@ -32,20 +32,27 @@ test.describe('导航与菜单', () => {
   })
 
   test('首页加载正常', async ({ page }) => {
-    await page.goto('/dashboard')
+    await page.goto('/admin/dashboard')
     await page.waitForTimeout(3000)
     await expect(page.locator('body')).toBeVisible()
+    await expect(page.locator('[data-shell-surface="admin"]')).toBeVisible()
+    await expect(page.locator('[data-shell-nav="admin"]')).toContainText('系统治理')
+    await expect(page.locator('[data-shell-nav="admin"]')).not.toContainText('研究输入')
     const hasStatCards = await page.locator('[class*="rounded-\[var(--radius-md)\]"]').count() > 0
     expect(hasStatCards).toBeTruthy()
   })
 
   test('页面跳转正常', async ({ page }) => {
-    await page.goto('/signals/overview')
+    await page.goto('/app/signals/overview')
     await page.waitForTimeout(3000)
     await expect(page.locator('body')).toBeVisible()
+    await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
+    await expect(page.locator('[data-shell-nav="app"]')).toContainText('研究输入')
+    await expect(page.locator('[data-shell-nav="app"]')).not.toContainText('系统治理')
     
-    await page.goto('/intelligence/global-news')
+    await page.goto('/app/intelligence/global-news')
     await page.waitForTimeout(3000)
     await expect(page.locator('body')).toBeVisible()
+    await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   })
 })

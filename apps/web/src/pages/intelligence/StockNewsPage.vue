@@ -317,15 +317,15 @@ async function rescoreRow(item: Record<string, any>) {
 
 function goDetail(tsCode: string) {
   if (!tsCode) return
-  router.push({ path: `/stocks/detail/${encodeURIComponent(tsCode)}` })
+  router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
 }
 
 function goSignal(tsCode: string, companyName: string) {
   if (tsCode) {
-    router.push({ path: '/signals/timeline', query: { signal_key: `stock:${tsCode}` } })
+    router.push({ path: '/app/signals/timeline', query: { signal_key: `stock:${tsCode}` } })
     return
   }
-  router.push({ path: '/signals/overview', query: { keyword: companyName, entity_type: '股票' } })
+  router.push({ path: '/app/signals/overview', query: { keyword: companyName, entity_type: '股票' } })
 }
 
 function syncRouteFromQuery() {

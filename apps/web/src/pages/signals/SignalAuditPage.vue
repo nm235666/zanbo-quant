@@ -30,8 +30,8 @@
               <StatusBadge :value="row.direction" :label="row.direction || '-'" />
             </template>
             <div class="mt-3 flex flex-wrap gap-2 text-xs">
-              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 font-semibold text-[var(--brand)]" :to="`/signals/overview?keyword=${encodeURIComponent(row.ts_code || row.display_name || row.subject_name || '')}`">查看信号详情</RouterLink>
-              <RouterLink class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 font-semibold text-[var(--muted)]" :to="`/signals/timeline?entity_name=${encodeURIComponent(row.display_name || row.subject_name || '')}&scope=${scope}`">查看时间线</RouterLink>
+              <RouterLink class="rounded-full border border-[var(--line)] bg-white px-3 py-2 font-semibold text-[var(--brand)]" :to="`/admin/system/signals-state-timeline?keyword=${encodeURIComponent(row.ts_code || row.display_name || row.subject_name || '')}`">查看信号详情</RouterLink>
+              <RouterLink class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 font-semibold text-[var(--muted)]" :to="`/admin/system/signals-state-timeline?entity_name=${encodeURIComponent(row.display_name || row.subject_name || '')}&scope=${scope}`">查看时间线</RouterLink>
             </div>
           </InfoCard>
         </div>
@@ -40,8 +40,8 @@
             <div>
               <div class="font-semibold text-[var(--ink)]">{{ row.display_name || row.subject_name || '-' }}</div>
               <div class="mt-1 flex flex-wrap gap-2 text-xs">
-                <RouterLink class="text-[var(--brand)]" :to="`/signals/overview?keyword=${encodeURIComponent(row.ts_code || row.display_name || row.subject_name || '')}`">查看信号详情</RouterLink>
-                <RouterLink class="text-[var(--brand)]" :to="`/signals/timeline?entity_name=${encodeURIComponent(row.display_name || row.subject_name || '')}&scope=${scope}`">查看时间线</RouterLink>
+                <RouterLink class="text-[var(--brand)]" :to="`/admin/system/signals-state-timeline?keyword=${encodeURIComponent(row.ts_code || row.display_name || row.subject_name || '')}`">查看信号详情</RouterLink>
+                <RouterLink class="text-[var(--brand)]" :to="`/admin/system/signals-state-timeline?entity_name=${encodeURIComponent(row.display_name || row.subject_name || '')}&scope=${scope}`">查看时间线</RouterLink>
               </div>
             </div>
           </template>
