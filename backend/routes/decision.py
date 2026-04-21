@@ -305,12 +305,15 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         position_recommendation = str(payload.get("position_recommendation", "") or "").strip()
         expiry_condition = str(payload.get("expiry_condition", "") or "").strip()
         priority = str(payload.get("priority", "") or "medium").strip()
+        trigger_reason = str(payload.get("trigger_reason", "") or "").strip()
         if position_recommendation:
             action_payload["position_recommendation"] = position_recommendation
         if expiry_condition:
             action_payload["expiry_condition"] = expiry_condition
         if priority and priority in ("high", "medium", "low"):
             action_payload["priority"] = priority
+        if trigger_reason:
+            action_payload["trigger_reason"] = trigger_reason
         # Section 6.3: Standardized account-level position fields
         position_pct_range = str(payload.get("position_pct_range", "") or "").strip()
         target_position_pct = payload.get("target_position_pct")

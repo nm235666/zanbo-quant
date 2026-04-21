@@ -63,6 +63,12 @@ class ProjectionMaturityTest(unittest.TestCase):
         self.assertIn("execution_status", content, "execution_status must be wired in decision route")
         self.assertIn("review_conclusion", content, "review_conclusion must be wired in decision route")
 
+    def test_decision_route_accepts_trigger_reason(self):
+        """Target §6.2: trigger_reason must be a first-class structured field in decision route."""
+        content = _read("backend/routes/decision.py")
+        self.assertIn("trigger_reason", content, "trigger_reason must be extracted from payload")
+        self.assertIn('payload.get("trigger_reason"', content, "trigger_reason must be read from POST body")
+
     # ───────────────────────────────────────────────
     # Criterion 2: 决策可追踪率
     # ───────────────────────────────────────────────
@@ -110,6 +116,14 @@ class ProjectionMaturityTest(unittest.TestCase):
         """DecisionBoardPage.vue must read and display position_pct_range on recent-action cards (§6.2)."""
         content = _read("apps/web/src/pages/research/DecisionBoardPage.vue")
         self.assertIn("item?.payload?.position_pct_range", content, "position_pct_range readback must be present")
+
+    def test_decision_board_displays_trigger_reason(self):
+        """Target §6.2 action card 'trigger_reason' must be collected AND read back on recent-action cards."""
+        content = _read("apps/web/src/pages/research/DecisionBoardPage.vue")
+        self.assertIn("actionTriggerReasonDraft", content, "trigger_reason input draft must exist")
+        self.assertIn("trigger_reason", content, "trigger_reason must appear in mutation payload/template")
+        self.assertIn("item?.payload?.trigger_reason", content, "trigger_reason readback chip must reference item.payload")
+        self.assertIn("触发原因", content, "触发原因 label must appear on recent-action chip")
 
     # ───────────────────────────────────────────────
     # Criterion 3: 闭环完成率 — cross-module bridges

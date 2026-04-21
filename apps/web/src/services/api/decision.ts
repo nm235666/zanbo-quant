@@ -101,6 +101,8 @@ export async function recordDecisionAction(payload: {
   expiry_condition?: string
   /** Section 6.2: Priority level for this action card */
   priority?: 'high' | 'medium' | 'low'
+  /** Section 6.2: Structured trigger reason (theme / signal / event / risk) */
+  trigger_reason?: string
   /** Section 6.3: Account-level position range, e.g. "5-8" meaning 5%-8% of portfolio */
   position_pct_range?: string
   /** Section 6.3: Specific target position percentage, e.g. 6.5 */

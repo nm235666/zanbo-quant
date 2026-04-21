@@ -431,6 +431,9 @@
           <input v-model.trim="actionEvidenceDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="证据来源（可选），如「多角色分析 run_id=xxx」" />
           <input v-model.trim="actionReviewConclusionDraft" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="复盘结论（可选），如「5日内涨幅超预期，模式有效」" />
         </div>
+        <div class="mt-3">
+          <input v-model.trim="actionTriggerReasonDraft" class="w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm" placeholder="触发原因（可选），如「政策利好 + 主题资金确认 + 行业轮动」" />
+        </div>
         <!-- 建议仓位 + 失效条件 + 优先级 (Section 6.2) -->
         <div class="mt-3 grid gap-3 sm:grid-cols-3">
           <label class="text-sm font-semibold text-[var(--ink)]">
@@ -521,6 +524,10 @@
               <span v-if="item?.payload?.expiry_condition || item?.action_payload?.expiry_condition"
                 class="metric-chip text-rose-700">
                 失效 {{ item?.payload?.expiry_condition || item?.action_payload?.expiry_condition }}
+              </span>
+              <span v-if="item?.payload?.trigger_reason || item?.action_payload?.trigger_reason"
+                class="metric-chip text-amber-700">
+                触发原因 {{ item?.payload?.trigger_reason || item?.action_payload?.trigger_reason }}
               </span>
             </div>
             <div v-if="actionReviewConclusion(item)" class="mt-2 rounded-[14px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
@@ -641,6 +648,7 @@ const actionTsCodeDraft = ref('000001.SZ')
 const actionNoteDraft = ref('已确认')
 const actionEvidenceDraft = ref('')
 const actionReviewConclusionDraft = ref('')
+const actionTriggerReasonDraft = ref('')
 const actionPositionPct = ref('')     // e.g. "5%-8%"
 const actionExpiryCondition = ref('') // e.g. "收盘跌破5日线失效"
 const actionPriority = ref('medium')  // high/medium/low
@@ -805,6 +813,7 @@ const actionMutation = useMutation({
       target_position_pct: actionTargetPositionPct.value ? Number(actionTargetPositionPct.value) : undefined,
       expiry_condition: actionExpiryCondition.value.trim() || undefined,
       priority: (actionPriority.value || 'medium') as 'high' | 'medium' | 'low',
+      trigger_reason: actionTriggerReasonDraft.value.trim() || undefined,
     })
   },
   onSuccess: async (payload) => {
