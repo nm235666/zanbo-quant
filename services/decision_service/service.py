@@ -426,6 +426,7 @@ def _ensure_tables(conn) -> None:
             actor TEXT NOT NULL DEFAULT '',
             snapshot_date TEXT NOT NULL DEFAULT '',
             action_payload_json TEXT NOT NULL DEFAULT '{{}}',
+            idempotency_key TEXT DEFAULT NULL,
             created_at TEXT NOT NULL
         )
         """
@@ -511,21 +512,49 @@ def _ensure_tables(conn) -> None:
 
 
 def _ensure_decision_idempotency_column(conn) -> None:
-    """Add idempotency_key column + unique index to decision_actions (idempotent)."""
+    """Add idempotency_key column + unique index to decision_actions (idempotent).
+
+    SQLite does not support ``ALTER TABLE ADD COLUMN IF NOT EXISTS``; detect via
+    PRAGMA/information_schema first, then only issue a plain ADD COLUMN when missing.
+    """
     try:
-        conn.execute(
-            "ALTER TABLE decision_actions ADD COLUMN IF NOT EXISTS idempotency_key TEXT DEFAULT NULL"
-        )
-        conn.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_decision_actions_idem_key
-            ON decision_actions (idempotency_key)
-            WHERE idempotency_key IS NOT NULL
-            """
-        )
+        has_column = False
+        try:
+            rows = conn.execute("PRAGMA table_info(decision_actions)").fetchall()
+            for row in rows:
+                name = row[1] if not isinstance(row, dict) else row.get("name")
+                if name == "idempotency_key":
+                    has_column = True
+                    break
+        except Exception:
+            try:
+                row = conn.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name='decision_actions' AND column_name='idempotency_key' LIMIT 1"
+                ).fetchone()
+                has_column = bool(row)
+            except Exception:
+                has_column = False
+        if not has_column:
+            try:
+                conn.execute(
+                    "ALTER TABLE decision_actions ADD COLUMN idempotency_key TEXT DEFAULT NULL"
+                )
+            except Exception:
+                pass
+        try:
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_decision_actions_idem_key
+                ON decision_actions (idempotency_key)
+                WHERE idempotency_key IS NOT NULL
+                """
+            )
+        except Exception:
+            pass
         conn.commit()
     except Exception:
-        pass  # Column may already exist in some environments
+        pass
 
 
 def _get_control_row(conn) -> dict[str, Any]:

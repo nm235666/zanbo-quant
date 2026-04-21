@@ -922,6 +922,8 @@ const currentGateResult = computed<GateResult>(() =>
     ts_code: actionTsCodeDraft.value,
     note: actionNoteDraft.value,
     evidence_sources: actionEvidenceDraft.value,
+    position_pct_range: actionPositionPctRange.value,
+    position_recommendation: actionPositionPct.value,
     decision_context_from: decisionContext.value.from,
     snapshot_date: snapshotDate.value,
   }),
@@ -1004,6 +1006,8 @@ function submitManualAction(actionType: 'confirm' | 'reject' | 'defer' | 'watch'
     ts_code: normalizedTsCode,
     note: String(note || actionNoteDraft.value || '').trim(),
     evidence_sources: actionEvidenceDraft.value,
+    position_pct_range: actionPositionPctRange.value,
+    position_recommendation: actionPositionPct.value,
     decision_context_from: decisionContext.value.from,
     snapshot_date: snapshotDate.value,
   }

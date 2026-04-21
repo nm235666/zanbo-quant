@@ -32,7 +32,7 @@ class FrontendApiSmokeTest(unittest.TestCase):
         upgrade_page = (ROOT / "apps/web/src/pages/auth/UpgradePage.vue").read_text(encoding="utf-8")
 
         self.assertIn("export function resolveDefaultLandingPath", navigation_ts)
-        self.assertIn("return '/intelligence/global-news'", navigation_ts)
+        self.assertIn("return '/app/intelligence/global-news'", navigation_ts)
         self.assertIn("resolveDefaultLandingPath", login_page)
         self.assertIn("authStore.permissionCatalog", upgrade_page)
         self.assertIn("auth.trend_quota", upgrade_page)
@@ -94,6 +94,15 @@ class FrontendApiSmokeTest(unittest.TestCase):
         self.assertIn("关系图", graph_page_ts)
         self.assertIn("双中心", graph_page_ts)
         self.assertIn("以此为中心", graph_page_ts)
+
+    def test_workbench_signals_permission_degrades_with_explained_alternatives(self):
+        workbench_page = (ROOT / "apps/web/src/pages/research/ResearchWorkbenchPage.vue").read_text(encoding="utf-8")
+        self.assertIn("当前账号暂无信号研究权限", workbench_page)
+        self.assertIn("signalsAccessBlocked", workbench_page)
+        self.assertIn("查看市场结论", workbench_page)
+        self.assertIn("查看候选漏斗", workbench_page)
+        self.assertIn("去决策板", workbench_page)
+        self.assertIn("retry: false", workbench_page)
 
     def test_quant_routes_exist_in_api_catalog(self):
         server_py = (ROOT / "backend/server.py").read_text(encoding="utf-8")

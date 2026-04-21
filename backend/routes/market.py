@@ -10,23 +10,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    try:
-        if _db.using_postgres():
-            row = conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s",
-                (table_name,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,),
-            ).fetchone()
-        return bool(row and int(row[0] or 0) > 0)
-    except Exception:
-        return False
-
-
 def _row_to_dict(row) -> dict:
     if row is None:
         return {}
@@ -68,7 +51,7 @@ def _dedupe_keep_order(items: list[str], *, limit: int = 5) -> list[str]:
 
 def _first_existing_table(conn, table_names: list[str]) -> str:
     for table_name in table_names:
-        if _table_exists(conn, table_name):
+        if _db.table_exists(conn, table_name):
             return table_name
     return ""
 
@@ -696,7 +679,8 @@ def _get_market_conclusion(lookback_hours: int = 72) -> dict[str, Any]:
     try:
         conn = _db.connect()
         try:
-            summary_table = "news_daily_summaries" if _table_exists(conn, "news_daily_summaries") else ""
+            _db.apply_row_factory(conn)
+            summary_table = "news_daily_summaries" if _db.table_exists(conn, "news_daily_summaries") else ""
             signal_table = _first_existing_table(
                 conn,
                 [
@@ -705,11 +689,11 @@ def _get_market_conclusion(lookback_hours: int = 72) -> dict[str, Any]:
                     "investment_signal_tracker",
                 ],
             )
-            theme_table = "theme_hotspot_tracker" if _table_exists(conn, "theme_hotspot_tracker") else ""
-            macro_table = "macro_series" if _table_exists(conn, "macro_series") else ""
-            risk_table = "risk_scenarios" if _table_exists(conn, "risk_scenarios") else ""
-            stock_news_table = "stock_news_items" if _table_exists(conn, "stock_news_items") else ""
-            signal_state_table = "signal_state_tracker" if _table_exists(conn, "signal_state_tracker") else ""
+            theme_table = "theme_hotspot_tracker" if _db.table_exists(conn, "theme_hotspot_tracker") else ""
+            macro_table = "macro_series" if _db.table_exists(conn, "macro_series") else ""
+            risk_table = "risk_scenarios" if _db.table_exists(conn, "risk_scenarios") else ""
+            stock_news_table = "stock_news_items" if _db.table_exists(conn, "stock_news_items") else ""
+            signal_state_table = "signal_state_tracker" if _db.table_exists(conn, "signal_state_tracker") else ""
 
             if not summary_table:
                 missing_inputs.append("news_daily_summaries")

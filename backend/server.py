@@ -7995,6 +7995,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             return _has("research_advanced")
         if path.startswith("/api/portfolio"):
             return _has("research_advanced") or _has("stocks_advanced")
+        if path.startswith("/api/funnel"):
+            return _has("research_advanced")
+        if path.startswith("/api/market/conclusion"):
+            return _has("research_advanced")
         if path == "/api/news/daily-summaries":
             return _has("daily_summary_read")
         if path in {"/api/news", "/api/news/sources"}:

@@ -65,23 +65,6 @@ def _parse_json(raw: Any) -> dict:
     return {}
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    try:
-        if _db.using_postgres():
-            row = conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s",
-                (table_name,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,),
-            ).fetchone()
-        return bool(row and int(row[0] or 0) > 0)
-    except Exception:
-        return False
-
-
 def _row_to_dict(row) -> dict:
     if row is None:
         return {}
@@ -102,7 +85,8 @@ def list_candidates(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
                 return {"items": [], "total": 0, "limit": limit, "offset": offset}
             where_clause = ""
             params: list[Any] = []
@@ -135,7 +119,8 @@ def get_candidate(candidate_id: str) -> dict[str, Any] | None:
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
                 return None
             row = conn.execute(
                 f"""
@@ -152,7 +137,7 @@ def get_candidate(candidate_id: str) -> dict[str, Any] | None:
             candidate = _row_to_dict(row)
             # Load transition history
             transitions: list[dict] = []
-            if _table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
+            if _db.table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
                 t_rows = conn.execute(
                     f"""
                     SELECT id, candidate_id, from_state, to_state, reason, evidence_ref,
@@ -186,7 +171,8 @@ def create_candidate(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
                 _ensure_funnel_tables(conn)
             conn.execute(
                 f"""
@@ -267,10 +253,11 @@ def transition_candidate(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
                 return {"ok": False, "error": "候选标的表不存在"}
             # Idempotency check
-            if idempotency_key and _table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
+            if idempotency_key and _db.table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
                 existing = conn.execute(
                     f"SELECT id FROM {FUNNEL_TRANSITIONS_TABLE} WHERE idempotency_key = ? LIMIT 1",
                     (idempotency_key,),
@@ -300,7 +287,7 @@ def transition_candidate(
                 incoming_priority = TRIGGER_SOURCE_PRIORITY.get(trigger_source, 0)
                 # Find the priority of the trigger_source that last set the terminal state
                 last_terminal_source = trigger_source  # default
-                if _table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
+                if _db.table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
                     last_row = conn.execute(
                         f"SELECT trigger_source FROM {FUNNEL_TRANSITIONS_TABLE} "
                         f"WHERE candidate_id = ? AND to_state = ? ORDER BY id DESC LIMIT 1",
@@ -364,7 +351,8 @@ def get_funnel_metrics() -> dict[str, Any]:
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
                 return {"state_counts": {}, "total": 0}
             rows = conn.execute(
                 f"SELECT state, COUNT(*) as cnt FROM {FUNNEL_CANDIDATES_TABLE} GROUP BY state"

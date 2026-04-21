@@ -202,6 +202,47 @@
             </div>
           </InfoCard>
         </div>
+        <div class="mt-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3" data-testid="stock-detail-decision-timeline">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-sm font-semibold text-[var(--ink)]">单标的决策动作时间线</div>
+            <RouterLink
+              v-if="resolvedTsCode"
+              :to="`/app/decision?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`"
+              class="text-xs font-semibold text-[var(--brand)] hover:underline"
+            >
+              去决策板维护 →
+            </RouterLink>
+          </div>
+          <div v-if="stockDecisionActionsLoading" class="mt-2 text-xs text-[var(--muted)]">加载该标的最近动作中...</div>
+          <div v-else-if="stockDecisionActions.length === 0" class="mt-2 text-xs text-[var(--muted)]">
+            该标的还没有决策动作记录，建议先生成第一条动作，再进入执行队列跟踪。
+          </div>
+          <div v-else class="mt-2 space-y-2">
+            <div
+              v-for="(action, idx) in stockDecisionActions"
+              :key="String(action.id || action.created_at || idx)"
+              class="rounded-xl border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2"
+            >
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="font-semibold text-[var(--ink)]">#{{ action.id || '-' }}</span>
+                <span class="rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-[var(--muted)]">{{ actionTypeLabelZh(action.action_type) }}</span>
+                <span class="rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-[var(--muted)]">
+                  {{ actionExecutionStatusLabel(action.execution_status || action?.payload?.execution_status) }}
+                </span>
+                <span class="ml-auto text-[var(--muted)]">{{ formatDateTime(action.created_at) || '-' }}</span>
+              </div>
+              <div class="mt-1 text-xs text-[var(--muted)]">{{ action.note || '无备注' }}</div>
+              <div class="mt-1 flex flex-wrap gap-2 text-xs">
+                <RouterLink
+                  :to="`/app/orders?decision_action_id=${encodeURIComponent(String(action.id || ''))}`"
+                  class="rounded-full border border-[var(--line)] bg-white px-2.5 py-0.5 font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                >
+                  查看执行单
+                </RouterLink>
+              </div>
+            </div>
+          </div>
+        </div>
         <div v-if="quickInsightResult || quickInsightError" class="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm">
           <div class="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-600">⚡ 快速分析结果</div>
           <div v-if="quickInsightError" class="mt-1 text-rose-600">{{ quickInsightError }}</div>
@@ -371,7 +412,7 @@ import {
   triggerStockNewsFetch,
   triggerTrendAnalysis,
 } from '../../services/api/stocks'
-import { fetchDecisionStock } from '../../services/api/decision'
+import { fetchDecisionActions, fetchDecisionStock } from '../../services/api/decision'
 import { formatDate, formatDateTime, formatNumber, formatPercent, listStatusLabel } from '../../shared/utils/format'
 import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
 import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
@@ -501,6 +542,17 @@ const { data: decision } = useQuery({
   refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
 })
 
+const { data: stockDecisionActionsData, isPending: stockDecisionActionsLoading } = useQuery({
+  queryKey: computed(() => ['stock-decision-actions', activeTsCode.value || activeKeyword.value]),
+  queryFn: () => fetchDecisionActions({
+    ts_code: activeTsCode.value,
+    page: 1,
+    page_size: 6,
+  }),
+  enabled: computed(() => Boolean(activeTsCode.value || activeKeyword.value)),
+  refetchInterval: () => (document.visibilityState === 'visible' ? 60_000 : 180_000),
+})
+
 const detailData = computed<DetailRow>(() => (detail.value ?? {}) as DetailRow)
 const detailError = computed(() => error.value?.message || '')
 const profile = computed<DetailRow>(() => (detailData.value.profile ?? {}) as DetailRow)
@@ -522,6 +574,39 @@ const decisionData = computed<DetailRow>(() => (decision.value ?? {}) as DetailR
 const decisionScore = computed<DetailRow>(() => (decisionData.value.score ?? {}) as DetailRow)
 const decisionTradePlan = computed<DetailRow>(() => (decisionData.value.trade_plan ?? {}) as DetailRow)
 const focusDecisionStock = computed<DetailRow>(() => (decisionData.value.detail ?? {}) as DetailRow)
+const stockDecisionActions = computed<DetailRow[]>(() => {
+  const raw = stockDecisionActionsData.value as any
+  if (!raw) return []
+  if (Array.isArray(raw.actions)) return raw.actions.slice(0, 6)
+  if (Array.isArray(raw.items)) return raw.items.slice(0, 6)
+  if (Array.isArray(raw)) return raw.slice(0, 6)
+  return []
+})
+
+function actionTypeLabelZh(actionType?: string): string {
+  const map: Record<string, string> = {
+    confirm: '确认',
+    reject: '拒绝',
+    defer: '暂缓',
+    watch: '观察',
+    review: '复核',
+  }
+  const key = String(actionType || '').toLowerCase()
+  return map[key] || (key ? key.toUpperCase() : '-')
+}
+
+function actionExecutionStatusLabel(rawValue?: string): string {
+  const map: Record<string, string> = {
+    planned: '待执行',
+    pending: '待执行',
+    running: '执行中',
+    done: '已完成',
+    failed: '执行失败',
+    cancelled: '已取消',
+  }
+  const key = String(rawValue || '').toLowerCase()
+  return map[key] || (key ? key : '未给状态')
+}
 
 const resolvedTsCode = computed(() => String(profile.value.ts_code || activeTsCode.value || '').trim())
 const resolvedName = computed(() => String(profile.value.name || activeKeyword.value || '').trim())

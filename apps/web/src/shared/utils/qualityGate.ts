@@ -23,6 +23,8 @@ export interface GateContext {
   ts_code: string
   note: string
   evidence_sources: string  // 用户填写的证据字段（raw string）
+  position_pct_range?: string
+  position_recommendation?: string
   decision_context_from: string  // 跨页来源模块
   snapshot_date: string
 }
@@ -76,6 +78,18 @@ const BUILTIN_RULES: Array<GateRule & { check: (ctx: GateContext) => boolean }> 
     fix_hint: '在"备注"字段填写至少一句话说明理由，如"强势突破+量价配合"',
     owner: 'decision-board',
     check: (ctx) => ctx.note.trim().length < 3,
+  },
+  {
+    rule_id: 'B003',
+    source_bug: 'P0-decision-no-position-range',
+    scope: ['confirm'],
+    severity: 'blocker',
+    message: '确认动作必须填写账户仓位区间或仓位建议，否则无法形成可执行动作',
+    fix_hint: '填写“建议仓位（如 5-8%）”或“建议仓位（可选）”字段后再提交',
+    owner: 'decision-board',
+    check: (ctx) =>
+      String(ctx.position_pct_range || '').trim().length === 0 &&
+      String(ctx.position_recommendation || '').trim().length === 0,
   },
   {
     rule_id: 'W001',

@@ -28,23 +28,6 @@ def _row_to_dict(row) -> dict:
         return {}
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    try:
-        if _db.using_postgres():
-            row = conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s",
-                (table_name,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,),
-            ).fetchone()
-        return bool(row and int(row[0] or 0) > 0)
-    except Exception:
-        return False
-
-
 def _ensure_tables(conn) -> None:
     conn.execute(
         f"""
@@ -189,7 +172,8 @@ def _status_payload(
 def get_latest_regime() -> dict[str, Any]:
     conn = _db.connect()
     try:
-        if not _table_exists(conn, MACRO_REGIMES_TABLE):
+        _db.apply_row_factory(conn)
+        if not _db.table_exists(conn, MACRO_REGIMES_TABLE):
             return {
                 "ok": True,
                 "regime": None,
@@ -220,7 +204,7 @@ def get_latest_regime() -> dict[str, Any]:
         alloc_row = conn.execute(
             f"SELECT conflict_ruling FROM {PORTFOLIO_ALLOCATIONS_TABLE} WHERE regime_id = ? ORDER BY created_at DESC LIMIT 1",
             (str(d.get("id") or ""),),
-        ).fetchone() if _table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE) else None
+        ).fetchone() if _db.table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE) else None
         conflict_ruling = str(_row_to_dict(alloc_row).get("conflict_ruling") or "") if alloc_row else ""
         return {
             "ok": True,
@@ -264,6 +248,7 @@ def record_regime(
 ) -> dict[str, Any]:
     conn = _db.connect()
     try:
+        _db.apply_row_factory(conn)
         _ensure_tables(conn)
         actions, conflict_ruling = _compute_portfolio_suggestion(
             short_term_state, medium_term_state, long_term_state
@@ -314,7 +299,8 @@ def record_regime(
 def list_regimes(page: int = 1, page_size: int = 10) -> dict[str, Any]:
     conn = _db.connect()
     try:
-        if not _table_exists(conn, MACRO_REGIMES_TABLE):
+        _db.apply_row_factory(conn)
+        if not _db.table_exists(conn, MACRO_REGIMES_TABLE):
             return {
                 "items": [],
                 "total": 0,
@@ -372,8 +358,9 @@ def list_regimes(page: int = 1, page_size: int = 10) -> dict[str, Any]:
 def get_latest_allocation() -> dict[str, Any]:
     conn = _db.connect()
     try:
-        if not _table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE):
-            regime_exists = _table_exists(conn, MACRO_REGIMES_TABLE) and bool(
+        _db.apply_row_factory(conn)
+        if not _db.table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE):
+            regime_exists = _db.table_exists(conn, MACRO_REGIMES_TABLE) and bool(
                 conn.execute(f"SELECT COUNT(*) FROM {MACRO_REGIMES_TABLE}").fetchone()[0]
             )
             return {
@@ -389,7 +376,7 @@ def get_latest_allocation() -> dict[str, Any]:
             f"SELECT * FROM {PORTFOLIO_ALLOCATIONS_TABLE} ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         if not row:
-            regime_exists = _table_exists(conn, MACRO_REGIMES_TABLE) and bool(
+            regime_exists = _db.table_exists(conn, MACRO_REGIMES_TABLE) and bool(
                 conn.execute(f"SELECT COUNT(*) FROM {MACRO_REGIMES_TABLE}").fetchone()[0]
             )
             return {
@@ -439,6 +426,7 @@ def record_allocation(
 ) -> dict[str, Any]:
     conn = _db.connect()
     try:
+        _db.apply_row_factory(conn)
         _ensure_tables(conn)
         now = _utc_now()
         alloc_id = str(uuid.uuid4())[:16]
@@ -465,7 +453,8 @@ def record_allocation(
 def list_allocations(page: int = 1, page_size: int = 10) -> dict[str, Any]:
     conn = _db.connect()
     try:
-        if not _table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE):
+        _db.apply_row_factory(conn)
+        if not _db.table_exists(conn, PORTFOLIO_ALLOCATIONS_TABLE):
             return {
                 "items": [],
                 "total": 0,
@@ -535,6 +524,7 @@ def suggest_regime() -> dict:
     try:
         conn = _db.connect()
         try:
+            _db.apply_row_factory(conn)
             # ① Theme direction distribution (last 7 days)
             bullish = bearish = neutral = 0
             try:

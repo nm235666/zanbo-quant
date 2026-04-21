@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -341,6 +342,7 @@ def _apply_external_overrides(
         for model_key in sorted(empty_override_keys):
             print(
                 f"[llm-provider-config] provider_key={model_key} has no active nodes in external config; runtime candidates disabled",
+                file=sys.stderr,
                 flush=True,
             )
         _LAST_EMPTY_OVERRIDE_KEYS = set(empty_override_keys)

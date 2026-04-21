@@ -33,7 +33,7 @@
           暂无{{ activeTab?.label || '' }}订单
         </div>
         <div v-else class="overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full text-sm" data-testid="orders-table">
             <thead>
               <tr class="border-b border-[var(--line)] text-left">
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">代码</th>
@@ -42,13 +42,15 @@
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">成交价</th>
                 <th class="pb-2 pr-4 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">数量</th>
                 <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">状态</th>
-                <th class="pb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">创建时间</th>
+                <th class="pb-2 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">创建时间</th>
+                <th class="pb-2 text-right text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">操作推进</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-[var(--line)]">
               <tr
                 v-for="order in orders"
                 :key="order.id"
+                :data-testid="`order-row-${order.id}`"
                 class="transition hover:bg-[var(--panel-soft)]"
               >
                 <td class="py-3 pr-4 font-semibold text-[var(--ink)]">
@@ -69,9 +71,30 @@
                 <td class="py-3 pr-4 text-right tabular-nums">{{ formatPrice(order.executed_price) }}</td>
                 <td class="py-3 pr-4 text-right tabular-nums">{{ order.size ?? '-' }}</td>
                 <td class="py-3 pr-4">
-                  <span :class="statusBadgeClass(order.status)">{{ statusLabel(order.status) }}</span>
+                  <span
+                    :class="statusBadgeClass(order.status)"
+                    :data-testid="`order-status-${order.id}`"
+                    :data-status="order.status || ''"
+                  >{{ statusLabel(order.status) }}</span>
                 </td>
-                <td class="py-3 text-xs text-[var(--muted)]">{{ formatDate(order.created_at) }}</td>
+                <td class="py-3 pr-4 text-xs text-[var(--muted)]">{{ formatDate(order.created_at) }}</td>
+                <td class="py-3 text-right" :data-testid="`order-actions-${order.id}`">
+                  <div v-if="order.status === 'planned'" class="inline-flex flex-wrap justify-end gap-1.5">
+                    <button
+                      class="rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:border-emerald-500 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="isMutating(order.id)"
+                      :data-testid="`order-execute-${order.id}`"
+                      @click="onExecute(order)"
+                    >执行</button>
+                    <button
+                      class="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 transition hover:border-gray-500 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="isMutating(order.id)"
+                      :data-testid="`order-cancel-${order.id}`"
+                      @click="onCancel(order)"
+                    >取消</button>
+                  </div>
+                  <span v-else class="text-xs text-[var(--muted)]">{{ order.executed_at ? formatDate(order.executed_at) : '—' }}</span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -84,10 +107,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
-import { fetchPortfolioOrders, type PortfolioOrder } from '../../services/api/portfolio'
+import { fetchPortfolioOrders, updatePortfolioOrder, type PortfolioOrder } from '../../services/api/portfolio'
 
 interface StatusTab {
   key: string
@@ -158,7 +181,7 @@ function actionTypeClass(t?: string): string {
 }
 
 function statusLabel(s?: string): string {
-  const map: Record<string, string> = { planned: '计划中', executed: '已执行', cancelled: '已取消', pending: '待处理' }
+  const map: Record<string, string> = { planned: '计划中', executed: '已执行', cancelled: '已取消', partial: '部分成交', pending: '待处理' }
   return s ? (map[s] ?? s) : '-'
 }
 
@@ -167,6 +190,81 @@ function statusBadgeClass(s?: string): string {
   if (s === 'executed') return `${base} border-emerald-200 bg-emerald-100 text-emerald-700`
   if (s === 'cancelled') return `${base} border-gray-200 bg-gray-100 text-gray-600`
   if (s === 'planned') return `${base} border-amber-200 bg-amber-100 text-amber-700`
+  if (s === 'partial') return `${base} border-sky-200 bg-sky-100 text-sky-700`
   return `${base} border-[var(--line)] bg-[var(--panel-soft)] text-[var(--muted)]`
+}
+
+const queryClient = useQueryClient()
+const mutatingIds = ref<Set<string>>(new Set())
+
+function isMutating(id: string): boolean {
+  return mutatingIds.value.has(String(id))
+}
+
+const patchOrderMutation = useMutation({
+  mutationFn: async (args: { id: string; payload: Record<string, any> }) => {
+    return updatePortfolioOrder(args.id, args.payload)
+  },
+  onSettled: (_data, _error, vars) => {
+    if (vars?.id) {
+      const next = new Set(mutatingIds.value)
+      next.delete(String(vars.id))
+      mutatingIds.value = next
+    }
+    queryClient.invalidateQueries({ queryKey: ['portfolio-orders'] })
+    queryClient.invalidateQueries({ queryKey: ['positions-workbench'] })
+  },
+})
+
+function beginMutation(id: string) {
+  const next = new Set(mutatingIds.value)
+  next.add(String(id))
+  mutatingIds.value = next
+}
+
+async function onExecute(order: PortfolioOrder) {
+  const id = String(order.id || '').trim()
+  if (!id) return
+  const defaultPrice = order.planned_price != null ? String(order.planned_price) : ''
+  const input = window.prompt(
+    `录入成交价（${order.ts_code}）：`,
+    defaultPrice,
+  )
+  if (input == null) return
+  const trimmed = String(input).trim()
+  const executedPrice = trimmed ? Number(trimmed) : NaN
+  if (!trimmed || !Number.isFinite(executedPrice) || executedPrice <= 0) {
+    window.alert('成交价必须是大于 0 的数字')
+    return
+  }
+  beginMutation(id)
+  try {
+    await patchOrderMutation.mutateAsync({
+      id,
+      payload: {
+        status: 'executed',
+        executed_price: executedPrice,
+        executed_at: new Date().toISOString(),
+      },
+    })
+  } catch (e: any) {
+    window.alert(`执行失败：${e?.message || e}`)
+  }
+}
+
+async function onCancel(order: PortfolioOrder) {
+  const id = String(order.id || '').trim()
+  if (!id) return
+  const ok = window.confirm(`取消该计划单吗？\n${order.ts_code} ${actionTypeLabel(order.action_type)}`)
+  if (!ok) return
+  beginMutation(id)
+  try {
+    await patchOrderMutation.mutateAsync({
+      id,
+      payload: { status: 'cancelled' },
+    })
+  } catch (e: any) {
+    window.alert(`取消失败：${e?.message || e}`)
+  }
 }
 </script>

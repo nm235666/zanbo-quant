@@ -32,6 +32,8 @@ test('workbench 首屏渲染', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/workbench$/)
   await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   await expect(page.locator('#main-content')).toBeVisible()
+  await expect(page.locator('[data-testid="workbench-first-action-card"]')).toBeVisible()
+  await expect(page.locator('[data-testid="workbench-primary-cta"]')).toHaveAttribute('href', /\/app\//)
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
 })
 
@@ -40,6 +42,19 @@ test('市场结论页首屏渲染', async ({ page }) => {
   await page.goto('/app/market')
   await expect(page).toHaveURL(/\/app\/market$/)
   await expect(page.locator('#main-content')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
+})
+
+test('单标的详情页包含决策动作时间线收口区', async ({ page }) => {
+  await login(page, 'pro')
+  await page.goto('/app/stocks/detail/000001.SZ')
+  await expect(page).toHaveURL(/\/app\/stocks\/detail\/000001\.SZ$/)
+  await expect(page.getByRole('heading', { name: '决策视角' })).toBeVisible()
+  const timeline = page.locator('[data-testid="stock-detail-decision-timeline"]')
+  if (await timeline.count()) {
+    await expect(timeline.first()).toBeVisible()
+  }
+  await expect(page.locator('#main-content a[href*="/app/decision"]').first()).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
 })
 

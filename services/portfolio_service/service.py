@@ -26,23 +26,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _table_exists(conn, table_name: str) -> bool:
-    try:
-        if _db.using_postgres():
-            row = conn.execute(
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s",
-                (table_name,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-                (table_name,),
-            ).fetchone()
-        return bool(row and int(row[0] or 0) > 0)
-    except Exception:
-        return False
-
-
 def _row_to_dict(row) -> dict:
     if row is None:
         return {}
@@ -108,7 +91,8 @@ def list_positions() -> dict[str, Any]:
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_POSITIONS_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_POSITIONS_TABLE):
                 return {"items": [], "total": 0}
             rows = conn.execute(
                 f"""
@@ -137,7 +121,8 @@ def list_orders(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_ORDERS_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
                 return {"items": [], "total": 0, "limit": limit, "offset": offset}
             conditions: list[str] = []
             params: list[Any] = []
@@ -186,7 +171,7 @@ def create_order(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_ORDERS_TABLE):
+            if not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
                 _ensure_portfolio_tables(conn)
             conn.execute(
                 f"""
@@ -251,7 +236,8 @@ def update_order(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_ORDERS_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_ORDERS_TABLE):
                 return {"ok": False, "error": "订单表不存在"}
             row = conn.execute(
                 f"SELECT id, status FROM {PORTFOLIO_ORDERS_TABLE} WHERE id = ? LIMIT 1",
@@ -305,7 +291,8 @@ def list_reviews(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_REVIEWS_TABLE):
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, PORTFOLIO_REVIEWS_TABLE):
                 return {"items": [], "total": 0, "limit": limit, "offset": offset}
             count_row = conn.execute(
                 f"SELECT COUNT(*) FROM {PORTFOLIO_REVIEWS_TABLE}"
@@ -341,7 +328,7 @@ def add_review(
     try:
         conn = _db.connect()
         try:
-            if not _table_exists(conn, PORTFOLIO_REVIEWS_TABLE):
+            if not _db.table_exists(conn, PORTFOLIO_REVIEWS_TABLE):
                 _ensure_portfolio_tables(conn)
             conn.execute(
                 f"""

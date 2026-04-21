@@ -21,6 +21,9 @@ export interface PortfolioOrder {
   size?: number
   status?: string
   created_at?: string
+  executed_at?: string
+  decision_action_id?: string
+  note?: string
 }
 
 export interface PortfolioReview {
@@ -54,7 +57,7 @@ export async function createPortfolioOrder(payload: {
 }
 
 export async function updatePortfolioOrder(id: string, payload: Record<string, any>) {
-  const { data } = await http.post(`/api/portfolio/orders/${id}`, payload)
+  const { data } = await http.patch(`/api/portfolio/orders/${id}`, payload)
   return data
 }
 

@@ -93,7 +93,10 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
     title: '决策',
     order: 4,
     surface: 'app',
-    items: [{ to: '/app/decision', label: '决策看板', desc: '宏观-行业-个股评分与执行参考', permission: 'research_advanced', surface: 'app' }],
+    items: [
+      { to: '/app/decision', label: '决策看板', desc: '宏观-行业-个股评分与执行参考', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/research/scoreboard', label: '评分总览', desc: '宏观模式、行业排序、短名单与入选理由一站式查看', permission: 'research_advanced', surface: 'app' },
+    ],
   },
   {
     id: 'app-execution',
@@ -135,6 +138,7 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/app/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced', surface: 'app' },
       { to: '/app/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read', surface: 'app' },
       { to: '/app/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced', surface: 'app' },
+      { to: '/app/signals/graph', label: '产业链图谱', desc: '主题、行业、股票关系浏览', permission: 'signals_advanced', surface: 'app' },
       { to: '/app/chatrooms/investment', label: '投资倾向', desc: '群聊结论、情绪和标的清单', permission: 'chatrooms_advanced', surface: 'app' },
     ],
   },

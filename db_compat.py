@@ -341,6 +341,37 @@ def cache_set_json(key: str, value: Any, ttl_seconds: int):
         return False
 
 
+def table_exists(conn, table_name: str) -> bool:
+    # Source SQL must use '?'; _replace_qmarks converts to '%s' for psycopg2.
+    # Writing literal '%s' here would be double-escaped to '%%s' and never
+    # match — R32/R33 same-family bug governance, now centralised here.
+    try:
+        if using_postgres():
+            row = conn.execute(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?",
+                (table_name,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,),
+            ).fetchone()
+        return bool(row and int(row[0] or 0) > 0)
+    except Exception:
+        return False
+
+
+def apply_row_factory(conn) -> None:
+    # Enable dict-shaped rows on PG (via CompatCursor). SQLite raw connections
+    # use a different row_factory contract (cursor, tuple) that Row doesn't
+    # satisfy, so leave them untouched.
+    if using_postgres():
+        try:
+            conn.row_factory = Row
+        except Exception:
+            pass
+
+
 __all__ = [
     "connect",
     "connect_sqlite",
@@ -350,6 +381,8 @@ __all__ = [
     "cache_get_json",
     "cache_set_json",
     "get_redis_client",
+    "table_exists",
+    "apply_row_factory",
     "execute_values",
     "Row",
     "Connection",
