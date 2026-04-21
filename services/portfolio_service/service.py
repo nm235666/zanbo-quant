@@ -300,14 +300,28 @@ def list_reviews(
             total = int(count_row[0] or 0) if count_row else 0
             rows = conn.execute(
                 f"""
-                SELECT id, order_id, review_tag, review_note, slippage, latency_ms, created_at
-                FROM {PORTFOLIO_REVIEWS_TABLE}
-                ORDER BY created_at DESC
+                SELECT r.id, r.order_id, r.review_tag, r.review_note, r.slippage, r.latency_ms, r.created_at,
+                       o.ts_code, o.action_type, o.status AS order_status, o.executed_at, o.executed_price,
+                       o.decision_action_id, o.note AS order_note,
+                       da.snapshot_id, da.action_payload_json, da.note AS decision_note
+                FROM {PORTFOLIO_REVIEWS_TABLE} r
+                LEFT JOIN {PORTFOLIO_ORDERS_TABLE} o ON o.id = r.order_id
+                LEFT JOIN decision_actions da ON da.id = o.decision_action_id
+                ORDER BY r.created_at DESC
                 LIMIT ? OFFSET ?
                 """,
                 [limit, offset],
             ).fetchall()
-            items = [_row_to_dict(r) for r in rows]
+            items = []
+            for row in rows:
+                item = _row_to_dict(row)
+                try:
+                    action_payload = json.loads(str(item.get("action_payload_json") or "{}"))
+                except Exception:
+                    action_payload = {}
+                item["decision_payload"] = action_payload
+                item["rule_correction_hint"] = item.get("review_note") or action_payload.get("review_conclusion") or ""
+                items.append(item)
             return {"items": items, "total": total, "limit": limit, "offset": offset}
         finally:
             conn.close()

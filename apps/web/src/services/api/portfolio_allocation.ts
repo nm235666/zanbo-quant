@@ -14,6 +14,21 @@ export interface PortfolioAllocation {
   risk_budget_compression: number
   action_notes: string
   conflict_ruling: string
+  macro_actions?: Array<{ type: string; description: string }>
+  conflict_constraints?: {
+    allowed_actions?: string[]
+    required_defence_actions?: string[]
+    risk_budget_pct?: number
+    effective_condition?: string
+  }
+  long_term_review?: {
+    regime_id?: string
+    outcome_rating?: string
+    outcome_notes?: string
+    correction_suggestion?: string
+    regime_created_at?: string
+    action_count?: number
+  }
   created_at: string
   created_by: string
 }

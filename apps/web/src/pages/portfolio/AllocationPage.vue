@@ -44,11 +44,65 @@
         {{ pageStatusDescription }}
       </div>
 
+      <!-- 组合动作建议 -->
+      <PageSection v-if="macroActionCards.length" title="组合动作建议" subtitle="由当前宏观状态自动映射到组合层动作。">
+        <div class="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
+          <div
+            v-for="item in macroActionCards"
+            :key="item.key"
+            class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3"
+          >
+            <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">{{ item.title }}</div>
+            <div class="text-sm font-semibold text-[var(--ink)]">{{ item.value }}</div>
+            <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ item.description }}</div>
+          </div>
+        </div>
+      </PageSection>
+
       <!-- 冲突裁决 -->
       <div v-if="allocation?.conflict_ruling" class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
         <div class="mb-1 text-xs font-semibold text-amber-700">短长线冲突裁决</div>
         <div class="text-sm text-amber-800 leading-6">{{ allocation.conflict_ruling }}</div>
       </div>
+
+      <PageSection v-if="conflictConstraintCards.length" title="冲突裁决执行约束" subtitle="把短长线冲突裁决拆成可执行边界。">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div
+            v-for="item in conflictConstraintCards"
+            :key="item.key"
+            class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3"
+          >
+            <div class="mb-1 text-xs font-semibold uppercase text-amber-700">{{ item.title }}</div>
+            <div class="text-sm font-semibold text-amber-900">{{ item.value }}</div>
+            <div class="mt-1 text-xs leading-5 text-amber-800">{{ item.description }}</div>
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection v-if="allocation?.long_term_review" title="长线复盘链路" subtitle="宏观判断 → 组合动作 → 后续结果。">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">宏观判断</div>
+            <div class="text-sm font-semibold text-[var(--ink)]">{{ allocation.long_term_review.regime_id || allocation.regime_id || '-' }}</div>
+            <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ allocation.long_term_review.regime_created_at ? `形成于 ${formatDate(allocation.long_term_review.regime_created_at)}` : '当前配置没有关联的宏观判断记录。' }}</div>
+          </div>
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">组合动作</div>
+            <div class="text-sm font-semibold text-[var(--ink)]">{{ `${allocation.long_term_review.action_count ?? 0} 条动作` }}</div>
+            <div class="mt-1 text-xs leading-5 text-[var(--muted)]">本次配置从宏观状态映射出的组合动作数量。</div>
+          </div>
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">后续结果</div>
+            <div class="text-sm font-semibold text-[var(--ink)]">{{ longTermOutcomeLabel(allocation.long_term_review.outcome_rating) }}</div>
+            <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ allocation.long_term_review.outcome_notes || '当前还没有录入长线结果备注。' }}</div>
+          </div>
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3">
+            <div class="mb-1 text-xs font-semibold uppercase text-[var(--muted)]">规则修正</div>
+            <div class="text-sm font-semibold text-[var(--ink)]">{{ allocation.long_term_review.correction_suggestion ? '已沉淀' : '待补充' }}</div>
+            <div class="mt-1 text-xs leading-5 text-[var(--muted)]">{{ allocation.long_term_review.correction_suggestion || '当前还没有形成规则修正建议。' }}</div>
+          </div>
+        </div>
+      </PageSection>
 
       <!-- 风险压缩 -->
       <div v-if="allocation && allocation.risk_budget_compression < 1.0" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
@@ -207,6 +261,116 @@ const historyEmptyText = computed(() => {
   if (pageStatus.value === 'insufficient_evidence') return '暂无配置历史，当前仍缺少形成配置动作的关键输入。'
   return '暂无记录'
 })
+
+type MacroActionItem = NonNullable<PortfolioAllocation['macro_actions']>[number]
+
+const macroActions = computed<MacroActionItem[]>(() => allocation.value?.macro_actions ?? [])
+
+function findMacroAction(type: string): MacroActionItem | undefined {
+  return macroActions.value.find((item) => item?.type === type)
+}
+
+function extractPercentValue(description?: string, fallback?: number): string {
+  const text = String(description || '').trim()
+  const match = text.match(/(\d+(?:\.\d+)?)%/)
+  if (match) return `${match[1]}%`
+  if (typeof fallback === 'number' && Number.isFinite(fallback)) return `${fallback.toFixed(0)}%`
+  return text || '-'
+}
+
+function riskExposureValue(description?: string, compression?: number): string {
+  const text = String(description || '').trim()
+  if (text.includes('充分配置') || text.includes('增加') || text.includes('放宽')) return '增加'
+  if (text.includes('压缩') || text.includes('减少') || text.includes('限制')) return '降低'
+  if (typeof compression === 'number' && Number.isFinite(compression)) return compression < 1 ? '降低' : '保持'
+  return '保持'
+}
+
+const macroActionCards = computed(() => {
+  const cashAction = findMacroAction('cash')
+  const riskBudgetAction = findMacroAction('risk_budget')
+  const defenceAction = findMacroAction('defence')
+  const sectorAction = findMacroAction('sector_rotation')
+  const strategyAction = findMacroAction('strategy_switch')
+  const cashRatio = allocation.value?.cash_ratio_pct
+  const compression = allocation.value?.risk_budget_compression
+  const stance = allocation.value?.stance
+
+  return [
+    {
+      key: 'risk_exposure',
+      title: '风险敞口',
+      value: riskExposureValue(riskBudgetAction?.description, compression),
+      description: riskBudgetAction?.description || (typeof compression === 'number' && Number.isFinite(compression)
+        ? `当前风险预算压缩至 ${(compression * 100).toFixed(0)}%。`
+        : '当前没有可用的风险预算建议。'),
+    },
+    {
+      key: 'cash_ratio',
+      title: '现金比例建议',
+      value: extractPercentValue(cashAction?.description, cashRatio),
+      description: cashAction?.description || (typeof cashRatio === 'number' && Number.isFinite(cashRatio)
+        ? `当前配置目标现金比例为 ${cashRatio.toFixed(0)}%。`
+        : '当前没有可用的现金比例建议。'),
+    },
+    {
+      key: 'stance_shift',
+      title: '防守/进攻切换',
+      value: defenceAction?.description ? '切向防守' : stance === 'offensive' ? '切向进攻' : stance === 'defensive' ? '切向防守' : '保持中性',
+      description: defenceAction?.description || stanceHint(stance) || '当前没有可用的防守/进攻切换建议。',
+    },
+    {
+      key: 'sector_rotation',
+      title: '行业权重调整',
+      value: sectorAction?.description?.includes('防守') ? '转向防守' : sectorAction?.description?.includes('进攻') || sectorAction?.description?.includes('高景气') ? '转向进攻' : '保持均衡',
+      description: sectorAction?.description || '当前没有可用的行业权重调整建议。',
+    },
+    {
+      key: 'strategy_switch',
+      title: '短线策略开关',
+      value: strategyAction?.description?.includes('暂停') ? '暂停部分策略' : strategyAction?.description?.includes('恢复') ? '恢复策略' : '维持当前策略',
+      description: strategyAction?.description || '当前没有可用的短线策略切换建议。',
+    },
+  ].filter((item) => item.description && item.value)
+})
+
+const conflictConstraintCards = computed(() => {
+  const constraints = allocation.value?.conflict_constraints
+  if (!constraints) return []
+  return [
+    {
+      key: 'allowed_actions',
+      title: '允许执行范围',
+      value: constraints.allowed_actions?.[0] || '当前无额外限制',
+      description: constraints.allowed_actions?.join('；') || '当前没有额外的短线动作约束。',
+    },
+    {
+      key: 'required_defence_actions',
+      title: '同步防守动作',
+      value: constraints.required_defence_actions?.[0] || '无',
+      description: constraints.required_defence_actions?.join('；') || '当前没有必须同步执行的防守动作。',
+    },
+    {
+      key: 'risk_budget_pct',
+      title: '风险预算压缩',
+      value: typeof constraints.risk_budget_pct === 'number' ? `${constraints.risk_budget_pct}%` : '-',
+      description: typeof constraints.risk_budget_pct === 'number' ? `冲突状态下仅允许使用 ${constraints.risk_budget_pct}% 风险预算。` : '当前没有风险预算压缩要求。',
+    },
+    {
+      key: 'effective_condition',
+      title: '生效条件',
+      value: constraints.effective_condition || '-',
+      description: constraints.effective_condition || '当前没有单独的生效条件说明。',
+    },
+  ].filter((item) => item.value || item.description)
+})
+
+function longTermOutcomeLabel(value?: string): string {
+  if (value === 'effective') return '有效'
+  if (value === 'partial') return '部分有效'
+  if (value === 'ineffective') return '无效'
+  return '待复盘'
+}
 
 function stanceLabel(stance?: string): string {
   return stance ? (STANCE_LABELS[stance] ?? stance) : '-'

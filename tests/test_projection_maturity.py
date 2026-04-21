@@ -69,6 +69,22 @@ class ProjectionMaturityTest(unittest.TestCase):
         self.assertIn("trigger_reason", content, "trigger_reason must be extracted from payload")
         self.assertIn('payload.get("trigger_reason"', content, "trigger_reason must be read from POST body")
 
+    def test_allocation_read_model_exposes_conflict_constraints_and_review(self):
+        """Target §7.3/§7.4: allocation read-model must expose structured conflict constraints and long-term review."""
+        content = _read("services/macro_service/regime.py")
+        self.assertIn("_build_conflict_constraints", content, "regime service must build structured conflict constraints")
+        self.assertIn('allocation["conflict_constraints"]', content, "allocation read-model must expose conflict_constraints")
+        self.assertIn('allocation["long_term_review"]', content, "allocation read-model must expose long_term_review")
+        self.assertIn("sector_rotation", content, "portfolio suggestion must include sector rotation action")
+        self.assertIn("strategy_switch", content, "portfolio suggestion must include strategy switch action")
+
+    def test_portfolio_review_read_model_exposes_closure_chain(self):
+        """Target §8: portfolio review read-model must join order and decision action context into a closure chain."""
+        content = _read("services/portfolio_service/service.py")
+        self.assertIn("LEFT JOIN decision_actions", content, "review list must join decision actions")
+        self.assertIn("decision_payload", content, "review list must parse action payload into decision_payload")
+        self.assertIn("rule_correction_hint", content, "review list must expose a rule correction hint")
+
     # ───────────────────────────────────────────────
     # Criterion 2: 决策可追踪率
     # ───────────────────────────────────────────────
@@ -124,6 +140,48 @@ class ProjectionMaturityTest(unittest.TestCase):
         self.assertIn("trigger_reason", content, "trigger_reason must appear in mutation payload/template")
         self.assertIn("item?.payload?.trigger_reason", content, "trigger_reason readback chip must reference item.payload")
         self.assertIn("触发原因", content, "触发原因 label must appear on recent-action chip")
+
+    def test_allocation_page_displays_macro_action_cards(self):
+        """Target §7.2: AllocationPage must map macro actions into portfolio action cards."""
+        content = _read("apps/web/src/pages/portfolio/AllocationPage.vue")
+        self.assertIn("macroActionCards", content, "AllocationPage must compute macroActionCards")
+        self.assertIn("风险敞口", content, "AllocationPage must display 风险敞口 card")
+        self.assertIn("现金比例建议", content, "AllocationPage must display 现金比例建议 card")
+        self.assertIn("防守/进攻切换", content, "AllocationPage must display 防守/进攻切换 card")
+        self.assertIn("行业权重调整", content, "AllocationPage must display 行业权重调整 card")
+        self.assertIn("短线策略开关", content, "AllocationPage must display 短线策略开关 card")
+        self.assertIn("findMacroAction('cash')", content, "AllocationPage must derive cash action from macro_actions")
+        self.assertIn("findMacroAction('risk_budget')", content, "AllocationPage must derive risk budget action from macro_actions")
+        self.assertIn("findMacroAction('defence')", content, "AllocationPage must derive defence action from macro_actions")
+        self.assertIn("findMacroAction('sector_rotation')", content, "AllocationPage must derive sector rotation action from macro_actions")
+        self.assertIn("findMacroAction('strategy_switch')", content, "AllocationPage must derive strategy switch action from macro_actions")
+
+    def test_allocation_page_displays_conflict_constraints_and_long_term_review(self):
+        """Target §7.3/§7.4: AllocationPage must expose structured conflict constraints and long-term review chain."""
+        content = _read("apps/web/src/pages/portfolio/AllocationPage.vue")
+        self.assertIn("conflictConstraintCards", content, "AllocationPage must compute structured conflict cards")
+        self.assertIn("冲突裁决执行约束", content, "AllocationPage must render structured conflict ruling section")
+        self.assertIn("允许执行范围", content, "AllocationPage must display allowed short-term action range")
+        self.assertIn("同步防守动作", content, "AllocationPage must display required defence actions")
+        self.assertIn("风险预算压缩", content, "AllocationPage must display compressed risk budget")
+        self.assertIn("生效条件", content, "AllocationPage must display effective condition")
+        self.assertIn("长线复盘链路", content, "AllocationPage must render long-term review chain")
+        self.assertIn("宏观判断", content, "AllocationPage must render regime node in review chain")
+        self.assertIn("组合动作", content, "AllocationPage must render action node in review chain")
+        self.assertIn("后续结果", content, "AllocationPage must render result node in review chain")
+        self.assertIn("规则修正", content, "AllocationPage must render correction node in review chain")
+
+    def test_review_page_displays_closure_chain(self):
+        """Target §8: ReviewPage must render judgment → action → execution → result → rule correction chain."""
+        content = _read("apps/web/src/pages/portfolio/ReviewPage.vue")
+        self.assertIn("复盘闭环", content, "ReviewPage must present closure framing")
+        self.assertIn("原始判断", content, "ReviewPage must display original judgment node")
+        self.assertIn("动作建议", content, "ReviewPage must display action node")
+        self.assertIn("执行结果", content, "ReviewPage must display execution node")
+        self.assertIn("结果归因", content, "ReviewPage must display result attribution node")
+        self.assertIn("规则修正建议", content, "ReviewPage must display rule correction node")
+        self.assertIn("reviewActionLabel", content, "ReviewPage must map action type labels")
+        self.assertIn("reviewExecutionLabel", content, "ReviewPage must map execution status labels")
 
     # ───────────────────────────────────────────────
     # Criterion 3: 闭环完成率 — cross-module bridges

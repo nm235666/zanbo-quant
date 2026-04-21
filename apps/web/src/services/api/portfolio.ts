@@ -33,6 +33,23 @@ export interface PortfolioReview {
   slippage?: number
   review_note?: string
   created_at?: string
+  ts_code?: string
+  action_type?: string
+  order_status?: string
+  executed_at?: string
+  executed_price?: number
+  decision_action_id?: string
+  order_note?: string
+  snapshot_id?: string
+  decision_note?: string
+  decision_payload?: {
+    execution_status?: string
+    review_conclusion?: string
+    evidence_sources?: string[]
+    trigger_reason?: string
+    position_pct_range?: string
+  }
+  rule_correction_hint?: string
 }
 
 export async function fetchPortfolioPositions() {

@@ -108,6 +108,8 @@ def _compute_portfolio_suggestion(
             {"type": "cash", "description": "建议现金比例 5%，充分利用进攻机会"},
             {"type": "risk_budget", "description": "风险预算不压缩，允许充分配置"},
             {"type": "theme", "description": "主题集中度上限 25%"},
+            {"type": "sector_rotation", "description": "行业权重向高景气进攻方向倾斜"},
+            {"type": "strategy_switch", "description": "恢复趋势跟随与高弹性短线策略"},
         ], ""
 
     if long_def and short_off:
@@ -116,6 +118,8 @@ def _compute_portfolio_suggestion(
             {"type": "risk_budget", "description": "风险预算压缩至 60%，允许局部高确定性短线参与"},
             {"type": "theme", "description": "单主题集中度上限 15%，禁止高波动策略"},
             {"type": "defence", "description": "同步执行防守动作：提高现金、限制总仓位 ≤ 60%"},
+            {"type": "sector_rotation", "description": "行业权重回撤至防守板块，降低高波动赛道暴露"},
+            {"type": "strategy_switch", "description": "暂停高波动短线策略，仅保留高确定性参与"},
         ], "短线进攻信号与长线防守状态冲突：允许局部高确定性短线参与，但同步压缩风险预算至60%，限制总仓位≤60%，禁止高波动策略"
 
     if medium_def and long_def:
@@ -124,6 +128,8 @@ def _compute_portfolio_suggestion(
             {"type": "risk_budget", "description": "风险预算压缩至 40%"},
             {"type": "theme", "description": "单主题集中度上限 10%"},
             {"type": "defence", "description": "暂停高波动策略，减少净多头敞口"},
+            {"type": "sector_rotation", "description": "行业权重切向低波动防守资产"},
+            {"type": "strategy_switch", "description": "暂停激进短线策略，保留低波动防守仓位"},
         ], ""
 
     if short_def or medium_def or long_def:
@@ -131,12 +137,16 @@ def _compute_portfolio_suggestion(
             {"type": "cash", "description": "建议现金比例 15%，保持一定防守缓冲"},
             {"type": "risk_budget", "description": "风险预算压缩至 75%"},
             {"type": "theme", "description": "单主题集中度上限 18%"},
+            {"type": "sector_rotation", "description": "行业权重适度转向稳健板块"},
+            {"type": "strategy_switch", "description": "收缩高波动短线策略，优先低回撤交易"},
         ], ""
 
     return [
         {"type": "cash", "description": "建议现金比例 10%，中性配置"},
         {"type": "risk_budget", "description": "风险预算不压缩"},
         {"type": "theme", "description": "单主题集中度上限 20%"},
+        {"type": "sector_rotation", "description": "行业权重保持均衡配置"},
+        {"type": "strategy_switch", "description": "维持当前短线策略节奏"},
     ], ""
 
 
@@ -166,6 +176,41 @@ def _status_payload(
         "status_reason": status_reason,
         "missing_inputs": list(missing_inputs or []),
         "generated_from": list(generated_from or []),
+    }
+
+
+def _build_conflict_constraints(allocation: dict[str, Any], macro_actions: list[dict[str, Any]]) -> dict[str, Any]:
+    conflict_ruling = str(allocation.get("conflict_ruling") or "").strip()
+    compression = float(allocation.get("risk_budget_compression") or 1.0)
+    theme_limit = allocation.get("max_theme_concentration_pct")
+    defence_action = next((item for item in macro_actions if item.get("type") == "defence"), None)
+    strategy_action = next((item for item in macro_actions if item.get("type") == "strategy_switch"), None)
+
+    if not conflict_ruling and compression >= 1 and not defence_action and not strategy_action:
+        return {}
+
+    allowed_actions = []
+    if "允许局部高确定性短线参与" in conflict_ruling:
+        allowed_actions.append("仅允许高确定性短线动作")
+    elif compression < 1:
+        allowed_actions.append("短线动作需按压缩后风险预算执行")
+    else:
+        allowed_actions.append("可按当前配置动作执行")
+
+    defence_requirements = []
+    if defence_action and defence_action.get("description"):
+        defence_requirements.append(str(defence_action.get("description")))
+    if theme_limit not in (None, ""):
+        defence_requirements.append(f"主题集中度上限收敛至 {float(theme_limit):.0f}%")
+    if strategy_action and strategy_action.get("description"):
+        defence_requirements.append(str(strategy_action.get("description")))
+
+    trigger_condition = "宏观长线防守与短线进攻信号同时出现时立即生效" if conflict_ruling else "当风险预算进入压缩状态时生效"
+    return {
+        "allowed_actions": allowed_actions,
+        "required_defence_actions": defence_requirements,
+        "risk_budget_pct": int(round(compression * 100)),
+        "effective_condition": trigger_condition,
     }
 
 
@@ -389,14 +434,53 @@ def get_latest_allocation() -> dict[str, Any]:
                 ),
             }
         allocation = _row_to_dict(row)
-        source = "manual_allocation" if not str(allocation.get("regime_id") or "").strip() else "macro_regime_allocation"
+        regime_id = str(allocation.get("regime_id") or "").strip()
+        macro_actions: list[dict[str, Any]] = []
+        if regime_id and _db.table_exists(conn, MACRO_REGIMES_TABLE):
+            regime_row = conn.execute(
+                f"SELECT portfolio_action_json FROM {MACRO_REGIMES_TABLE} WHERE id = ? LIMIT 1",
+                (regime_id,),
+            ).fetchone()
+            regime_payload = _row_to_dict(regime_row)
+            try:
+                raw_actions = json.loads(regime_payload.get("portfolio_action_json") or "[]")
+                if isinstance(raw_actions, list):
+                    macro_actions = [item for item in raw_actions if isinstance(item, dict)]
+            except Exception:
+                macro_actions = []
+        allocation["macro_actions"] = macro_actions
+        allocation["conflict_constraints"] = _build_conflict_constraints(allocation, macro_actions)
+        if regime_id and _db.table_exists(conn, MACRO_REGIMES_TABLE):
+            review_row = conn.execute(
+                f"SELECT outcome_rating, outcome_notes, correction_suggestion, created_at FROM {MACRO_REGIMES_TABLE} WHERE id = ? LIMIT 1",
+                (regime_id,),
+            ).fetchone()
+            review_payload = _row_to_dict(review_row)
+            allocation["long_term_review"] = {
+                "regime_id": regime_id,
+                "outcome_rating": review_payload.get("outcome_rating") or "",
+                "outcome_notes": review_payload.get("outcome_notes") or "",
+                "correction_suggestion": review_payload.get("correction_suggestion") or "",
+                "regime_created_at": review_payload.get("created_at") or "",
+                "action_count": len(macro_actions),
+            }
+        else:
+            allocation["long_term_review"] = {
+                "regime_id": regime_id,
+                "outcome_rating": "",
+                "outcome_notes": "",
+                "correction_suggestion": "",
+                "regime_created_at": "",
+                "action_count": len(macro_actions),
+            }
+        source = "manual_allocation" if not regime_id else "macro_regime_allocation"
         return {
             "ok": True,
             "allocation": allocation,
             **_status_payload(
                 status="ready",
                 status_reason="已生成可用于账户级仓位约束的配置动作。",
-                generated_from=[source, "portfolio_allocations"],
+                generated_from=[source, "portfolio_allocations", "macro_regimes" if macro_actions else source],
             ),
         }
     except Exception as exc:
