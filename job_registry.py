@@ -277,6 +277,26 @@ DEFAULT_JOBS: tuple[JobDefinition, ...] = (
         ),
     ),
     JobDefinition(
+        job_key="funnel_ingested_score_align",
+        name="候选漏斗评分对齐",
+        category="research",
+        schedule_expr="20 9 * * 1-5",
+        description="对仍为已进入的漏斗标的，若最新 score_date 的 stock_scores_daily 中存在该 ts_code，则自动流转至已增强（可幂等重跑）",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_funnel_job.py"), "--job-key", "funnel_ingested_score_align"),
+        ),
+    ),
+    JobDefinition(
+        job_key="funnel_review_refresh",
+        name="候选漏斗复盘快照",
+        category="research",
+        schedule_expr="40 9 * * 1-5",
+        description="对已确认/已执行/已复盘标的，基于 stock_daily_prices 写入 T+N 收益复盘快照（与阶段自动推进解耦）",
+        commands=(
+            py_cmd(str(ROOT_DIR / "jobs" / "run_funnel_job.py"), "--job-key", "funnel_review_refresh"),
+        ),
+    ),
+    JobDefinition(
         job_key="news_archive_refresh",
         name="新闻归档",
         category="maintenance",

@@ -126,6 +126,7 @@ def _derive_funnel_status(*, total: int, table_exists: bool, upstream_hint: dict
 def list_candidates(
     *,
     state: str = "",
+    ts_q: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
@@ -138,11 +139,17 @@ def list_candidates(
             if not table_exists:
                 status_payload = _derive_funnel_status(total=0, table_exists=False, upstream_hint=upstream_hint)
                 return {"items": [], "total": 0, "limit": limit, "offset": offset, "upstream_scores": upstream_hint, **status_payload}
-            where_clause = ""
+            clauses: list[str] = []
             params: list[Any] = []
             if state and state in VALID_STATES:
-                where_clause = "WHERE state = ?"
+                clauses.append("state = ?")
                 params.append(state)
+            ts_norm = str(ts_q or "").strip().upper()
+            if ts_norm:
+                clauses.append("(UPPER(TRIM(ts_code)) LIKE ? OR UPPER(TRIM(name)) LIKE ?)")
+                like = f"%{ts_norm}%"
+                params.extend([like, like])
+            where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
             count_sql = f"SELECT COUNT(*) FROM {FUNNEL_CANDIDATES_TABLE} {where_clause}"
             total_row = conn.execute(count_sql, params).fetchone()
             total = int(total_row[0] or 0) if total_row else 0
@@ -261,6 +268,10 @@ def create_candidate(
                 operator="system",
                 idempotency_key="",
             )
+            try:
+                conn.commit()
+            except Exception:
+                pass
         finally:
             conn.close()
         return {"ok": True, "id": candidate_id, "state": "ingested"}
@@ -399,6 +410,10 @@ def transition_candidate(
                 operator=operator,
                 idempotency_key=idempotency_key,
             )
+            try:
+                conn.commit()
+            except Exception:
+                pass
             return {
                 "ok": True,
                 "candidate_id": candidate_id,
@@ -411,6 +426,324 @@ def transition_candidate(
             conn.close()
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+def promote_ingested_when_score_present(
+    *,
+    score_date: str | None = None,
+    max_candidates: int = 10_000,
+) -> dict[str, Any]:
+    """
+    For each funnel row still in ``ingested``, if ``stock_scores_daily`` contains a row
+    for the same ``ts_code`` on the effective ``score_date`` (latest batch by default),
+    transition to ``amplified`` using ``system_rule`` with an auditable idempotency key.
+    """
+    scanned = 0
+    promoted = 0
+    skipped_no_score = 0
+    idempotent_skips = 0
+    errors: list[dict[str, Any]] = []
+    try:
+        conn = _db.connect()
+        try:
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+                return {
+                    "ok": True,
+                    "scanned": 0,
+                    "promoted": 0,
+                    "skipped_no_score": 0,
+                    "idempotent_skips": 0,
+                    "score_date": "",
+                    "errors": [],
+                    "note": "funnel_candidates missing",
+                }
+            if not _db.table_exists(conn, "stock_scores_daily"):
+                hint = _load_upstream_scores_hint(conn)
+                return {
+                    "ok": True,
+                    "scanned": 0,
+                    "promoted": 0,
+                    "skipped_no_score": 0,
+                    "idempotent_skips": 0,
+                    "score_date": "",
+                    "errors": [],
+                    "upstream_scores": hint,
+                    "note": "stock_scores_daily missing",
+                }
+            hint = _load_upstream_scores_hint(conn)
+            effective = (score_date or "").strip()
+            if not effective:
+                if str(hint.get("status") or "") != "ready" or not str(hint.get("latest_score_date") or "").strip():
+                    return {
+                        "ok": True,
+                        "scanned": 0,
+                        "promoted": 0,
+                        "skipped_no_score": 0,
+                        "idempotent_skips": 0,
+                        "score_date": "",
+                        "errors": [],
+                        "upstream_scores": hint,
+                        "note": "no_score_date",
+                    }
+                effective = str(hint["latest_score_date"]).strip()
+
+            score_rows = conn.execute(
+                """
+                SELECT DISTINCT UPPER(TRIM(ts_code)) AS ts_code_norm
+                FROM stock_scores_daily
+                WHERE score_date = ?
+                """,
+                (effective,),
+            ).fetchall()
+            scored_ts: set[str] = set()
+            for r in score_rows:
+                d = _row_to_dict(r)
+                norm = str(d.get("ts_code_norm") or d.get("TS_CODE_NORM") or "").strip()
+                if norm:
+                    scored_ts.add(norm)
+            ing_rows = conn.execute(
+                f"""
+                SELECT id, ts_code, state_version
+                FROM {FUNNEL_CANDIDATES_TABLE}
+                WHERE state = 'ingested'
+                ORDER BY updated_at ASC
+                LIMIT ?
+                """,
+                (max(1, min(int(max_candidates or 10_000), 50_000)),),
+            ).fetchall()
+            ing_payload = [_row_to_dict(r) for r in ing_rows]
+        finally:
+            conn.close()
+
+        scanned = len(ing_payload)
+        for d in ing_payload:
+            cid = str(d.get("id") or "")
+            ts_raw = str(d.get("ts_code") or "").strip().upper()
+            ver = int(d.get("state_version") or 0)
+            if not cid or not ts_raw:
+                skipped_no_score += 1
+                continue
+            if ts_raw not in scored_ts:
+                skipped_no_score += 1
+                continue
+            idem = f"funnel:ingested_to_amplified:{cid}:{effective}"
+            reason = f"score_row_present:{effective}"
+            evidence = f"stock_scores_daily:{effective}:{ts_raw}"
+            res = transition_candidate(
+                cid,
+                to_state="amplified",
+                reason=reason,
+                evidence_ref=evidence,
+                trigger_source="system_rule",
+                operator="scheduler",
+                idempotency_key=idem,
+                state_version=ver,
+            )
+            if res.get("idempotent"):
+                idempotent_skips += 1
+            elif res.get("ok"):
+                promoted += 1
+            else:
+                errors.append({"candidate_id": cid, "ts_code": ts_raw, "error": res.get("error", "unknown")})
+        return {
+            "ok": True,
+            "scanned": scanned,
+            "promoted": promoted,
+            "skipped_no_score": skipped_no_score,
+            "idempotent_skips": idempotent_skips,
+            "score_date": effective,
+            "errors": errors,
+            "upstream_scores": hint,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "scanned": scanned,
+            "promoted": promoted,
+            "skipped_no_score": skipped_no_score,
+            "idempotent_skips": idempotent_skips,
+            "score_date": str(score_date or "").strip(),
+            "errors": errors + [{"error": str(exc)}],
+        }
+
+
+FUNNEL_REVIEW_SNAPSHOTS_TABLE = "funnel_review_snapshots"
+
+
+def _ensure_funnel_review_snapshots_table(conn) -> None:
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {FUNNEL_REVIEW_SNAPSHOTS_TABLE} (
+            id TEXT PRIMARY KEY,
+            candidate_id TEXT NOT NULL,
+            ts_code TEXT NOT NULL,
+            state_at_run TEXT NOT NULL,
+            ref_date TEXT NOT NULL,
+            horizon_days INTEGER NOT NULL,
+            return_pct REAL,
+            basis TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            UNIQUE(candidate_id, ref_date, horizon_days)
+        )
+        """
+    )
+
+
+def refresh_funnel_review_snapshots(
+    *,
+    horizon_days: int = 5,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """
+    Append-or-replace simple T+N close-to-close returns for funnel rows in terminal-ish states,
+    using ``stock_daily_prices`` when available. Decoupled from stage auto-promotion.
+    """
+    hz = max(1, min(int(horizon_days or 5), 60))
+    lim = max(1, min(int(limit or 200), 2_000))
+    processed = 0
+    written = 0
+    skipped = 0
+    errors: list[dict[str, Any]] = []
+    now = _utc_now()
+    try:
+        conn = _db.connect()
+        try:
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_CANDIDATES_TABLE):
+                return {"ok": True, "processed": 0, "written": 0, "skipped": 0, "errors": [], "note": "no funnel table"}
+            _ensure_funnel_review_snapshots_table(conn)
+            prices_ok = _db.table_exists(conn, "stock_daily_prices")
+            rows = conn.execute(
+                f"""
+                SELECT id, ts_code, state, updated_at
+                FROM {FUNNEL_CANDIDATES_TABLE}
+                WHERE state IN ('confirmed', 'executed', 'reviewed')
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (lim,),
+            ).fetchall()
+            for row in rows:
+                processed += 1
+                d = _row_to_dict(row)
+                cid = str(d.get("id") or "")
+                ts = str(d.get("ts_code") or "").strip().upper()
+                st = str(d.get("state") or "")
+                upd = str(d.get("updated_at") or "")
+                if not cid or not ts:
+                    skipped += 1
+                    continue
+                ref_date = upd[:10] if len(upd) >= 10 else ""
+                if len(ref_date) != 10:
+                    skipped += 1
+                    continue
+                ref_compact = ref_date.replace("-", "")
+                if not prices_ok or len(ref_compact) != 8:
+                    skipped += 1
+                    continue
+                pr = conn.execute(
+                    """
+                    SELECT trade_date, close
+                    FROM stock_daily_prices
+                    WHERE ts_code = ? AND trade_date >= ? AND close IS NOT NULL
+                    ORDER BY trade_date ASC
+                    LIMIT ?
+                    """,
+                    (ts, ref_compact, hz + 15),
+                ).fetchall()
+                closes: list[float] = []
+                for p in pr:
+                    pd = _row_to_dict(p)
+                    cl = pd.get("close")
+                    if cl is None:
+                        continue
+                    try:
+                        closes.append(float(cl))
+                    except (TypeError, ValueError):
+                        continue
+                if len(closes) <= hz or closes[0] == 0:
+                    skipped += 1
+                    continue
+                ret_pct = round((closes[hz] - closes[0]) / closes[0] * 100.0, 4)
+                basis = f"stock_daily_prices:{ref_compact}:h{hz}"
+                snap_id = str(uuid.uuid4())
+                try:
+                    conn.execute(
+                        f"DELETE FROM {FUNNEL_REVIEW_SNAPSHOTS_TABLE} WHERE candidate_id = ? AND ref_date = ? AND horizon_days = ?",
+                        (cid, ref_date, hz),
+                    )
+                    conn.execute(
+                        f"""
+                        INSERT INTO {FUNNEL_REVIEW_SNAPSHOTS_TABLE}
+                            (id, candidate_id, ts_code, state_at_run, ref_date, horizon_days, return_pct, basis, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (snap_id, cid, ts, st, ref_date, hz, ret_pct, basis, now),
+                    )
+                    written += 1
+                except Exception as exc:  # pragma: no cover
+                    errors.append({"candidate_id": cid, "error": str(exc)})
+            conn.commit()
+            return {"ok": True, "processed": processed, "written": written, "skipped": skipped, "errors": errors, "horizon_days": hz}
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "processed": processed,
+            "written": written,
+            "skipped": skipped,
+            "errors": errors + [{"error": str(exc)}],
+        }
+
+
+def list_funnel_review_snapshots(
+    *,
+    candidate_id: str = "",
+    limit: int = 50,
+) -> dict[str, Any]:
+    lim = max(1, min(int(limit or 50), 200))
+    cid = (candidate_id or "").strip()
+    try:
+        conn = _db.connect()
+        try:
+            _db.apply_row_factory(conn)
+            if not _db.table_exists(conn, FUNNEL_REVIEW_SNAPSHOTS_TABLE):
+                return {"items": [], "total": 0}
+            if cid:
+                rows = conn.execute(
+                    f"""
+                    SELECT id, candidate_id, ts_code, state_at_run, ref_date, horizon_days, return_pct, basis, created_at
+                    FROM {FUNNEL_REVIEW_SNAPSHOTS_TABLE}
+                    WHERE candidate_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (cid, lim),
+                ).fetchall()
+                total_row = conn.execute(
+                    f"SELECT COUNT(*) FROM {FUNNEL_REVIEW_SNAPSHOTS_TABLE} WHERE candidate_id = ?",
+                    (cid,),
+                ).fetchone()
+            else:
+                rows = conn.execute(
+                    f"""
+                    SELECT id, candidate_id, ts_code, state_at_run, ref_date, horizon_days, return_pct, basis, created_at
+                    FROM {FUNNEL_REVIEW_SNAPSHOTS_TABLE}
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (lim,),
+                ).fetchall()
+                total_row = conn.execute(f"SELECT COUNT(*) FROM {FUNNEL_REVIEW_SNAPSHOTS_TABLE}").fetchone()
+            total = int(total_row[0] or 0) if total_row else 0
+            items = [_row_to_dict(r) for r in rows]
+            return {"items": items, "total": total, "limit": lim}
+        finally:
+            conn.close()
+    except Exception as exc:
+        return {"items": [], "total": 0, "error": str(exc)}
 
 
 def get_funnel_metrics() -> dict[str, Any]:
@@ -434,8 +767,42 @@ def get_funnel_metrics() -> dict[str, Any]:
                 cnt = int(d.get("cnt") or 0)
                 state_counts[state] = cnt
                 total += cnt
+            avg_days_to_decision: float | None = None
+            conversion_rate: float | None = None
+            if total > 0:
+                executed_cnt = int(state_counts.get("executed", 0) or 0)
+                reviewed_cnt = int(state_counts.get("reviewed", 0) or 0)
+                conversion_rate = float(executed_cnt + reviewed_cnt) / float(total)
+            if total > 0 and _db.table_exists(conn, FUNNEL_TRANSITIONS_TABLE):
+                try:
+                    avg_row = conn.execute(
+                        f"""
+                        WITH first_decision AS (
+                            SELECT candidate_id, MIN(created_at) AS t_dec
+                            FROM {FUNNEL_TRANSITIONS_TABLE}
+                            WHERE to_state = 'decision_ready'
+                            GROUP BY candidate_id
+                        )
+                        SELECT AVG(JULIANDAY(fd.t_dec) - JULIANDAY(c.created_at)) AS avg_days
+                        FROM first_decision fd
+                        INNER JOIN {FUNNEL_CANDIDATES_TABLE} c ON c.id = fd.candidate_id
+                        """
+                    ).fetchone()
+                    if avg_row:
+                        raw_avg = _row_to_dict(avg_row).get("avg_days")
+                        if raw_avg is not None:
+                            avg_days_to_decision = round(float(raw_avg), 2)
+                except Exception:
+                    avg_days_to_decision = None
             status_payload = _derive_funnel_status(total=total, table_exists=True, upstream_hint=upstream_hint)
-            return {"state_counts": state_counts, "total": total, "upstream_scores": upstream_hint, **status_payload}
+            return {
+                "state_counts": state_counts,
+                "total": total,
+                "avg_days_to_decision": avg_days_to_decision,
+                "conversion_rate": conversion_rate,
+                "upstream_scores": upstream_hint,
+                **status_payload,
+            }
         finally:
             conn.close()
     except Exception as exc:

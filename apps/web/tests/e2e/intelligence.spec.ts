@@ -62,4 +62,12 @@ test.describe('情报模块', () => {
     await page.goto('/intelligence/daily-summaries')
     await expect(page.locator('#main-content')).toBeVisible({ timeout: 15000 })
   })
+
+  test('资讯 Hub：根路径重定向到子路径且顶部 Tab 可见', async ({ page }) => {
+    await page.goto('/app/data/intelligence')
+    await page.waitForURL((u) => /\/app\/data\/intelligence\/(global-news|cn-news|stock-news|daily-summaries)/.test(u.pathname), {
+      timeout: 15000,
+    })
+    await expect(page.locator('[data-intelligence-hub-tabs]')).toBeVisible({ timeout: 15000 })
+  })
 })

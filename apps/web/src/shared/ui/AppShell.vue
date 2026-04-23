@@ -1,5 +1,5 @@
 <template>
-  <component :is="shellComponent" v-if="shellComponent" :title="title" :subtitle="subtitle">
+  <component :is="shellComponent" v-if="shellComponent && !embed" :title="title" :subtitle="subtitle">
     <slot />
   </component>
   <div v-else class="page-main-stack">
@@ -16,6 +16,8 @@ import UserShell from './UserShell.vue'
 const props = defineProps<{
   title: string
   subtitle?: string
+  /** 仅渲染主内容槽，不套 UserShell/AdminShell（用于父级已提供壳层时，如资讯 Hub 子路由） */
+  embed?: boolean
 }>()
 
 const route = useRoute()
@@ -28,7 +30,10 @@ const resolvedSurface = computed<'app' | 'admin' | 'shared'>(() => {
   return 'shared'
 })
 
+const embed = computed(() => Boolean(props.embed))
+
 const shellComponent = computed(() => {
+  if (embed.value) return null
   if (resolvedSurface.value === 'app') return UserShell
   if (resolvedSurface.value === 'admin') return AdminShell
   return null

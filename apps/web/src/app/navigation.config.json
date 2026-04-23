@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-23",
+  "version": "2026-04-24",
   "source": "repo_default",
   "groups": [
     {
@@ -95,28 +95,10 @@
           "permission": "macro_advanced"
         },
         {
-          "to": "/app/data/intelligence/global-news",
-          "label": "国际资讯",
-          "desc": "全球财经新闻与结构化映射",
+          "to": "/app/data/intelligence",
+          "label": "资讯中心",
+          "desc": "国际 / 国内 / 个股新闻与日报总结（子 Tab 按权限显示）",
           "permission": "news_read"
-        },
-        {
-          "to": "/app/data/intelligence/cn-news",
-          "label": "国内资讯",
-          "desc": "新浪 / 东财资讯统一看",
-          "permission": "news_read"
-        },
-        {
-          "to": "/app/data/intelligence/stock-news",
-          "label": "个股新闻",
-          "desc": "聚焦单股新闻与立即采集",
-          "permission": "stock_news_read"
-        },
-        {
-          "to": "/app/data/intelligence/daily-summaries",
-          "label": "新闻日报总结",
-          "desc": "日报生成、历史查询与双格式导出",
-          "permission": "daily_summary_read"
         },
         {
           "to": "/app/data/signals/overview",

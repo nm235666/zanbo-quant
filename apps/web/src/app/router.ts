@@ -11,6 +11,26 @@ type RouteMetaAuth = {
   resolveLanding?: boolean
   surface?: 'app' | 'admin' | 'shared'
   layer?: LayerId
+  /** Nested under IntelligenceHubPage: render body without outer AppShell */
+  intelligenceHubChild?: boolean
+}
+
+function redirectIntelligenceHubRoot(to: { path: string; fullPath: string }) {
+  const normalized = String(to.path || '').replace(/\/$/, '') || ''
+  if (normalized !== '/app/data/intelligence') return true
+  const auth = useAuthStore()
+  const picks: Array<{ seg: string; perm: AppPermission }> = [
+    { seg: 'global-news', perm: 'news_read' },
+    { seg: 'cn-news', perm: 'news_read' },
+    { seg: 'stock-news', perm: 'stock_news_read' },
+    { seg: 'daily-summaries', perm: 'daily_summary_read' },
+  ]
+  for (const { seg, perm } of picks) {
+    if (hasPermissionByEffective(auth.effectivePermissions, auth.role, perm)) {
+      return `/app/data/intelligence/${seg}`
+    }
+  }
+  return { path: '/upgrade', query: { from: to.fullPath } }
 }
 
 const RoutePlaceholder = {
@@ -75,10 +95,45 @@ export const router = createRouter({
     { path: '/app/data/stocks/prices', component: () => import('../pages/stocks/PricesPage.vue'), meta: { auth: true, permission: 'stocks_advanced', surface: 'app', layer: 'l2' } as RouteMetaAuth },
     { path: '/app/data/macro', component: () => import('../pages/macro/MacroPage.vue'), meta: { auth: true, permission: 'macro_advanced', surface: 'app', layer: 'l2' } as RouteMetaAuth },
 
-    { path: '/app/data/intelligence/global-news', component: () => import('../pages/intelligence/GlobalNewsPage.vue'), meta: { auth: true, permission: 'news_read', surface: 'app', layer: 'l2' } as RouteMetaAuth },
-    { path: '/app/data/intelligence/cn-news', component: () => import('../pages/intelligence/CnNewsPage.vue'), meta: { auth: true, permission: 'news_read', surface: 'app', layer: 'l2' } as RouteMetaAuth },
-    { path: '/app/data/intelligence/stock-news', component: () => import('../pages/intelligence/StockNewsPage.vue'), meta: { auth: true, permission: 'stock_news_read', surface: 'app', layer: 'l2' } as RouteMetaAuth },
-    { path: '/app/data/intelligence/daily-summaries', component: () => import('../pages/intelligence/DailySummariesPage.vue'), meta: { auth: true, permission: 'daily_summary_read', surface: 'app', layer: 'l2' } as RouteMetaAuth },
+    {
+      path: '/app/data/intelligence',
+      component: () => import('../pages/intelligence/IntelligenceHubPage.vue'),
+      meta: { auth: true, permission: 'public', surface: 'app', layer: 'l2' } as RouteMetaAuth,
+      beforeEnter: (to, _from, next) => {
+        const r = redirectIntelligenceHubRoot(to)
+        if (r === true) {
+          next()
+          return
+        }
+        if (typeof r === 'string') {
+          next(r)
+          return
+        }
+        next(r)
+      },
+      children: [
+        {
+          path: 'global-news',
+          component: () => import('../pages/intelligence/GlobalNewsPage.vue'),
+          meta: { auth: true, permission: 'news_read', surface: 'app', layer: 'l2', intelligenceHubChild: true } as RouteMetaAuth,
+        },
+        {
+          path: 'cn-news',
+          component: () => import('../pages/intelligence/CnNewsPage.vue'),
+          meta: { auth: true, permission: 'news_read', surface: 'app', layer: 'l2', intelligenceHubChild: true } as RouteMetaAuth,
+        },
+        {
+          path: 'stock-news',
+          component: () => import('../pages/intelligence/StockNewsPage.vue'),
+          meta: { auth: true, permission: 'stock_news_read', surface: 'app', layer: 'l2', intelligenceHubChild: true } as RouteMetaAuth,
+        },
+        {
+          path: 'daily-summaries',
+          component: () => import('../pages/intelligence/DailySummariesPage.vue'),
+          meta: { auth: true, permission: 'daily_summary_read', surface: 'app', layer: 'l2', intelligenceHubChild: true } as RouteMetaAuth,
+        },
+      ],
+    },
 
     { path: '/app/data/signals/overview', component: () => import('../pages/signals/SignalsOverviewPage.vue'), meta: { auth: true, permission: 'signals_advanced', surface: 'app', layer: 'l2' } as RouteMetaAuth },
     { path: '/app/data/signals/themes', component: () => import('../pages/signals/ThemesPage.vue'), meta: { auth: true, permission: 'signals_advanced', surface: 'app', layer: 'l2' } as RouteMetaAuth },

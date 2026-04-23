@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="个股新闻" subtitle="个股新闻查询、立即采集、补评分、影响解析与运维动作统一工作台。">
+  <AppShell :embed="isHubChild" title="个股新闻" subtitle="个股新闻查询、立即采集、补评分、影响解析与运维动作统一工作台。">
     <div class="space-y-4">
       <PageSection title="查询与采集" subtitle="按股票、来源、日期、重要度和评分状态筛选，也可以直接触发采集或补评分。">
         <div class="grid gap-3 xl:grid-cols-6 md:grid-cols-2">
@@ -149,7 +149,9 @@ import { formatDateTime } from '../../shared/utils/format'
 import { importanceOptions, parseImpactTags, sourceLabel } from '../../shared/utils/finance'
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 import { useUiStore } from '../../stores/ui'
+import { useIntelligenceHubChild } from './useIntelligenceHubChild'
 
+const isHubChild = useIntelligenceHubChild()
 const route = useRoute()
 const router = useRouter()
 const queryClient = useQueryClient()

@@ -62,7 +62,7 @@ test('单标的详情页包含决策动作时间线收口区', async ({ page }) 
 test('候选漏斗页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
   await page.goto('/app/desk/funnel')
-  await expect(page).toHaveURL(/\/app\/funnel$/)
+  await expect(page).toHaveURL(/\/app\/desk\/funnel$/)
   await page.locator('#main-content').waitFor({ state: 'visible', timeout: 20_000 })
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')

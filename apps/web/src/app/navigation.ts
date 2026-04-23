@@ -96,8 +96,7 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/app/data/stocks/list', label: '股票列表', desc: '股票基础数据检索', permission: 'stocks_advanced', surface: 'app' },
       { to: '/app/data/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced', surface: 'app' },
       { to: '/app/data/macro', label: '宏观数据', desc: '宏观原始指标与口径', permission: 'macro_advanced', surface: 'app' },
-      { to: '/app/data/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read', surface: 'app' },
-      { to: '/app/data/intelligence/cn-news', label: '国内资讯', desc: '新浪 / 东财资讯统一看', permission: 'news_read', surface: 'app' },
+      { to: '/app/data/intelligence', label: '资讯中心', desc: '国际 / 国内 / 个股新闻与日报总结', permission: 'news_read', surface: 'app' },
       { to: '/app/data/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced', surface: 'app' },
       { to: '/app/data/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced', surface: 'app' },
       { to: '/app/data/signals/graph', label: '产业链图谱', desc: '主题、行业、股票关系浏览', permission: 'signals_advanced', surface: 'app' },
@@ -241,5 +240,5 @@ export function resolveDefaultLandingPath(options: {
       }
     }
   }
-  return '/app/data/intelligence/global-news'
+  return '/app/data/intelligence'
 }

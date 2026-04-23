@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="新闻日报总结" subtitle="支持查询历史日报、主动生成今日总结，并把结果直接沉淀在新前端里。">
+  <AppShell :embed="isHubChild" title="新闻日报总结" subtitle="支持查询历史日报、主动生成今日总结，并把结果直接沉淀在新前端里。">
     <div class="space-y-4">
       <PageSection title="查询与生成" subtitle="按日期、来源关键字和实际模型筛选，也可以主动生成今日总结。">
         <div class="grid gap-3 xl:grid-cols-[180px_1fr_180px_120px] md:grid-cols-2">
@@ -122,7 +122,9 @@ import { downloadElementAsImage, downloadTextFile } from '../../shared/utils/exp
 import { buildCleanQuery, readQueryNumber, readQueryString } from '../../shared/utils/urlState'
 import { buildTaskScopeKey } from '../../shared/taskPersistence/taskPersistence'
 import { usePersistedTaskRunner } from '../../shared/taskPersistence/usePersistedTaskRunner'
+import { useIntelligenceHubChild } from './useIntelligenceHubChild'
 
+const isHubChild = useIntelligenceHubChild()
 const route = useRoute()
 const router = useRouter()
 

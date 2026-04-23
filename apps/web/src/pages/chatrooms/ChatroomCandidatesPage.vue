@@ -72,6 +72,14 @@
               <span class="metric-chip">群数 {{ item.room_count ?? 0 }}</span>
               <span class="metric-chip">最新分析 {{ item.latest_analysis_date || '-' }}</span>
               <span v-if="item.ts_code" class="metric-chip">代码 {{ item.ts_code }}</span>
+              <RouterLink
+                v-if="item.ts_code"
+                :to="{ path: '/app/desk/funnel', query: { prefill_ts: String(item.ts_code).trim() } }"
+                class="metric-chip border border-[var(--brand)] text-[var(--brand)] hover:bg-[var(--brand)]/5"
+                @click.stop
+              >
+                带入候选漏斗
+              </RouterLink>
               <span class="metric-chip text-[var(--brand)]">点击查看下一步</span>
             </div>
           </InfoCard>
@@ -90,7 +98,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'

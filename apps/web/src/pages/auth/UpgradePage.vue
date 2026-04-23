@@ -308,7 +308,7 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
   const path = String(raw.split('?')[0] || '').trim()
   if (!path) return null
   const defaultAlternatives = [{ to: primaryEntry.value, label: primaryEntryLabel.value }]
-  const newsAlternatives = [{ to: '/app/data/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
+  const newsAlternatives = [{ to: '/app/data/intelligence', label: '先回资讯中心' }, ...defaultAlternatives]
   const stockNewsAlternatives = [{ to: '/app/data/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
   const rules: Array<{ test: (pathName: string) => boolean; title: string; required: string[]; alternatives: Array<{ to: string; label: string }> }> = [
     {
@@ -319,6 +319,7 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
     },
     {
       test: (pathName) =>
+        pathName === '/app/data/intelligence' ||
         pathName === '/intelligence/global-news' ||
         pathName === '/intelligence/cn-news' ||
         pathName === '/app/intelligence/global-news' ||

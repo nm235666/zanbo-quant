@@ -8,6 +8,9 @@ from services.funnel_service import (  # noqa: F401
     get_candidate,
     get_funnel_metrics,
     list_candidates,
+    list_funnel_review_snapshots,
+    promote_ingested_when_score_present,
+    refresh_funnel_review_snapshots,
     transition_candidate,
 )
 
@@ -17,5 +20,8 @@ __all__ = [
     "get_candidate",
     "get_funnel_metrics",
     "list_candidates",
+    "list_funnel_review_snapshots",
+    "promote_ingested_when_score_present",
+    "refresh_funnel_review_snapshots",
     "transition_candidate",
 ]

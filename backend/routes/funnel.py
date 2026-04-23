@@ -8,6 +8,7 @@ from backend.layers.layer1_user_decision import (
     get_candidate,
     get_funnel_metrics,
     list_candidates,
+    list_funnel_review_snapshots,
     transition_candidate,
     VALID_STATES,
 )
@@ -31,9 +32,27 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
     if not parsed.path.startswith("/api/funnel"):
         return False
 
+    if parsed.path == "/api/funnel/review-snapshots":
+        params = parse_qs(parsed.query)
+        candidate_id = params.get("candidate_id", [""])[0].strip()
+        try:
+            limit = int(params.get("limit", ["50"])[0] or 50)
+        except ValueError:
+            handler._send_json({"ok": False, "error": "limit 必须是整数"}, status=400)
+            return True
+        limit = max(1, min(limit, 200))
+        try:
+            payload = list_funnel_review_snapshots(candidate_id=candidate_id, limit=limit)
+        except Exception as exc:  # pragma: no cover
+            handler._send_json({"ok": False, "error": f"复盘快照查询失败: {exc}"}, status=500)
+            return True
+        handler._send_json({"ok": True, **payload})
+        return True
+
     if parsed.path == "/api/funnel/candidates":
         params = parse_qs(parsed.query)
         state = params.get("state", [""])[0].strip()
+        ts_q = (params.get("q", [""])[0] or params.get("ts_q", [""])[0]).strip()
         try:
             limit = int(params.get("limit", ["50"])[0] or 50)
             offset = int(params.get("offset", ["0"])[0] or 0)
@@ -42,7 +61,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             return True
         limit = max(1, min(limit, 200))
         try:
-            payload = list_candidates(state=state, limit=limit, offset=offset)
+            payload = list_candidates(state=state, ts_q=ts_q, limit=limit, offset=offset)
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"候选标的查询失败: {exc}"}, status=500)
             return True

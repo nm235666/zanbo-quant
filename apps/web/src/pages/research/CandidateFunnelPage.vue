@@ -13,7 +13,61 @@
           <span class="metric-chip">漏斗总量 {{ funnelTotal }}</span>
           <span v-for="item in availabilityMissingInputs" :key="item" class="metric-chip text-amber-700">{{ item }}</span>
         </div>
+        <p class="mt-3 text-xs leading-relaxed text-[var(--muted)]">
+          定时任务：<code class="rounded bg-[var(--panel-soft)] px-1">funnel_ingested_score_align</code>（评分对齐：已进入→已增强）、
+          <code class="rounded bg-[var(--panel-soft)] px-1">funnel_review_refresh</code>（复盘快照）。可通过
+          <code class="rounded bg-[var(--panel-soft)] px-1">/api/jobs/trigger?job_key=…</code> 或 <code class="rounded bg-[var(--panel-soft)] px-1">jobs/run_funnel_job.py</code> 触发；说明见仓库
+          <code class="rounded bg-[var(--panel-soft)] px-1">docs/funnel_operating_model_cn.md</code>。
+        </p>
       </div>
+
+      <PageSection title="新建候选" subtitle="将标的加入漏斗，初始为「已进入」。代码自动转大写；名称若留空则使用代码作为名称（与后端必填一致）。">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            证券代码
+            <input
+              v-model.trim="createForm.ts_code"
+              data-testid="funnel-create-ts-code"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm uppercase"
+              placeholder="如 000001.SZ"
+            />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            名称
+            <input
+              v-model.trim="createForm.name"
+              data-testid="funnel-create-name"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
+              placeholder="与代码一致或公司简称"
+            />
+          </label>
+          <label class="text-sm font-semibold text-[var(--ink)] sm:col-span-2">
+            入池说明（可选）
+            <input
+              v-model.trim="createForm.reason"
+              class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
+              placeholder="为何纳入漏斗"
+            />
+          </label>
+        </div>
+        <div v-if="createError" class="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {{ createError }}
+        </div>
+        <div v-if="createSuccess" class="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          已加入漏斗。
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="funnel-create-submit"
+            class="rounded-2xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            :disabled="createPending || !createForm.ts_code.trim()"
+            @click="submitCreateCandidate"
+          >
+            {{ createPending ? '提交中…' : '加入漏斗' }}
+          </button>
+        </div>
+      </PageSection>
 
       <!-- 漏斗概览 stat cards -->
       <PageSection title="漏斗概览" subtitle="各阶段候选数量统计。">
@@ -54,7 +108,7 @@
             <button
               class="rounded-full border px-3 py-1 text-xs font-semibold transition"
               :class="activeFilter === '' ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--line)] bg-white text-[var(--ink)] hover:border-[var(--brand)] hover:text-[var(--brand)]'"
-              @click="activeFilter = ''"
+              @click="setListFilter('')"
             >
               全部
             </button>
@@ -70,14 +124,63 @@
           </div>
         </template>
 
+        <div class="mb-4 flex flex-wrap items-end gap-2">
+          <label class="text-sm font-semibold text-[var(--ink)]">
+            搜索代码/名称
+            <input
+              v-model.trim="listSearchInput"
+              data-testid="funnel-list-search"
+              class="mt-1 w-48 rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+              placeholder="如 000001"
+              @keyup.enter="applyListSearch"
+            />
+          </label>
+          <button
+            type="button"
+            class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]"
+            @click="applyListSearch"
+          >
+            搜索
+          </button>
+          <span class="pb-1 text-xs text-[var(--muted)]">每页 {{ pageSize }} 条，服务端筛选。</span>
+        </div>
+
+        <div
+          v-if="!candidatesLoading && !candidatesError && listTotal > 0"
+          class="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]"
+        >
+          <span>第 {{ listPage }} / {{ totalPages }} 页，共 {{ listTotal }} 条</span>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="rounded-full border border-[var(--line)] bg-white px-3 py-1 font-semibold disabled:opacity-40"
+              :disabled="listPage <= 1"
+              @click="listPage = Math.max(1, listPage - 1)"
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              class="rounded-full border border-[var(--line)] bg-white px-3 py-1 font-semibold disabled:opacity-40"
+              :disabled="listPage >= totalPages"
+              @click="listPage = Math.min(totalPages, listPage + 1)"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+
         <div v-if="candidatesLoading" class="py-8 text-center text-sm text-[var(--muted)]">加载中...</div>
         <div v-else-if="candidatesError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
           加载候选列表失败，请刷新重试。
         </div>
-        <div v-else-if="filteredCandidates.length === 0 && activeFilter" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--muted)]">
+        <div v-else-if="listTotal === 0 && activeFilter" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--muted)]">
           {{ `当前阶段（${stateLabel(activeFilter)}）暂无候选` }}
         </div>
-        <div v-else-if="filteredCandidates.length === 0" class="rounded-2xl border border-dashed border-[var(--line)] bg-gray-50 px-6 py-8 text-center">
+        <div v-else-if="listTotal === 0 && listSearchApplied" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-10 text-center text-sm text-[var(--muted)]">
+          无匹配「{{ listSearchApplied }}」的标的，请调整关键词。
+        </div>
+        <div v-else-if="listTotal === 0" class="rounded-2xl border border-dashed border-[var(--line)] bg-gray-50 px-6 py-8 text-center">
           <div class="text-sm font-semibold text-[var(--ink)]">候选池暂无标的</div>
           <div class="mt-2 text-xs text-[var(--muted)]">候选标的尚未进入漏斗，或当前筛选条件无结果。</div>
           <div class="mt-4 flex flex-wrap justify-center gap-2">
@@ -92,9 +195,12 @@
             </RouterLink>
           </div>
         </div>
+        <div v-else-if="allCandidates.length === 0" class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
+          本页无数据，请翻页或清空筛选。
+        </div>
         <div v-else class="divide-y divide-[var(--line)]">
           <div
-            v-for="candidate in filteredCandidates"
+            v-for="candidate in allCandidates"
             :key="candidate.id"
             class="cursor-pointer py-3 transition hover:bg-[var(--panel-soft)]"
             :class="{ 'bg-[var(--brand)]/5': selectedId === candidate.id }"
@@ -105,6 +211,12 @@
                 <div class="text-sm font-semibold text-[var(--ink)]">
                   {{ candidate.ts_code }}
                   <span v-if="candidate.name" class="ml-1 font-normal text-[var(--muted)]">{{ candidate.name }}</span>
+                  <span
+                    v-if="isStaleIngested(candidate)"
+                    class="ml-2 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+                  >
+                    已进入 ≥{{ staleIngestedDays }} 天
+                  </span>
                 </div>
                 <div v-if="candidate.last_transition_reason" class="mt-0.5 text-xs text-[var(--muted)] truncate max-w-sm">
                   {{ candidate.last_transition_reason }}
@@ -114,6 +226,7 @@
                 <span :class="stateBadgeClass(candidate.current_state)">
                   {{ stateLabel(candidate.current_state) }}
                 </span>
+                <span v-if="candidate.state_version != null" class="text-[10px] font-mono text-[var(--muted)]">v{{ candidate.state_version }}</span>
                 <div v-if="candidate.last_updated" class="text-xs text-[var(--muted)]">
                   {{ formatDate(candidate.last_updated) }}
                 </div>
@@ -124,7 +237,7 @@
       </PageSection>
 
       <!-- 流转操作面板 -->
-      <PageSection v-if="selectedCandidate" title="流转操作" subtitle="对选中候选执行状态流转。">
+      <PageSection v-if="selectedCandidate" title="流转操作" subtitle="仅展示与后端一致的可选目标状态；提交时携带版本号与幂等键以防重复提交。">
         <div class="space-y-4">
           <div class="flex flex-wrap items-center gap-3">
             <div class="text-sm font-semibold text-[var(--ink)]">
@@ -134,9 +247,16 @@
             <span :class="stateBadgeClass(selectedCandidate.current_state)">
               当前：{{ stateLabel(selectedCandidate.current_state) }}
             </span>
+            <span class="text-xs text-[var(--muted)]">状态版本 {{ selectedCandidate.state_version ?? '—' }}</span>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-xs text-[var(--muted)]">
+            触发来源取值与后端优先级表一致（见
+            <code class="rounded bg-white/80 px-1">TRIGGER_SOURCE_PRIORITY</code>
+            ）。手动操作请选「手动 / 研究员」。
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label class="text-sm font-semibold text-[var(--ink)]">
               目标状态
               <select v-model="transitionForm.to_state" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm">
@@ -147,10 +267,7 @@
             <label class="text-sm font-semibold text-[var(--ink)]">
               触发来源
               <select v-model="transitionForm.trigger_source" class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm">
-                <option value="manual">手动操作</option>
-                <option value="ai_screen">AI筛选</option>
-                <option value="decision_board">决策工作台</option>
-                <option value="system">系统触发</option>
+                <option v-for="opt in TRIGGER_SOURCE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </label>
             <label class="text-sm font-semibold text-[var(--ink)]">
@@ -158,9 +275,46 @@
               <input
                 v-model="transitionForm.reason"
                 class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
-                placeholder="简要说明流转原因（可选）"
+                placeholder="简要说明（可选）"
               />
             </label>
+            <label class="text-sm font-semibold text-[var(--ink)]">
+              证据引用（可选）
+              <input
+                v-model="transitionForm.evidence_ref"
+                class="mt-1 w-full rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm"
+                placeholder="链接、快照 ID 等"
+              />
+            </label>
+          </div>
+
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">流转历史</div>
+            <div v-if="candidateDetailLoading" class="mt-2 text-sm text-[var(--muted)]">加载中…</div>
+            <ul v-else-if="transitionsList.length" class="mt-2 max-h-48 space-y-2 overflow-y-auto text-sm">
+              <li
+                v-for="(t, idx) in transitionsList"
+                :key="String(t.id || idx)"
+                class="rounded-xl border border-[var(--line)] bg-white px-3 py-2"
+              >
+                <span class="font-mono text-xs text-[var(--muted)]">{{ formatDate(String(t.created_at || '')) }}</span>
+                <span class="ml-2">{{ stateLabel(String(t.from_state || '')) }} → {{ stateLabel(String(t.to_state || '')) }}</span>
+                <span v-if="t.trigger_source" class="ml-2 text-xs text-[var(--muted)]">{{ triggerSourceLabel(String(t.trigger_source)) }}</span>
+                <div v-if="t.reason" class="mt-1 text-xs text-[var(--muted)]">{{ t.reason }}</div>
+              </li>
+            </ul>
+            <div v-else class="mt-2 text-sm text-[var(--muted)]">暂无历史记录。</div>
+          </div>
+
+          <div class="mt-4">
+            <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">复盘快照（T+N 收盘收益）</div>
+            <div v-if="reviewSnapLoading" class="mt-2 text-sm text-[var(--muted)]">加载中…</div>
+            <ul v-else-if="reviewRows.length" class="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-[var(--muted)]">
+              <li v-for="(rv, idx) in reviewRows" :key="String(rv.id || idx)">
+                {{ rv.ref_date }} · {{ rv.horizon_days }} 日 {{ rv.return_pct }}% · {{ rv.basis }}
+              </li>
+            </ul>
+            <div v-else class="mt-2 text-xs text-[var(--muted)]">暂无快照。任务 <code class="rounded bg-[var(--panel-soft)] px-1">funnel_review_refresh</code> 写入 <code class="rounded bg-[var(--panel-soft)] px-1">funnel_review_snapshots</code>。</div>
           </div>
 
           <div v-if="transitionError" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -192,16 +346,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
-import { RouterLink } from 'vue-router'
+import { ref, computed, reactive, watch, onMounted } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import AppShell from '../../shared/ui/AppShell.vue'
 import PageSection from '../../shared/ui/PageSection.vue'
 import MetricGrid from '../../shared/ui/MetricGrid.vue'
 import type { MetricGridItem } from '../../shared/ui/MetricGrid.vue'
+import { useAuthStore } from '../../stores/auth'
 import {
+  createFunnelCandidate,
+  fetchFunnelCandidate,
   fetchFunnelCandidates,
   fetchFunnelMetrics,
+  fetchFunnelReviewSnapshots,
   transitionFunnelCandidate,
   type FunnelCandidate,
   type FunnelMetrics,
@@ -227,28 +385,50 @@ const STATE_LIST: StateConfig[] = [
   { key: 'reviewed', label: '已复盘', colorClass: 'text-teal-600', badgeClass: 'inline-flex items-center rounded-full border border-teal-200 bg-teal-100 px-2.5 py-1 text-xs font-semibold text-teal-700' },
 ]
 
-// Valid state transitions
+/** Must match `VALID_TRANSITIONS` in services/funnel_service/service.py */
 const STATE_TRANSITIONS: Record<string, string[]> = {
-  ingested: ['amplified', 'rejected', 'deferred'],
-  amplified: ['ai_screen_passed', 'rejected', 'deferred'],
-  ai_screen_passed: ['shortlisted', 'rejected', 'deferred'],
-  shortlisted: ['decision_ready', 'rejected', 'deferred'],
+  ingested: ['amplified', 'rejected'],
+  amplified: ['ai_screen_passed', 'rejected'],
+  ai_screen_passed: ['shortlisted', 'rejected'],
+  shortlisted: ['decision_ready', 'deferred', 'rejected'],
   decision_ready: ['confirmed', 'rejected', 'deferred'],
-  confirmed: ['executed', 'deferred'],
+  confirmed: ['executed'],
+  deferred: ['executed', 'rejected', 'shortlisted'],
   executed: ['reviewed'],
-  deferred: ['ingested', 'rejected'],
   rejected: [],
   reviewed: [],
 }
 
+const TRIGGER_SOURCE_OPTIONS = [
+  { value: 'researcher', label: '手动 / 研究员' },
+  { value: 'decision_action', label: '决策看板' },
+  { value: 'ai_screen', label: 'AI 筛选' },
+  { value: 'system_rule', label: '系统规则' },
+  { value: 'signal', label: '信号' },
+  { value: 'execution_feedback', label: '执行反馈' },
+] as const
+
+const route = useRoute()
+const staleIngestedDays = 14
+const listPage = ref(1)
+const pageSize = 50
+const listSearchInput = ref('')
+const listSearchApplied = ref('')
+
 const activeFilter = ref('')
 const selectedCandidate = ref<FunnelCandidate | null>(null)
 const selectedId = ref<string>('')
-const transitionForm = reactive({ to_state: '', trigger_source: 'manual', reason: '' })
+const transitionForm = reactive({ to_state: '', trigger_source: 'researcher', reason: '', evidence_ref: '' })
 const transitionError = ref('')
 const transitionSuccess = ref(false)
 const transitionPending = ref(false)
 
+const createForm = reactive({ ts_code: '', name: '', reason: '', source: 'desk_manual' })
+const createError = ref('')
+const createSuccess = ref(false)
+const createPending = ref(false)
+
+const authStore = useAuthStore()
 const queryClient = useQueryClient()
 
 const {
@@ -256,8 +436,14 @@ const {
   isPending: candidatesLoading,
   isError: candidatesError,
 } = useQuery({
-  queryKey: ['funnel-candidates'],
-  queryFn: () => fetchFunnelCandidates({ limit: 200 }),
+  queryKey: computed(() => ['funnel-candidates', listPage.value, activeFilter.value, listSearchApplied.value]),
+  queryFn: () =>
+    fetchFunnelCandidates({
+      state: activeFilter.value || undefined,
+      q: listSearchApplied.value || undefined,
+      limit: pageSize,
+      offset: (listPage.value - 1) * pageSize,
+    }),
 })
 
 const {
@@ -266,6 +452,36 @@ const {
 } = useQuery({
   queryKey: ['funnel-metrics'],
   queryFn: fetchFunnelMetrics,
+})
+
+const {
+  data: candidateDetailRaw,
+  isPending: candidateDetailLoading,
+} = useQuery({
+  queryKey: computed(() => ['funnel-candidate', selectedId.value]),
+  queryFn: () => fetchFunnelCandidate(selectedId.value),
+  enabled: computed(() => Boolean(selectedId.value)),
+})
+
+const {
+  data: reviewSnapData,
+  isPending: reviewSnapLoading,
+} = useQuery({
+  queryKey: computed(() => ['funnel-review-shots', selectedId.value]),
+  queryFn: () => fetchFunnelReviewSnapshots(selectedId.value),
+  enabled: computed(() => Boolean(selectedId.value)),
+})
+
+const reviewRows = computed(() => {
+  const d = reviewSnapData.value as Record<string, unknown> | null | undefined
+  if (!d || !Array.isArray(d.items)) return []
+  return d.items as Record<string, unknown>[]
+})
+
+const transitionsList = computed(() => {
+  const d = candidateDetailRaw.value as Record<string, unknown> | null | undefined
+  if (!d || !Array.isArray(d.transitions)) return []
+  return d.transitions as Record<string, unknown>[]
 })
 
 const allCandidates = computed<FunnelCandidate[]>(() => {
@@ -277,6 +493,7 @@ const allCandidates = computed<FunnelCandidate[]>(() => {
     ts_code: String(item?.ts_code || '').toUpperCase(),
     name: String(item?.name || ''),
     current_state: String(item?.current_state || item?.state || ''),
+    state_version: item?.state_version != null ? Number(item.state_version) : undefined,
     last_transition_reason: String(item?.last_transition_reason || item?.reason || ''),
     last_updated: String(item?.last_updated || item?.updated_at || ''),
     created_at: String(item?.created_at || ''),
@@ -285,6 +502,8 @@ const allCandidates = computed<FunnelCandidate[]>(() => {
 
 const metricsPayload = computed<Record<string, any>>(() => (metricsData.value || {}) as Record<string, any>)
 const candidatesPayload = computed<Record<string, any>>(() => (candidatesData.value || {}) as Record<string, any>)
+const listTotal = computed(() => Number(candidatesPayload.value.total ?? 0))
+const totalPages = computed(() => Math.max(1, Math.ceil(listTotal.value / pageSize)))
 
 const stateCountMap = computed(() => {
   const apiCounts = metricsPayload.value?.state_counts
@@ -298,28 +517,70 @@ const stateCountMap = computed(() => {
   return map
 })
 
-const filteredCandidates = computed(() => {
-  if (!activeFilter.value) return allCandidates.value
-  return allCandidates.value.filter((c) => c.current_state === activeFilter.value)
+const listSubtitle = computed(() => {
+  const f = activeFilter.value ? `阶段：${stateLabel(activeFilter.value)} · ` : ''
+  const q = listSearchApplied.value ? `关键词「${listSearchApplied.value}」· ` : ''
+  return `${f}${q}本页 ${allCandidates.value.length} 条，符合条件 ${listTotal.value} 条`
 })
 
-const listSubtitle = computed(() => {
-  const total = filteredCandidates.value.length
-  const filterLabel = activeFilter.value ? `阶段：${stateLabel(activeFilter.value)}，` : ''
-  return `${filterLabel}共 ${total} 条`
+function applyPrefillFromRoute() {
+  const pre = String(route.query.prefill_ts || route.query.ts_code || '').trim().toUpperCase()
+  if (pre) createForm.ts_code = pre
+}
+
+onMounted(() => {
+  applyPrefillFromRoute()
 })
+
+watch(
+  () => route.query.prefill_ts,
+  () => applyPrefillFromRoute(),
+)
+
+function applyListSearch() {
+  listSearchApplied.value = listSearchInput.value.trim()
+  listPage.value = 1
+}
+
+function setListFilter(key: string) {
+  activeFilter.value = key
+  listPage.value = 1
+}
+
+function daysSinceUpdate(iso: string): number {
+  if (!iso) return 0
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return 0
+  return Math.floor((Date.now() - t) / 86400000)
+}
+
+function isStaleIngested(c: FunnelCandidate): boolean {
+  if (c.current_state !== 'ingested') return false
+  const ref = c.last_updated || c.created_at || ''
+  return daysSinceUpdate(ref) >= staleIngestedDays
+}
 
 const metricsItems = computed<MetricGridItem[]>(() => {
-  const m: FunnelMetrics = metricsData.value || {}
-  const total = Number((metricsPayload.value.total ?? m.candidate_count ?? allCandidates.value.length) || 0)
+  const m = metricsPayload.value as FunnelMetrics & Record<string, unknown>
+  const total = Number((m.total ?? m.candidate_count ?? allCandidates.value.length) || 0)
   const decisionReady = Number(stateCountMap.value.decision_ready || 0)
   const executed = Number(stateCountMap.value.executed || 0)
-  const conversion = total > 0 ? executed / total : 0
+  const reviewed = Number(stateCountMap.value.reviewed || 0)
+  const apiConv = m.conversion_rate
+  const conversionDisplay =
+    apiConv != null && Number.isFinite(Number(apiConv))
+      ? `${(Number(apiConv) * 100).toFixed(1)}%`
+      : total > 0
+        ? `${(((executed + reviewed) / total) * 100).toFixed(1)}%`
+        : '-'
+  const apiAvg = m.avg_days_to_decision
+  const avgDisplay =
+    apiAvg != null && Number.isFinite(Number(apiAvg)) ? `${Number(apiAvg).toFixed(1)} 天` : '-'
   return [
     { label: '候选总数', value: total || '-' },
-    { label: '平均决策天数', value: m.avg_days_to_decision != null ? `${m.avg_days_to_decision.toFixed(1)} 天` : '-' },
+    { label: '平均决策天数', value: avgDisplay },
     { label: '待决策', value: decisionReady },
-    { label: '转化率', value: m.conversion_rate != null ? `${(m.conversion_rate * 100).toFixed(1)}%` : `${(conversion * 100).toFixed(1)}%` },
+    { label: '转化率', value: conversionDisplay },
   ]
 })
 
@@ -364,7 +625,13 @@ const nextStates = computed(() => {
 })
 
 function stateLabel(key: string): string {
+  if (!key) return '—'
   return STATE_LIST.find((s) => s.key === key)?.label ?? key
+}
+
+function triggerSourceLabel(src: string): string {
+  const hit = TRIGGER_SOURCE_OPTIONS.find((o) => o.value === src)
+  return hit ? hit.label : src
 }
 
 function stateBadgeClass(key: string): string {
@@ -374,6 +641,7 @@ function stateBadgeClass(key: string): string {
 
 function toggleFilter(key: string) {
   activeFilter.value = activeFilter.value === key ? '' : key
+  listPage.value = 1
 }
 
 function selectCandidate(c: FunnelCandidate) {
@@ -381,6 +649,8 @@ function selectCandidate(c: FunnelCandidate) {
   selectedId.value = c.id
   transitionForm.to_state = ''
   transitionForm.reason = ''
+  transitionForm.evidence_ref = ''
+  transitionForm.trigger_source = 'researcher'
   transitionError.value = ''
   transitionSuccess.value = false
 }
@@ -404,19 +674,59 @@ async function doTransition() {
   transitionError.value = ''
   transitionSuccess.value = false
   try {
+    const operator =
+      String(authStore.user?.username || authStore.user?.display_name || 'web_user').trim() || 'web_user'
+    const stateVersion = Number(selectedCandidate.value.state_version ?? 0)
     await transitionFunnelCandidate(selectedCandidate.value.id, {
       to_state: transitionForm.to_state,
-      reason: transitionForm.reason || undefined,
+      reason: transitionForm.reason.trim() || undefined,
       trigger_source: transitionForm.trigger_source,
+      evidence_ref: transitionForm.evidence_ref.trim() || undefined,
+      state_version: stateVersion,
+      idempotency_key: crypto.randomUUID(),
+      operator,
     })
     transitionSuccess.value = true
     await queryClient.invalidateQueries({ queryKey: ['funnel-candidates'] })
     await queryClient.invalidateQueries({ queryKey: ['funnel-metrics'] })
+    await queryClient.invalidateQueries({ queryKey: ['funnel-candidate'] })
+    await queryClient.invalidateQueries({ queryKey: ['funnel-review-shots'] })
     clearSelection()
   } catch (e: any) {
-    transitionError.value = e?.message || '未知错误'
+    const base = e?.message || '未知错误'
+    const extra = e?.status === 409 ? ' 若提示版本冲突，请重新点击列表中的该标的后再试。' : ''
+    transitionError.value = `${base}${extra}`
   } finally {
     transitionPending.value = false
+  }
+}
+
+async function submitCreateCandidate() {
+  const code = createForm.ts_code.trim().toUpperCase()
+  if (!code) return
+  createPending.value = true
+  createError.value = ''
+  createSuccess.value = false
+  try {
+    const name = createForm.name.trim() || code
+    await createFunnelCandidate({
+      ts_code: code,
+      name,
+      source: createForm.source.trim() || 'desk_manual',
+      trigger_source: 'researcher',
+      reason: createForm.reason.trim() || undefined,
+    })
+    createSuccess.value = true
+    createForm.ts_code = ''
+    createForm.name = ''
+    createForm.reason = ''
+    await queryClient.invalidateQueries({ queryKey: ['funnel-candidates'] })
+    await queryClient.invalidateQueries({ queryKey: ['funnel-metrics'] })
+    await queryClient.invalidateQueries({ queryKey: ['funnel-review-shots'] })
+  } catch (e: any) {
+    createError.value = e?.message || '创建失败'
+  } finally {
+    createPending.value = false
   }
 }
 </script>
