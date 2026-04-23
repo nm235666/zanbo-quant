@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { skipUnlessSmokeLimitedRoleIsLimited } from './helpers/smokeLimitedRole'
 
 const credentials = {
   admin: {
@@ -45,7 +46,8 @@ test('pro 默认落点正确且可打开评分总览', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '入选理由' })).toBeVisible()
 })
 
-test('limited 默认落点正确且无权限页跳 upgrade', async ({ page }) => {
+test('limited 默认落点正确且无权限页跳 upgrade', async ({ page, request }) => {
+  await skipUnlessSmokeLimitedRoleIsLimited(request)
   await login(page, 'limited')
   const landedPath = new URL(page.url()).pathname
   expect(landedPath.length > 1).toBeTruthy()

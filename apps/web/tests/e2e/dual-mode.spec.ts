@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { skipUnlessSmokeLimitedRoleIsLimited } from './helpers/smokeLimitedRole'
 
 const credentials = {
   admin: {
@@ -146,24 +147,30 @@ test.describe('模式切换与上下文保留', () => {
 })
 
 test.describe('权限分流与 upgrade 模式解释', () => {
-  test('limited 账号访问 admin 页跳到 upgrade 并指示 admin 模式', async ({ page }) => {
-    await login(page, 'limited')
-    await page.goto('/admin/system/jobs-ops')
-    await expect(page).toHaveURL(/\/upgrade/)
-    const banner = page.locator('[data-upgrade-blocked="true"]')
-    await expect(banner).toBeVisible()
-    await expect(banner).toHaveAttribute('data-upgrade-mode', 'admin')
-    await expect(banner).toContainText('后台管理模式')
-  })
+  test.describe('limited 账号路径', () => {
+    test.beforeEach(async ({ request }) => {
+      await skipUnlessSmokeLimitedRoleIsLimited(request)
+    })
 
-  test('limited 账号访问 app 研究页跳到 upgrade 并指示 app 模式', async ({ page }) => {
-    await login(page, 'limited')
-    await page.goto('/app/workbench')
-    await expect(page).toHaveURL(/\/upgrade/)
-    const banner = page.locator('[data-upgrade-blocked="true"]')
-    await expect(banner).toBeVisible()
-    await expect(banner).toHaveAttribute('data-upgrade-mode', 'app')
-    await expect(banner).toContainText('用户模式')
+    test('limited 账号访问 admin 页跳到 upgrade 并指示 admin 模式', async ({ page }) => {
+      await login(page, 'limited')
+      await page.goto('/admin/system/jobs-ops')
+      await expect(page).toHaveURL(/\/upgrade/)
+      const banner = page.locator('[data-upgrade-blocked="true"]')
+      await expect(banner).toBeVisible()
+      await expect(banner).toHaveAttribute('data-upgrade-mode', 'admin')
+      await expect(banner).toContainText('后台管理模式')
+    })
+
+    test('limited 账号访问 app 研究页跳到 upgrade 并指示 app 模式', async ({ page }) => {
+      await login(page, 'limited')
+      await page.goto('/app/workbench')
+      await expect(page).toHaveURL(/\/upgrade/)
+      const banner = page.locator('[data-upgrade-blocked="true"]')
+      await expect(banner).toBeVisible()
+      await expect(banner).toHaveAttribute('data-upgrade-mode', 'app')
+      await expect(banner).toContainText('用户模式')
+    })
   })
 
   test('研究角色主链 CTA 不借道 admin 页', async ({ page }) => {

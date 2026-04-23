@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { getSmokeLimitedCredentials, skipUnlessSmokeLimitedRoleIsLimited } from './helpers/smokeLimitedRole'
 
 async function loginAsAdmin(page) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -85,11 +86,16 @@ test.describe('系统管理模块（Admin）', () => {
 })
 
 test.describe('Limited 账号权限测试', () => {
+  test.beforeEach(async ({ request }) => {
+    await skipUnlessSmokeLimitedRoleIsLimited(request)
+  })
+
   test('Limited 账号登录后受限路由都有上下文化解释', async ({ page }) => {
+    const { username, password } = getSmokeLimitedCredentials()
     await page.goto('/login')
     await page.waitForTimeout(1200)
-    await page.fill('input[type="text"]', 'test112233')
-    await page.fill('input[type="password"]', 'test123')
+    await page.fill('input[type="text"]', username)
+    await page.fill('input[type="password"]', password)
     await page.getByRole('button', { name: '登录' }).last().click()
     try {
       await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 })

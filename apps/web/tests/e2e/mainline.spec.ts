@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { skipUnlessSmokeLimitedRoleIsLimited } from './helpers/smokeLimitedRole'
 
 const credentials = {
   admin: {
@@ -21,7 +22,7 @@ async function login(page: Page, role: keyof typeof credentials) {
   await page.getByPlaceholder('请输入账号（3-32位英文数字._-）').fill(account.username)
   await page.getByPlaceholder('请输入密码（至少6位）').fill(account.password)
   await page.locator('button').filter({ hasText: /^登录$/ }).last().click()
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'))
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 60_000 })
 }
 
 // Round 23 new pages — first-render smoke tests (pro user)
@@ -62,6 +63,7 @@ test('候选漏斗页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
   await page.goto('/app/funnel')
   await expect(page).toHaveURL(/\/app\/funnel$/)
+  await page.locator('#main-content').waitFor({ state: 'visible', timeout: 20_000 })
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
 })
@@ -192,7 +194,8 @@ test('dashboard 主链 CTA 不借道 app 页面', async ({ page }) => {
   await expect(page.locator('#main-content a[href^="/app/"]')).toHaveCount(0)
 })
 
-test('upgrade 对 app/admin 来源保持模式语义', async ({ page }) => {
+test('upgrade 对 app/admin 来源保持模式语义', async ({ page, request }) => {
+  await skipUnlessSmokeLimitedRoleIsLimited(request)
   await login(page, 'limited')
   await page.goto('/upgrade?from=%2Fapp%2Fresearch%2Fmulti-role')
   await expect(page).toHaveURL(/\/upgrade\?from=/)

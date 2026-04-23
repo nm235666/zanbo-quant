@@ -17,7 +17,16 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      name: 'e2e',
+      testIgnore: '**/write-boundary.spec.ts',
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'e2e-write-boundary',
+      testMatch: '**/write-boundary.spec.ts',
+      dependencies: ['e2e'],
+      workers: 1,
+      timeout: 90_000,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

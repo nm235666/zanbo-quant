@@ -3,7 +3,8 @@
 ## 1. 审计结论
 
 当前项目已从“分散功能页”进入“决策主线雏形”阶段，但仍存在关键缺口：  
-主线可见，但规则硬约束不足；页面已连通，但业务闭环后半段未完全自动化；能力已有文档定义，但部分尚未落成可阻断的工程机制。
+主线可见，但**多数模块**的规则硬约束仍不足；**例外**：市场结论多源冲突已在 `backend/routes/market.py` 落地 **R30 加权数值裁决**（见 **P0-2** 修订），属已部分硬化的规则链，其剩余风险主要在**输入质量（P0-6）、证据灌满度（P0-5）、文档与产品口径是否与加权模型一致**。  
+页面已连通，但业务闭环后半段未完全自动化；能力已有文档定义，但部分尚未落成可阻断的工程机制。
 
 ---
 
@@ -20,16 +21,39 @@
 - 优先补齐：
   - 在服务层实现触发源优先级裁决与受保护终态覆盖限制。
 
-### P0-2 市场结论页冲突裁决仍是文案级
+### P0-2 市场结论页冲突裁决（R30：已实现数值裁决；文档与产品口径需对齐）
 
-- 表面现状：页面与接口已输出 `resolution_basis` 与 `conflict_note`。  
-- 实际缺口：未执行“时效 > 风险 > 信号强度 > AI一致性”的真实计算裁决。  
-- 影响：冲突场景下最终结论可能不稳定，用户信任受损。  
-- 证据：
-  - `backend/routes/market.py`
-  - `apps/web/src/pages/market/MarketConclusionPage.vue`
-- 优先补齐：
-  - 引入冲突评分与优先级裁决函数，产出可解释的取舍结果。
+> **2026-04-23 修订说明**：本条已对照 `backend/routes/market.py` 更新。此前「仍是文案级 / 未真实算分」的描述**与当前代码不一致**，易误导团队；现改为「已实现什么 + 仍剩什么风险」。
+
+- **已实现（代码为准）**
+  - `query_market_conclusion_from_conn` 在窗口内聚合多表行：主题热点、投资信号、新闻日报、个股新闻、宏观序列、风险情景等（各 `_fetch_*_rows`）。
+  - **`_score_conflict_resolution`**（及 `_score_source_group`、`_group_source_rows`）对每个 `source` 分组计算子指标后，用 **加权综合分** 比较各来源，选出 `winning_source`，并写入接口字段：
+    - **综合分公式**（与文件内注释及前端规则链副标题一致）：  
+      `composite = 0.45 * signal_strength + 0.20 * recency_score + 0.20 * ai_consistency + 0.15 * risk_priority`  
+      其中 `risk_priority` 主要来自 `risk_scenarios` 源；非风险源为 0。
+    - **同分细化排序**（在 `composite` 相同或极接近时的次序）：  
+      按 `(-composite, -risk_priority, data_age_hours, source)` 排序——即综合分更高者优先；再比风险优先项；再比数据龄（小时）；最后比来源名字符串。
+    - **输出结构**：`conflict_resolution` 内含 `confidence`、`direction`、`winning_source`、`score_breakdown`（含各源 `composite` / 分项）、`needs_review`（如胜者 `composite < 0.5`）、`dissenting_sources`（与胜者分差 ≥ 0.15 的来源）、`resolution_basis`（人类可读胜出理由，如时效优势 / 风险优先 / 信号强度等分支）。
+  - **前端**：`MarketConclusionPage.vue` 在 `conflictResolution.score_breakdown.sources` 非空时展示「查看规则链」与分解表（与上述权重文案一致）。
+
+- **与旧审计表述的差异（避免产品/研发各说各话）**
+  - 旧版写的是 **字典序**「时效 > 风险 > 信号强度 > AI一致性」的**纯层级裁决**；当前实现是 **四维加权求和成一个 composite**，再排序决胜，**不是**同一套数学定义。若产品规格书仍用旧句式，应二选一：**改文档为加权模型**，或 **改代码为规格中的层级模型**。
+
+- **仍存在的缺口 / 风险（不否定已实现算分）**
+  - **输入质量**：各源行若本身有误（见 **P0-6 信号主体错位**），算分再「真」也会得出**可信的错误结论**；需在信号构建层与 `candidate_directions` 出口治理。
+  - **证据覆盖**：源行过少或聚合异常时，`score_breakdown.sources` 可能为空或仅单源，前端不展示规则链；`resolution_basis` 会退化为「无足够数据源参与裁决」等——属于**数据/任务侧**问题，而非「没写算分函数」。
+  - **可信度门槛**：`needs_review` 仅与胜者 `composite` 阈值等挂钩；是否与业务上「必须人工复核」清单完全一致，仍需产品确认。
+  - **口径统一**：`resolution_basis` 中「综合评分 …（信号强度>时效>…）」一句为**叙述性总结**，与实现上的加权公式应视为**同一套 R30 的口语化说明**，避免被理解成第二套独立排序规则。
+
+- **证据（定位代码）**
+  - `backend/routes/market.py`：`# R30 conflict arbitration helpers`、` _score_source_group`、` _score_conflict_resolution`、`query_market_conclusion_from_conn` 内组装 `conflict_resolution`。
+  - `apps/web/src/pages/market/MarketConclusionPage.vue`：置信度徽章、`conclusion-rule-trace-toggle`、规则链 `PageSection` 副标题权重。
+
+- **优先补齐（按优先级重排）**
+  1. **产品/审计口径**：在全站文档中统一为「R30 加权综合裁决」，删除或更正「仅文案、未算分」类表述。  
+  2. **数据与上游质量**：推进 P0-6，减少 `investment_signals` 等源对 composite 的污染。  
+  3. **门禁**：对「多源参与且 `needs_review` 为 false」等场景增加接口或 E2E 契约测试，避免回归时退回无算分路径。  
+  4. 若业务坚持「严格字典序而非加权」：再单独立项改 `_score_conflict_resolution` 与前端说明，**本条 P0-2 可降级为已关闭后另开需求**。
 
 ### P0-3 Quick Insight 缺少硬 SLA 与边界守护
 
@@ -177,7 +201,7 @@
 1. 候选漏斗并发裁决优先级落代码（P0-1）  
 2. 决策动作自动承接执行任务（P0-4）  
 3. 结构性空白页逐页修实（P0-5）  
-4. 市场结论冲突裁决算法化（P0-2）  
+4. 市场结论**可信度与漂移治理**（P0-2：R30 算分已落地；持续推进 **P0-6** 信号主体、**P0-5** 证据覆盖、口径文档与契约门禁）  
 5. Quick Insight 硬 SLA 与输入边界守护（P0-3）  
 
 ---

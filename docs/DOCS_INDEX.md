@@ -20,8 +20,8 @@
 | `docs/project_final_state_projection_2026-04-15.md` | 产品规划 | 目标态更新 | 目标与当前主链脱节 | 2026-04-18 |
 | `docs/uzi_skill_reuse_final_architecture_2026-04-18.md` | 架构设计 | 终局能力定义变更 | 能力约束过时 | 2026-04-18 |
 | `docs/decision_productization_batches_A_to_C_2026-04-18.md` | 产品执行 | 批次策略/验收变更 | 批次边界不再可执行 | 2026-04-18 |
-| `docs/current_project_gap_audit_2026-04-18.md` | 质量审计 | 缺口复盘更新 | 问题清单失真 | 2026-04-18 |
-| `docs/functional_gap_crosscheck_2026-04-18.md` | 质量审计 | 外部评价对照/功能缺口更新 | 对照结论与代码现状失真 | 2026-04-18 |
+| `docs/current_project_gap_audit_2026-04-18.md` | 质量审计 | 缺口复盘更新 | 问题清单失真 | 2026-04-23 |
+| `docs/functional_gap_crosscheck_2026-04-18.md` | 质量审计 | 外部评价对照/功能缺口更新 | 对照结论与代码现状失真 | 2026-04-23 |
 | `docs/document_lifecycle_rules_2026-04-18.md` | 工程治理 | 文档流程规则变更 | 规则无法约束回流 | 2026-04-18 |
 | `docs/repo_cleanup_execution_report_2026-04-18.md` | 工程治理 | 仓库减负再执行 | 与实际清理状态不一致 | 2026-04-18 |
 | `docs/consolidated_change_log_2026-04.md` | 工程治理 | 融合调整发生 | 无法追溯融合历史 | 2026-04-18 |
@@ -29,6 +29,7 @@
 | `docs/underutilized_data_audit_2026-04-20.md` | 产品 + 数据策略 + 前端业务 | 新增高价值数据源、关键数据进入主链、某数据从“弱利用”变成“主链能力” | 文档中列出的“未利用/弱利用”结论已明显偏离真实代码和页面状态 | 2026-04-20 |
 | `docs/structural_empty_pages_audit_2026-04-20.md` | 产品 + 前端业务 + 质量审计 | 结论页/动作页出现大面积占位空态、聚合链路修复、页面空白问题复盘 | 文档列出的空白页分层、根因或优先级与真实页面状态明显不一致 | 2026-04-20 |
 | `docs/structural_empty_pages_governance_change_log_2026-04-20.md` | 产品 + 前端业务 + 质量审计 | 结构性空白页治理发生实际代码变更、范围变化、未完成项更新 | 文档中的已改/未改范围与真实代码状态明显不一致 | 2026-04-20 |
+| `docs/full_site_business_qa_prompt.md` | 质量审计 + 前端业务验收 | 全站测试口径、业务正确性专项或测试 Agent 提示词变化 | 提示词无法覆盖当前核心业务主链或重点风险 | 2026-04-23 |
 
 ## B. Consolidated（融合入口）
 
