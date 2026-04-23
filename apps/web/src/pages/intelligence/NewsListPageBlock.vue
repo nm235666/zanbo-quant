@@ -420,18 +420,18 @@ function riskText(item: Record<string, any>) {
 
 function goStock(stock: { ts_code: string; name: string }) {
   if (stock.ts_code) {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(stock.ts_code)}` })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(stock.ts_code)}` })
     return
   }
-  router.push({ path: '/app/stocks/list', query: { keyword: stock.name } })
+  router.push({ path: '/app/data/stocks/list', query: { keyword: stock.name } })
 }
 
 function goSignal(stock: { ts_code: string; name: string }) {
   if (stock.ts_code) {
-    router.push({ path: '/app/signals/timeline', query: { signal_key: `stock:${stock.ts_code}` } })
+    router.push({ path: '/app/data/signals/timeline', query: { signal_key: `stock:${stock.ts_code}` } })
     return
   }
-  router.push({ path: '/app/signals/overview', query: { keyword: stock.name, entity_type: '股票' } })
+  router.push({ path: '/app/data/signals/overview', query: { keyword: stock.name, entity_type: '股票' } })
 }
 
 function goDecision(stock: { ts_code: string; name: string }, newsItem: Record<string, any>) {
@@ -453,7 +453,7 @@ function goDecision(stock: { ts_code: string; name: string }, newsItem: Record<s
     query.evidence = `[新闻] ${title.slice(0, 40)}${pubDate ? ' · ' + pubDate : ''}`
     query.note = `新闻触发观察 · ${title.slice(0, 20)}`
   }
-  router.push({ path: '/app/decision', query })
+  router.push({ path: '/app/desk/board', query })
 }
 
 function goDecisionByTitle(newsItem: Record<string, any>) {
@@ -465,7 +465,7 @@ function goDecisionByTitle(newsItem: Record<string, any>) {
     query.evidence = `[新闻] ${title.slice(0, 40)}${pubDate ? ' · ' + pubDate : ''}`
     query.note = `新闻触发观察 · ${title.slice(0, 20)}`
   }
-  router.push({ path: '/app/decision', query })
+  router.push({ path: '/app/desk/board', query })
 }
 
 function openSemanticHit(hit: Record<string, any>) {

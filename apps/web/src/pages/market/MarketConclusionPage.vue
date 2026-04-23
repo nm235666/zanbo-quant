@@ -7,7 +7,7 @@
           数据更新：{{ freshnessLabel }}
         </div>
         <RouterLink
-          to="/app/decision"
+          to="/app/desk/board"
           class="rounded-2xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
         >
           进入决策工作台 →
@@ -56,13 +56,13 @@
         >
           <template #action>
             <RouterLink
-              to="/app/signals/themes"
+              to="/app/data/signals/themes"
               class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
               去看主题信号
             </RouterLink>
             <RouterLink
-              to="/app/workbench"
+              to="/app/desk/workbench"
               class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
             >
               回研究工作台
@@ -275,13 +275,13 @@
               </div>
               <div class="mt-3 flex flex-wrap gap-2">
                 <RouterLink
-                  :to="`/app/stocks/detail/${candidate.ts_code}`"
+                  :to="`/app/data/stocks/detail/${candidate.ts_code}`"
                   class="rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                 >
                   查看详情
                 </RouterLink>
                 <RouterLink
-                  :to="`/app/workbench?ts_code=${candidate.ts_code}`"
+                  :to="`/app/desk/workbench?ts_code=${candidate.ts_code}`"
                   class="rounded-full bg-[var(--brand)] px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90"
                 >
                   进入研究

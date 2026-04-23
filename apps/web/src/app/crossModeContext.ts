@@ -114,15 +114,15 @@ export function extractCrossModeContext(
   const signalId = pickString(query.signal_id) || pickString(query.signal) || pickString(query.signal_code) || ''
   const industry = pickString(query.industry) || pickString(query.industry_code) || ''
 
-  let targetPath = targetSurface === 'app' ? '/app/workbench' : '/admin/dashboard'
+  let targetPath = targetSurface === 'app' ? '/app/desk/workbench' : '/admin/dashboard'
   if (stockCode && hasStockDetailPageIn(targetSurface)) {
-    targetPath = `/app/stocks/detail/${encodeURIComponent(stockCode)}`
+    targetPath = `/app/data/stocks/detail/${encodeURIComponent(stockCode)}`
   } else if (signalId && hasSignalTimelineIn(targetSurface)) {
-    targetPath = `/app/signals/timeline`
+    targetPath = `/app/data/signals/timeline`
   } else if (themeId && hasThemesPageIn(targetSurface)) {
-    targetPath = `/app/signals/themes`
+    targetPath = `/app/data/signals/themes`
   } else if (industry && targetSurface === 'app') {
-    targetPath = `/app/signals/graph`
+    targetPath = `/app/data/signals/graph`
   } else if (targetSurface === 'admin' && stockCode) {
     targetPath = `/admin/dashboard`
   }

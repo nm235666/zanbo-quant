@@ -12,7 +12,7 @@
             <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">
               {{ isFetching ? '查询中...' : '刷新主题池' }}
             </button>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/app/signals/graph">
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]" to="/app/data/signals/graph">
               打开产业链图谱
             </RouterLink>
           </div>
@@ -235,21 +235,21 @@ function openDetail(item: Record<string, any>) {
 
 function goSignalTimeline() {
   if (!selectedItem.value) return
-  router.push({ path: '/app/signals/timeline', query: { signal_key: `theme:${selectedItem.value.theme_name}` } })
+  router.push({ path: '/app/data/signals/timeline', query: { signal_key: `theme:${selectedItem.value.theme_name}` } })
 }
 
 function goSignalOverview() {
   if (!selectedItem.value) return
-  router.push({ path: '/app/signals/overview', query: { keyword: selectedItem.value.theme_name, signal_group: 'non_stock' } })
+  router.push({ path: '/app/data/signals/overview', query: { keyword: selectedItem.value.theme_name, signal_group: 'non_stock' } })
 }
 
 function goStock(stock: Record<string, any>) {
   const tsCode = String(stock.ts_code || '').trim().toUpperCase()
   if (tsCode) {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(tsCode)}` })
     return
   }
-  router.push({ path: '/app/stocks/list', query: { keyword: stock.stock_name || '' } })
+  router.push({ path: '/app/data/stocks/list', query: { keyword: stock.stock_name || '' } })
 }
 
 async function downloadImage() {

@@ -39,7 +39,7 @@
 
           <div class="grid gap-3">
             <RouterLink
-              :to="`/app/workbench?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}&from=stock_detail`"
+              :to="`/app/desk/workbench?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}&from=stock_detail`"
               class="rounded-2xl bg-emerald-600 px-4 py-3 font-semibold text-white text-center"
             >
               进入决策工作台
@@ -76,19 +76,19 @@
             </div>
 
             <div class="grid gap-3 xl:grid-cols-2">
-              <RouterLink to="/app/stocks/scores" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
+              <RouterLink to="/app/data/stocks/scores" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
                 <div class="font-semibold text-[var(--ink)]">综合评分页</div>
                 <div class="mt-1 text-[var(--muted)]">查看行业内位置和分项评分。</div>
               </RouterLink>
-              <RouterLink to="/app/intelligence/stock-news" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
+              <RouterLink to="/app/data/intelligence/stock-news" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
                 <div class="font-semibold text-[var(--ink)]">个股新闻页</div>
                 <div class="mt-1 text-[var(--muted)]">延展查看更完整的相关新闻和评分。</div>
               </RouterLink>
-              <RouterLink to="/app/signals/overview" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
+              <RouterLink to="/app/data/signals/overview" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
                 <div class="font-semibold text-[var(--ink)]">投资信号页</div>
                 <div class="mt-1 text-[var(--muted)]">看这只股票是否已进入信号榜。</div>
               </RouterLink>
-              <RouterLink to="/app/chatrooms/candidates" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
+              <RouterLink to="/app/data/chatrooms/candidates" class="rounded-[20px] border border-[var(--line)] bg-[linear-gradient(180deg,rgba(255,255,255,0.94)_0%,rgba(238,244,247,0.82)_100%)] px-4 py-4 text-sm shadow-[var(--shadow-soft)]">
                 <div class="font-semibold text-[var(--ink)]">群聊候选池</div>
                 <div class="mt-1 text-[var(--muted)]">继续看群聊交易偏向和讨论热度。</div>
               </RouterLink>
@@ -101,8 +101,8 @@
           <div class="mt-1">{{ detailError }}</div>
           <div class="mt-3 flex flex-wrap gap-2">
             <button class="rounded-2xl bg-stone-900 px-4 py-2 font-semibold text-white" @click="refetch()">重新加载</button>
-            <RouterLink to="/app/stocks/prices" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去价格中心</RouterLink>
-            <RouterLink to="/app/intelligence/stock-news" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去个股新闻页</RouterLink>
+            <RouterLink to="/app/data/stocks/prices" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去价格中心</RouterLink>
+            <RouterLink to="/app/data/intelligence/stock-news" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]">去个股新闻页</RouterLink>
           </div>
         </div>
       </PageSection>
@@ -146,16 +146,16 @@
 
       <PageSection id="themes-signals" title="主题与信号" subtitle="当前标的关联的主题热点与投资信号摘要。">
         <div class="flex flex-wrap gap-2 text-sm">
-          <RouterLink :to="`/app/signals/overview?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink :to="`/app/data/signals/overview?ts_code=${encodeURIComponent(resolvedTsCode || activeTsCode || '')}`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             查看投资信号
           </RouterLink>
-          <RouterLink :to="`/app/signals/themes`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink :to="`/app/data/signals/themes`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             查看主题热点
           </RouterLink>
-          <RouterLink :to="`/app/signals/graph`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink :to="`/app/data/signals/graph`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             产业链图谱
           </RouterLink>
-          <RouterLink :to="`/app/funnel`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink :to="`/app/desk/funnel`" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             查看候选漏斗
           </RouterLink>
         </div>
@@ -193,10 +193,10 @@
             :description="decisionData.keyword ? `聚焦关键词：${decisionData.keyword}` : '决策板以单票视角解释当前结论。'"
           >
             <div class="mt-3 flex flex-wrap gap-2">
-              <RouterLink v-if="resolvedTsCode" :to="`/app/decision?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink v-if="resolvedTsCode" :to="`/app/desk/board?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 打开决策板
               </RouterLink>
-              <RouterLink v-if="resolvedTsCode" :to="`/app/stocks/detail/${resolvedTsCode}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink v-if="resolvedTsCode" :to="`/app/data/stocks/detail/${resolvedTsCode}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 仅看股票详情
               </RouterLink>
             </div>
@@ -207,7 +207,7 @@
             <div class="text-sm font-semibold text-[var(--ink)]">单标的决策动作时间线</div>
             <RouterLink
               v-if="resolvedTsCode"
-              :to="`/app/decision?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`"
+              :to="`/app/desk/board?ts_code=${encodeURIComponent(resolvedTsCode)}&from=stock_detail`"
               class="text-xs font-semibold text-[var(--brand)] hover:underline"
             >
               去决策板维护 →
@@ -234,7 +234,7 @@
               <div class="mt-1 text-xs text-[var(--muted)]">{{ action.note || '无备注' }}</div>
               <div class="mt-1 flex flex-wrap gap-2 text-xs">
                 <RouterLink
-                  :to="`/app/orders?decision_action_id=${encodeURIComponent(String(action.id || ''))}`"
+                  :to="`/app/desk/orders?decision_action_id=${encodeURIComponent(String(action.id || ''))}`"
                   class="rounded-full border border-[var(--line)] bg-white px-2.5 py-0.5 font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                 >
                   查看执行单
@@ -797,15 +797,15 @@ const minuteChart = computed(() => {
 function applyCode() {
   const raw = tsCodeInput.value.trim()
   if (!raw) {
-    router.push({ path: '/app/stocks/detail/000001.SZ' })
+    router.push({ path: '/app/data/stocks/detail/000001.SZ' })
     return
   }
   const upper = raw.toUpperCase()
   if (looksLikeTsCode(upper)) {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(upper)}`, query: {} })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(upper)}`, query: {} })
     return
   }
-  router.push({ path: '/app/stocks/detail', query: { keyword: raw } })
+  router.push({ path: '/app/data/stocks/detail', query: { keyword: raw } })
 }
 
 const fetchNewsMutation = useMutation({

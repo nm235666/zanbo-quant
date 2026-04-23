@@ -65,7 +65,7 @@
                 {{ isFetching ? '查询中...' : '应用筛选' }}
               </button>
               <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" @click="resetFilters">恢复默认筛选</button>
-              <RouterLink class="rounded-2xl border border-[var(--brand)] bg-white px-4 py-3 text-sm font-semibold text-[var(--brand)]" to="/app/workbench?from=signals_overview">
+              <RouterLink class="rounded-2xl border border-[var(--brand)] bg-white px-4 py-3 text-sm font-semibold text-[var(--brand)]" to="/app/desk/workbench?from=signals_overview">
                 进入决策工作台
               </RouterLink>
             </div>
@@ -246,17 +246,17 @@ function sourceSummary(row: Record<string, any>) {
 }
 
 function goTimeline(row: Record<string, any>) {
-  router.push({ path: '/app/signals/timeline', query: { signal_key: row.signal_key } })
+  router.push({ path: '/app/data/signals/timeline', query: { signal_key: row.signal_key } })
 }
 
 function goRelatedObject(row: Record<string, any>) {
   const tsCode = String(row.ts_code || '').trim().toUpperCase()
   const subjectName = String(row.subject_name || '').trim()
   if (row.signal_type === 'stock' && tsCode) {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(tsCode)}` })
     return
   }
-  router.push({ path: '/app/signals/themes', query: { keyword: subjectName } })
+  router.push({ path: '/app/data/signals/themes', query: { keyword: subjectName } })
 }
 
 function applyFilters() {

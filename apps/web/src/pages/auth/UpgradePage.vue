@@ -135,14 +135,14 @@
         <RouterLink :to="primaryEntry" class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white">{{ primaryEntryLabel }}</RouterLink>
         <RouterLink
           v-if="canUseTrend"
-          to="/app/research/trend"
+          to="/app/lab/trend"
           class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
         >
           进入走势分析
         </RouterLink>
         <RouterLink
           v-if="canUseMultiRole"
-          to="/app/research/multi-role"
+          to="/app/lab/multi-role"
           class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-sm font-semibold text-[var(--ink)]"
         >
           进入多角色分析
@@ -275,16 +275,16 @@ const enabledGroups = computed(() => groupPermissions(permissionCatalog.value.fi
 const lockedGroups = computed(() => groupPermissions(permissionCatalog.value.filter((item) => !authStore.effectivePermissions.includes(item.code))))
 
 const CAPABILITY_MATRIX = [
-  { label: '决策工作台', route: '/app/workbench', admin: true, pro: true, limited: false },
-  { label: '投研决策板', route: '/app/decision', admin: true, pro: true, limited: true },
-  { label: '候选漏斗', route: '/app/funnel', admin: true, pro: true, limited: false },
-  { label: '任务收件箱', route: '/app/research/task-inbox', admin: true, pro: true, limited: false },
-  { label: '股票评分', route: '/app/stocks/scores', admin: true, pro: true, limited: true },
-  { label: '市场结论', route: '/app/market', admin: true, pro: true, limited: false },
-  { label: '信号图谱', route: '/app/signals/graph', admin: true, pro: true, limited: false },
-  { label: '组合管理', route: '/app/positions | /app/orders | /app/review | /app/allocation', admin: true, pro: true, limited: false },
-  { label: '宏观三周期状态', route: '/app/macro-regime', admin: true, pro: true, limited: false },
-  { label: '长线配置动作', route: '/app/allocation', admin: true, pro: true, limited: false },
+  { label: '决策工作台', route: '/app/desk/workbench', admin: true, pro: true, limited: false },
+  { label: '投研决策板', route: '/app/desk/board', admin: true, pro: true, limited: true },
+  { label: '候选漏斗', route: '/app/desk/funnel', admin: true, pro: true, limited: false },
+  { label: '任务收件箱', route: '/app/lab/task-inbox', admin: true, pro: true, limited: false },
+  { label: '股票评分', route: '/app/data/stocks/scores', admin: true, pro: true, limited: true },
+  { label: '市场结论', route: '/app/desk/market', admin: true, pro: true, limited: false },
+  { label: '信号图谱', route: '/app/data/signals/graph', admin: true, pro: true, limited: false },
+  { label: '组合管理', route: '/app/desk/positions | /app/desk/orders | /app/desk/review | /app/desk/allocation', admin: true, pro: true, limited: false },
+  { label: '宏观三周期状态', route: '/app/desk/macro-regime', admin: true, pro: true, limited: false },
+  { label: '长线配置动作', route: '/app/desk/allocation', admin: true, pro: true, limited: false },
   { label: '用户管理', route: '/admin/system/users', admin: true, pro: false, limited: false },
   { label: '数据源监控', route: '/admin/system/source-monitor', admin: true, pro: false, limited: false },
   { label: '任务运维', route: '/admin/system/jobs-ops', admin: true, pro: false, limited: false },
@@ -308,8 +308,8 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
   const path = String(raw.split('?')[0] || '').trim()
   if (!path) return null
   const defaultAlternatives = [{ to: primaryEntry.value, label: primaryEntryLabel.value }]
-  const newsAlternatives = [{ to: '/app/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
-  const stockNewsAlternatives = [{ to: '/app/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
+  const newsAlternatives = [{ to: '/app/data/intelligence/global-news', label: '先回资讯中心' }, ...defaultAlternatives]
+  const stockNewsAlternatives = [{ to: '/app/data/intelligence/stock-news', label: '先看个股新闻' }, ...defaultAlternatives]
   const rules: Array<{ test: (pathName: string) => boolean; title: string; required: string[]; alternatives: Array<{ to: string; label: string }> }> = [
     {
       test: (pathName) => pathName === '/dashboard' || pathName === '/admin/dashboard',
@@ -322,19 +322,27 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
         pathName === '/intelligence/global-news' ||
         pathName === '/intelligence/cn-news' ||
         pathName === '/app/intelligence/global-news' ||
-        pathName === '/app/intelligence/cn-news',
+        pathName === '/app/intelligence/cn-news' ||
+        pathName === '/app/data/intelligence/global-news' ||
+        pathName === '/app/data/intelligence/cn-news',
       title: '访问资讯中心',
       required: ['news_read'],
       alternatives: defaultAlternatives,
     },
     {
-      test: (pathName) => pathName === '/intelligence/stock-news' || pathName === '/app/intelligence/stock-news',
+      test: (pathName) =>
+        pathName === '/intelligence/stock-news' ||
+        pathName === '/app/intelligence/stock-news' ||
+        pathName === '/app/data/intelligence/stock-news',
       title: '访问个股新闻',
       required: ['stock_news_read'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName === '/intelligence/daily-summaries' || pathName === '/app/intelligence/daily-summaries',
+      test: (pathName) =>
+        pathName === '/intelligence/daily-summaries' ||
+        pathName === '/app/intelligence/daily-summaries' ||
+        pathName === '/app/data/intelligence/daily-summaries',
       title: '访问新闻日报总结',
       required: ['daily_summary_read'],
       alternatives: newsAlternatives,
@@ -356,13 +364,19 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/macro') || pathName.startsWith('/app/macro'),
+      test: (pathName) =>
+        pathName.startsWith('/macro') ||
+        pathName.startsWith('/app/macro') ||
+        pathName.startsWith('/app/data/macro'),
       title: '访问宏观研究看板',
       required: ['macro_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/chatrooms/') || pathName.startsWith('/app/chatrooms/'),
+      test: (pathName) =>
+        pathName.startsWith('/chatrooms/') ||
+        pathName.startsWith('/app/chatrooms/') ||
+        pathName.startsWith('/app/data/chatrooms/'),
       title: '访问群聊投资分析',
       required: ['chatrooms_advanced'],
       alternatives: stockNewsAlternatives,
@@ -372,16 +386,21 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
         pathName.startsWith('/research/multi-role') ||
         pathName.startsWith('/research/roundtable') ||
         pathName.startsWith('/app/research/multi-role') ||
-        pathName.startsWith('/app/research/roundtable'),
+        pathName.startsWith('/app/research/roundtable') ||
+        pathName.startsWith('/app/lab/multi-role') ||
+        pathName.startsWith('/app/lab/roundtable'),
       title: '访问多角色研究',
       required: ['multi_role_analyze'],
-      alternatives: [{ to: '/app/research/trend', label: '先看走势分析' }, ...defaultAlternatives],
+      alternatives: [{ to: '/app/lab/trend', label: '先看走势分析' }, ...defaultAlternatives],
     },
     {
-      test: (pathName) => pathName.startsWith('/research/trend') || pathName.startsWith('/app/research/trend'),
+      test: (pathName) =>
+        pathName.startsWith('/research/trend') ||
+        pathName.startsWith('/app/research/trend') ||
+        pathName.startsWith('/app/lab/trend'),
       title: '访问走势分析',
       required: ['trend_analyze'],
-      alternatives: [{ to: '/app/research/scoreboard', label: '先看评分总览' }, ...defaultAlternatives],
+      alternatives: [{ to: '/app/data/scoreboard', label: '先看评分总览' }, ...defaultAlternatives],
     },
     {
       test: (pathName) =>
@@ -395,19 +414,28 @@ const blockedContext = computed<UpgradeBlockedContext | null>(() => {
         pathName === '/app/orders' ||
         pathName === '/app/review' ||
         pathName === '/app/allocation' ||
-        pathName === '/app/macro-regime',
+        pathName === '/app/macro-regime' ||
+        pathName.startsWith('/app/desk/') ||
+        pathName.startsWith('/app/lab/') ||
+        pathName === '/app/data/scoreboard',
       title: '访问高级投研能力',
       required: ['research_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/signals/') || pathName.startsWith('/app/signals/'),
+      test: (pathName) =>
+        pathName.startsWith('/signals/') ||
+        pathName.startsWith('/app/signals/') ||
+        pathName.startsWith('/app/data/signals/'),
       title: '访问信号研究与图谱',
       required: ['signals_advanced'],
       alternatives: newsAlternatives,
     },
     {
-      test: (pathName) => pathName.startsWith('/stocks/') || pathName.startsWith('/app/stocks/'),
+      test: (pathName) =>
+        pathName.startsWith('/stocks/') ||
+        pathName.startsWith('/app/stocks/') ||
+        pathName.startsWith('/app/data/stocks/'),
       title: '访问股票高级模块',
       required: ['stocks_advanced'],
       alternatives: stockNewsAlternatives,

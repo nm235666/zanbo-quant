@@ -19,7 +19,7 @@ async function login(page: Page, role: keyof typeof credentials) {
 test.describe('R30 市场结论冲突裁决可视化', () => {
   test('confidence 徽章带 data-confidence 属性且数值为真实百分比', async ({ page }) => {
     await login(page, 'pro')
-    await page.goto('/app/market')
+    await page.goto('/app/desk/market')
     await expect(page).toHaveURL(/\/app\/market$/)
 
     const badge = page.locator('[data-testid="conclusion-confidence-badge"]')
@@ -39,7 +39,7 @@ test.describe('R30 市场结论冲突裁决可视化', () => {
 
   test('规则链表格可展开且 winner 行带标记', async ({ page }) => {
     await login(page, 'pro')
-    await page.goto('/app/market')
+    await page.goto('/app/desk/market')
     const badge = page.locator('[data-testid="conclusion-confidence-badge"]')
     await expect(badge).toBeVisible({ timeout: 20_000 })
 
@@ -75,7 +75,7 @@ test.describe('R30 市场结论冲突裁决可视化', () => {
 
   test('低可信场景下 needs_review 告警与异议来源展示共存', async ({ page }) => {
     await login(page, 'pro')
-    await page.goto('/app/market')
+    await page.goto('/app/desk/market')
 
     const badge = page.locator('[data-testid="conclusion-confidence-badge"]')
     await expect(badge).toBeVisible({ timeout: 20_000 })

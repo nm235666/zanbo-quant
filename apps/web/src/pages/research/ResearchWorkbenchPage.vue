@@ -111,13 +111,13 @@
         </div>
         <div v-if="!regime" class="py-4 text-sm text-[var(--muted)]">
           {{ macroWorkbenchEmptyText }}
-          <RouterLink to="/app/macro-regime" class="ml-1 text-[var(--brand)] underline">前往处理</RouterLink>
+          <RouterLink to="/app/desk/macro-regime" class="ml-1 text-[var(--brand)] underline">前往处理</RouterLink>
         </div>
         <div class="mt-3 flex gap-2">
-          <RouterLink to="/app/macro-regime" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink to="/app/desk/macro-regime" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             三周期详情 →
           </RouterLink>
-          <RouterLink to="/app/allocation" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
+          <RouterLink to="/app/desk/allocation" class="rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brand)]">
             配置动作 →
           </RouterLink>
         </div>
@@ -136,17 +136,17 @@
               </RouterLink>
             </div>
           </div>
-          <RouterLink v-else to="/app/signals/overview" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
+          <RouterLink v-else to="/app/data/signals/overview" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
             <div class="text-xs font-semibold text-[var(--muted)] mb-1">系统机会池</div>
             <div class="text-lg font-bold text-[var(--ink)]">{{ signalsTotal != null ? `${signalsTotal} 信号` : '信号 + 评分' }}</div>
             <div class="mt-1 text-xs text-[var(--muted)]">全市场机会发现层</div>
           </RouterLink>
-          <RouterLink to="/app/funnel" class="group rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 transition hover:border-emerald-400 text-center">
+          <RouterLink to="/app/desk/funnel" class="group rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 transition hover:border-emerald-400 text-center">
             <div class="text-xs font-semibold text-emerald-700 mb-1">用户关注池</div>
             <div class="text-lg font-bold text-emerald-800">{{ funnelTotal }} 候选</div>
             <div class="mt-1 text-xs text-emerald-700">候选漏斗研究承接层</div>
           </RouterLink>
-          <RouterLink to="/app/positions" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
+          <RouterLink to="/app/desk/positions" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)] text-center">
             <div class="text-xs font-semibold text-[var(--muted)] mb-1">持仓池</div>
             <div class="text-lg font-bold text-[var(--ink)]">{{ positionsTotal }} 持仓</div>
             <div class="mt-1 text-xs text-[var(--muted)]">实际仓位管理层</div>
@@ -174,10 +174,10 @@
             <option :value="5">Top 5</option>
             <option :value="10">Top 10</option>
           </select>
-          <RouterLink v-if="!signalsAccessBlocked" to="/app/signals/themes" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+          <RouterLink v-if="!signalsAccessBlocked" to="/app/data/signals/themes" class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
             查看全部主题
           </RouterLink>
-          <RouterLink v-else to="/app/market" class="rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:border-amber-400">
+          <RouterLink v-else to="/app/desk/market" class="rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:border-amber-400">
             先看市场结论
           </RouterLink>
         </template>
@@ -207,7 +207,7 @@
           </div>
         </div>
         <div v-else class="rounded-2xl border border-dashed border-[var(--line)] px-4 py-6 text-center text-sm text-[var(--muted)]">
-          暂无主题数据，<RouterLink to="/app/signals/themes" class="text-[var(--brand)] underline">前往信号中心</RouterLink>
+          暂无主题数据，<RouterLink to="/app/data/signals/themes" class="text-[var(--brand)] underline">前往信号中心</RouterLink>
         </div>
         <div class="mt-3 rounded-2xl border px-4 py-3" :class="signalsAccessBlocked ? 'border-amber-200 bg-amber-50' : 'border-sky-200 bg-sky-50'">
           <div class="text-xs font-semibold" :class="signalsAccessBlocked ? 'text-amber-700' : 'text-sky-700'">今日短线核心结论</div>
@@ -225,7 +225,7 @@
             :description="todayFocus.mainline"
           >
             <RouterLink
-              to="/app/market"
+              to="/app/desk/market"
               class="mt-2 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
               查看市场结论 →
@@ -237,7 +237,7 @@
             :description="todayFocus.risk"
           >
             <RouterLink
-              to="/app/signals/overview"
+              to="/app/data/signals/overview"
               class="mt-2 inline-flex items-center rounded-full border border-[var(--line)] bg-white px-3 py-1 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
             >
               查看风险信号 →
@@ -262,7 +262,7 @@
       <PageSection title="待处理动作" subtitle="需要你审批或跟进的任务。">
         <template #action>
           <RouterLink
-            to="/app/research/task-inbox"
+            to="/app/lab/task-inbox"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             任务收件箱
@@ -285,10 +285,10 @@
             </div>
           </div>
           <div class="mt-3 flex justify-center gap-2">
-            <RouterLink to="/app/decision" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
+            <RouterLink to="/app/desk/board" class="rounded-full border border-[var(--brand)] bg-white px-4 py-2 text-xs font-semibold text-[var(--brand)]">
               录入第一条动作
             </RouterLink>
-            <RouterLink to="/app/funnel" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/desk/funnel" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               从候选池挑 1 个
             </RouterLink>
           </div>
@@ -320,7 +320,7 @@
       <PageSection title="风险预警" subtitle="先处理研究侧可见风险；治理排障信息只保留为摘要，不作为主链入口。">
         <template #action>
           <RouterLink
-            :to="signalsAccessBlocked ? '/app/market' : '/app/signals/overview'"
+            :to="signalsAccessBlocked ? '/app/desk/market' : '/app/data/signals/overview'"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             {{ signalsAccessBlocked ? '查看市场结论' : '查看信号图谱' }}
@@ -339,10 +339,10 @@
           <div class="text-sm font-semibold text-emerald-700">研究侧当前无异常风险信号</div>
           <div class="mt-1 text-xs text-[var(--muted)]">信号与市场结论未发现明显冲突；更深的链路治理已下沉到后台管理模式。</div>
           <div class="mt-3 flex justify-center gap-2">
-            <RouterLink to="/app/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/data/signals/overview" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               查看信号总览
             </RouterLink>
-            <RouterLink to="/app/market" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/desk/market" class="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold text-[var(--ink)]">
               查看市场结论
             </RouterLink>
           </div>
@@ -353,7 +353,7 @@
       <PageSection title="最近决策" subtitle="最近录入的决策动作记录。">
         <template #action>
           <RouterLink
-            to="/app/decision"
+            to="/app/desk/board"
             class="rounded-2xl border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             查看完整决策历史
@@ -444,9 +444,9 @@ const signalsAccessHint = computed(() => {
     title: '当前账号暂无信号研究权限',
     message: '主题热点、系统机会池与信号图谱需要更高权限。你仍可先用市场结论、候选漏斗和决策板完成今日判断与首个动作。',
     alternatives: [
-      { to: '/app/market', label: '查看市场结论' },
-      { to: '/app/funnel', label: '查看候选漏斗' },
-      { to: '/app/decision', label: '去决策板' },
+      { to: '/app/desk/market', label: '查看市场结论' },
+      { to: '/app/desk/funnel', label: '查看候选漏斗' },
+      { to: '/app/desk/board', label: '去决策板' },
     ],
   }
 })
@@ -491,9 +491,9 @@ function actionHandleLink(action: Record<string, any>): string {
   const actionId = String(action?.id || '').trim()
   const status = actionExecutionStatus(action)
   if (actionId && status) {
-    return `/app/orders?decision_action_id=${encodeURIComponent(actionId)}`
+    return `/app/desk/orders?decision_action_id=${encodeURIComponent(actionId)}`
   }
-  return '/app/decision'
+  return '/app/desk/board'
 }
 
 function actionHandleLabel(action: Record<string, any>): string {
@@ -586,12 +586,12 @@ function regimeStateClass(state?: string): string {
 
 
 const dailyQuestions = [
-  { n: 1, question: '今天最该关注的短线主题是什么', to: '/app/signals/themes' },
-  { n: 2, question: '关注池里哪些标的应新开仓', to: '/app/funnel' },
-  { n: 3, question: '每只新开仓标的建议仓位是多少', to: '/app/allocation' },
-  { n: 4, question: '持仓池里哪些标的应减仓/清仓', to: '/app/positions' },
-  { n: 5, question: '卖出原因：止盈/止损/失效/风险切换', to: '/app/decision' },
-  { n: 6, question: '宏观状态是否变化，组合层该怎么应对', to: '/app/macro-regime' },
+  { n: 1, question: '今天最该关注的短线主题是什么', to: '/app/data/signals/themes' },
+  { n: 2, question: '关注池里哪些标的应新开仓', to: '/app/desk/funnel' },
+  { n: 3, question: '每只新开仓标的建议仓位是多少', to: '/app/desk/allocation' },
+  { n: 4, question: '持仓池里哪些标的应减仓/清仓', to: '/app/desk/positions' },
+  { n: 5, question: '卖出原因：止盈/止损/失效/风险切换', to: '/app/desk/board' },
+  { n: 6, question: '宏观状态是否变化，组合层该怎么应对', to: '/app/desk/macro-regime' },
 ]
 
 const {
@@ -707,7 +707,7 @@ const todayFocus = computed(() => {
       mainline,
       risk,
       action: `先处理待办动作：${first.ts_code || '-'} ${shortText(String(first.note || ''), 26)}`.trim(),
-      actionTo: '/app/decision',
+      actionTo: '/app/desk/board',
     }
   }
   if (funnelTotal.value > 0) {
@@ -715,14 +715,14 @@ const todayFocus = computed(() => {
       mainline,
       risk,
       action: `关注池有 ${funnelTotal.value} 个候选，先选 1 个进入决策板。`,
-      actionTo: '/app/funnel',
+      actionTo: '/app/desk/funnel',
     }
   }
   return {
     mainline,
     risk,
     action: '暂无现成动作，先从主题榜挑 1 个标的建立首条决策记录。',
-    actionTo: '/app/signals/themes',
+    actionTo: '/app/data/signals/themes',
   }
 })
 
@@ -755,15 +755,15 @@ const macroWorkbenchEmptyText = computed(() => {
 
 const primaryCta = computed(() => {
   if (pendingActions.value.length > 0) {
-    return { label: '处理待办动作', to: '/app/decision' }
+    return { label: '处理待办动作', to: '/app/desk/board' }
   }
   if (funnelTotal.value > 0) {
-    return { label: '处理关注池候选', to: '/app/funnel' }
+    return { label: '处理关注池候选', to: '/app/desk/funnel' }
   }
   if (topThemes.value.length > 0) {
-    return { label: '从主题建立动作', to: '/app/signals/themes' }
+    return { label: '从主题建立动作', to: '/app/data/signals/themes' }
   }
-  return { label: '进入决策工作台', to: '/app/decision' }
+  return { label: '进入决策工作台', to: '/app/desk/board' }
 })
 
 const firstActionCard = computed(() => {
@@ -774,7 +774,7 @@ const firstActionCard = computed(() => {
     return {
       title: `${stock} 待处理动作`,
       description: `发现 ${pendingActions.value.length} 条待处理动作，优先处理 ${actionType}，并确认是否进入执行队列。`,
-      to: '/app/decision',
+      to: '/app/desk/board',
       actionLabel: '去处理动作',
       statusLabel: '待处理',
       statusTone: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -784,7 +784,7 @@ const firstActionCard = computed(() => {
     return {
       title: `关注池有 ${funnelTotal.value} 个候选`,
       description: '请先从候选漏斗挑选 1 个标的进入决策板，避免今天无可执行动作。',
-      to: '/app/funnel',
+      to: '/app/desk/funnel',
       actionLabel: '去候选漏斗',
       statusLabel: '待筛选',
       statusTone: 'border-sky-200 bg-sky-50 text-sky-700',
@@ -795,7 +795,7 @@ const firstActionCard = computed(() => {
     return {
       title: `围绕「${firstTheme}」建立首条动作`,
       description: '当前暂无待处理动作和候选积压，建议从短线主题直接生成一条可追踪决策。',
-      to: '/app/signals/themes',
+      to: '/app/data/signals/themes',
       actionLabel: '去主题中心',
       statusLabel: '可执行',
       statusTone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -804,7 +804,7 @@ const firstActionCard = computed(() => {
   return {
     title: '先补齐今日主线证据',
     description: '主题、候选与动作均为空，建议先完成市场结论与信号核对，再生成第一条决策动作。',
-    to: '/app/market',
+    to: '/app/desk/market',
     actionLabel: '去市场结论',
     statusLabel: '待初始化',
     statusTone: 'border-stone-200 bg-stone-50 text-stone-700',
@@ -817,24 +817,24 @@ const suggestedActions = computed(() => {
     const first = topThemes.value[0]
     list.push({
       text: `围绕主题「${String(first?.theme_name || first?.name || first?.keyword || '-') }」建立第一条决策动作。`,
-      to: '/app/decision',
+      to: '/app/desk/board',
     })
   }
   if (funnelTotal.value > 0) {
     list.push({
       text: `从关注池 ${funnelTotal.value} 个候选中，先挑 1 个进入待决策状态。`,
-      to: '/app/funnel',
+      to: '/app/desk/funnel',
     })
   }
   if (allocation.value) {
     list.push({
       text: `按当前配置口径（单票上限 ${allocation.value.max_single_position_pct ?? '-'}%）补齐仓位建议。`,
-      to: '/app/allocation',
+      to: '/app/desk/allocation',
     })
   } else {
     list.push({
       text: '先完成长线配置录入，避免短线动作没有账户级仓位口径。',
-      to: '/app/allocation',
+      to: '/app/desk/allocation',
     })
   }
   return list.slice(0, 3)
@@ -925,22 +925,22 @@ const dailyQuestionCards = computed(() => {
 
 const quickNavItems = [
   {
-    to: '/app/market',
+    to: '/app/desk/market',
     label: '市场结论',
     description: '今日交易主线、主要风险与候选方向',
   },
   {
-    to: '/app/funnel',
+    to: '/app/desk/funnel',
     label: '候选漏斗',
     description: '候选股票全生命周期状态管理',
   },
   {
-    to: '/app/decision',
+    to: '/app/desk/board',
     label: '决策工作台',
     description: '短名单执行、动作审批与验证结果',
   },
   {
-    to: '/app/research/multi-role',
+    to: '/app/lab/multi-role',
     label: '多角色分析',
     description: 'AI六角色协同深度公司分析',
   },

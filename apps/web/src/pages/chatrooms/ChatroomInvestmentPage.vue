@@ -73,7 +73,7 @@
           </label>
           <div class="flex items-end gap-2">
             <button class="flex-1 rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="applyFilters">查询</button>
-            <RouterLink to="/app/workbench?from=chatrooms_investment" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/desk/workbench?from=chatrooms_investment" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
               进入决策工作台
             </RouterLink>
           </div>
@@ -291,12 +291,12 @@ function goDecisionFromChatroom(target: Record<string, any>, _roomItem?: Record<
     query.evidence = `[群聊倾向] ${name.slice(0, 30)}${biasLabel ? ' · ' + biasLabel : ''}`
     query.note = `群聊触发观察 · ${name.slice(0, 20)}${bias ? ' · ' + bias : ''}`
   }
-  router.push({ path: '/app/decision', query })
+  router.push({ path: '/app/desk/board', query })
 }
 
 function goRoomDetail(item: Record<string, any>) {
   router.push({
-    path: '/app/chatrooms/investment/room',
+    path: '/app/data/chatrooms/investment/room',
     query: {
       room_id: String(item.room_id || '').trim(),
       talker: String(item.talker || item.remark || item.nick_name || '').trim(),
@@ -306,7 +306,7 @@ function goRoomDetail(item: Record<string, any>) {
 
 function goRoomDetailByAccuracy(row: Record<string, any>) {
   router.push({
-    path: '/app/chatrooms/investment/room',
+    path: '/app/data/chatrooms/investment/room',
     query: {
       room_id: String(row.entity_key || '').trim(),
       talker: String(row.entity_name || '').trim(),
@@ -316,7 +316,7 @@ function goRoomDetailByAccuracy(row: Record<string, any>) {
 
 function goSenderDetailByAccuracy(row: Record<string, any>) {
   router.push({
-    path: '/app/chatrooms/investment/sender',
+    path: '/app/data/chatrooms/investment/sender',
     query: {
       sender_name: String(row.entity_key || row.entity_name || '').trim(),
     },

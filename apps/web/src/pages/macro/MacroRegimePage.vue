@@ -9,7 +9,7 @@
       >
         <template #action>
           <RouterLink
-            to="/app/allocation"
+            to="/app/desk/allocation"
             class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             查看配置动作
@@ -26,7 +26,7 @@
             先看长期状态确定防守/进攻基调，再看短中期是否与长期一致；若冲突，系统会自动给出裁决动作。
           </div>
           <div class="page-action-cluster">
-            <RouterLink to="/app/allocation" class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white">
+            <RouterLink to="/app/desk/allocation" class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white">
               查看配置动作
             </RouterLink>
           </div>

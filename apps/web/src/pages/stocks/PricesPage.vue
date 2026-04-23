@@ -31,7 +31,7 @@
               <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white" @click="submitSearch">查询日线</button>
               <RouterLink
                 v-if="filters.ts_code && /^[0-9]{6}\.(SZ|SH|BJ)$/i.test(filters.ts_code)"
-                :to="`/app/decision?ts_code=${encodeURIComponent(filters.ts_code.toUpperCase())}&from=prices`"
+                :to="`/app/desk/board?ts_code=${encodeURIComponent(filters.ts_code.toUpperCase())}&from=prices`"
                 class="rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
               >
                 → 决策板
@@ -120,7 +120,7 @@
 
           <DataTable class="hidden lg:block" :columns="columns" :rows="result?.items || []" row-key="trade_date" empty-text="暂无日线数据" caption="日线结果表" aria-label="日线结果表">
             <template #cell-ts_code="{ row }">
-              <RouterLink class="font-semibold text-[var(--brand)]" :to="`/app/stocks/detail/${row.ts_code}`">{{ row.ts_code || '-' }}</RouterLink>
+              <RouterLink class="font-semibold text-[var(--brand)]" :to="`/app/data/stocks/detail/${row.ts_code}`">{{ row.ts_code || '-' }}</RouterLink>
             </template>
             <template #cell-name="{ row }">{{ row.name || '-' }}</template>
             <template #cell-trade_date="{ row }">{{ formatDate(row.trade_date) }}</template>

@@ -290,19 +290,19 @@ function buildRelatedLinks(item: Record<string, any> | null) {
 
 function goLink(link: { type: string; value: string }) {
   if (link.type === 'stock') {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(link.value)}` })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(link.value)}` })
     return
   }
   if (link.type === 'signal') {
-    router.push({ path: '/app/signals/timeline', query: { signal_key: link.value } })
+    router.push({ path: '/app/data/signals/timeline', query: { signal_key: link.value } })
     return
   }
   if (link.type === 'theme') {
-    router.push({ path: '/app/signals/themes', query: { keyword: link.value } })
+    router.push({ path: '/app/data/signals/themes', query: { keyword: link.value } })
     return
   }
   if (link.type === 'theme-state') {
-    router.push({ path: '/app/signals/themes', query: { keyword: link.value.replace(/^theme:/, '') } })
+    router.push({ path: '/app/data/signals/themes', query: { keyword: link.value.replace(/^theme:/, '') } })
   }
 }
 

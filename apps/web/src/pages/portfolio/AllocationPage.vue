@@ -9,7 +9,7 @@
       >
         <template #action>
           <RouterLink
-            to="/app/macro-regime"
+            to="/app/desk/macro-regime"
             class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 text-sm font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             去看宏观状态
@@ -113,17 +113,17 @@
       <!-- 关联宏观状态 -->
       <PageSection title="三层股池统计" subtitle="系统机会池 → 用户关注池（候选漏斗）→ 持仓池。">
         <div class="grid gap-3 sm:grid-cols-3">
-          <RouterLink to="/app/signals/overview" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
+          <RouterLink to="/app/data/signals/overview" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
             <div class="text-xs font-semibold text-[var(--muted)] mb-1">系统机会池</div>
             <div class="text-lg font-bold text-[var(--ink)]">信号 + 评分</div>
             <div class="mt-1 text-xs text-[var(--muted)]">进入 → 查看信号与综合评分</div>
           </RouterLink>
-          <RouterLink to="/app/funnel" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
+          <RouterLink to="/app/desk/funnel" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
             <div class="text-xs font-semibold text-[var(--muted)] mb-1">用户关注池</div>
             <div class="text-lg font-bold text-[var(--ink)]">候选漏斗</div>
             <div class="mt-1 text-xs text-[var(--muted)]">进入 → 管理研究候选池</div>
           </RouterLink>
-          <RouterLink to="/app/positions" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
+          <RouterLink to="/app/desk/positions" class="group rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-4 transition hover:border-[var(--brand)]">
             <div class="text-xs font-semibold text-[var(--muted)] mb-1">持仓池</div>
             <div class="text-lg font-bold text-[var(--ink)]">当前持仓</div>
             <div class="mt-1 text-xs text-[var(--muted)]">进入 → 查看持仓与仓位结构</div>

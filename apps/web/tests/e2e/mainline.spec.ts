@@ -29,7 +29,7 @@ async function login(page: Page, role: keyof typeof credentials) {
 
 test('workbench 首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/workbench')
+  await page.goto('/app/desk/workbench')
   await expect(page).toHaveURL(/\/app\/workbench$/)
   await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   await expect(page.locator('#main-content')).toBeVisible()
@@ -40,7 +40,7 @@ test('workbench 首屏渲染', async ({ page }) => {
 
 test('市场结论页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/market')
+  await page.goto('/app/desk/market')
   await expect(page).toHaveURL(/\/app\/market$/)
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
@@ -48,20 +48,20 @@ test('市场结论页首屏渲染', async ({ page }) => {
 
 test('单标的详情页包含决策动作时间线收口区', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/stocks/detail/000001.SZ')
+  await page.goto('/app/data/stocks/detail/000001.SZ')
   await expect(page).toHaveURL(/\/app\/stocks\/detail\/000001\.SZ$/)
   await expect(page.getByRole('heading', { name: '决策视角' })).toBeVisible()
   const timeline = page.locator('[data-testid="stock-detail-decision-timeline"]')
   if (await timeline.count()) {
     await expect(timeline.first()).toBeVisible()
   }
-  await expect(page.locator('#main-content a[href*="/app/decision"]').first()).toBeVisible()
+  await expect(page.locator('#main-content a[href*="/app/desk/board"]').first()).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
 })
 
 test('候选漏斗页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/funnel')
+  await page.goto('/app/desk/funnel')
   await expect(page).toHaveURL(/\/app\/funnel$/)
   await page.locator('#main-content').waitFor({ state: 'visible', timeout: 20_000 })
   await expect(page.locator('#main-content')).toBeVisible()
@@ -70,7 +70,7 @@ test('候选漏斗页首屏渲染', async ({ page }) => {
 
 test('组合持仓页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/positions')
+  await page.goto('/app/desk/positions')
   await expect(page).toHaveURL(/\/app\/positions$/)
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
@@ -78,21 +78,21 @@ test('组合持仓页首屏渲染', async ({ page }) => {
 
 test('组合订单页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/orders')
+  await page.goto('/app/desk/orders')
   await expect(page).toHaveURL(/\/app\/orders$/)
   await expect(page.locator('#main-content')).toBeVisible()
 })
 
 test('组合复盘页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/review')
+  await page.goto('/app/desk/review')
   await expect(page).toHaveURL(/\/app\/review$/)
   await expect(page.locator('#main-content')).toBeVisible()
 })
 
 test('任务收件箱首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/research/task-inbox')
+  await page.goto('/app/lab/task-inbox')
   await expect(page).toHaveURL(/\/app\/research\/task-inbox$/)
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
@@ -100,7 +100,7 @@ test('任务收件箱首屏渲染', async ({ page }) => {
 
 test('宏观三周期状态页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/macro-regime')
+  await page.goto('/app/desk/macro-regime')
   await expect(page).toHaveURL(/\/app\/macro-regime$/)
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
@@ -108,7 +108,7 @@ test('宏观三周期状态页首屏渲染', async ({ page }) => {
 
 test('长线配置动作页首屏渲染', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/allocation')
+  await page.goto('/app/desk/allocation')
   await expect(page).toHaveURL(/\/app\/allocation$/)
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('Cannot read properties of undefined')
@@ -116,7 +116,7 @@ test('长线配置动作页首屏渲染', async ({ page }) => {
 
 test('workbench 今日6问链接可见', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/workbench')
+  await page.goto('/app/desk/workbench')
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('#main-content a[href*="app/macro-regime"]').first()).toBeVisible()
   await expect(page.locator('#main-content a[href*="app/allocation"]').first()).toBeVisible()
@@ -125,7 +125,7 @@ test('workbench 今日6问链接可见', async ({ page }) => {
 
 test('workbench Top N 选择器可见', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/workbench')
+  await page.goto('/app/desk/workbench')
   await expect(page.locator('#main-content')).toBeVisible()
   // At least one select with a value="5" option must exist
   const selectWithFive = page.locator('#main-content select').filter({ has: page.locator('option[value="5"]') }).first()
@@ -135,14 +135,14 @@ test('workbench Top N 选择器可见', async ({ page }) => {
 
 test('workbench 主链 CTA 不借道 admin 页面', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/workbench')
+  await page.goto('/app/desk/workbench')
   await expect(page.locator('#main-content')).toBeVisible()
   await expect(page.locator('#main-content a[href^="/admin/"]')).toHaveCount(0)
 })
 
 test('决策板建议仓位区间字段可见', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/decision')
+  await page.goto('/app/desk/board')
   await expect(page).toHaveURL(/\/app\/decision$/)
   await expect(page.locator('#main-content')).toBeVisible()
   // Position range input placeholder should mention 账户仓位区间
@@ -152,7 +152,7 @@ test('决策板建议仓位区间字段可见', async ({ page }) => {
 
 test('宏观状态页复盘入口可见', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/macro-regime')
+  await page.goto('/app/desk/macro-regime')
   await expect(page).toHaveURL(/\/app\/macro-regime$/)
   await expect(page.locator('#main-content')).toBeVisible()
   // Page must render without JS errors
@@ -162,7 +162,7 @@ test('宏观状态页复盘入口可见', async ({ page }) => {
 
 test('长线配置动作页规则约束卡片可见', async ({ page }) => {
   await login(page, 'pro')
-  await page.goto('/app/allocation')
+  await page.goto('/app/desk/allocation')
   await expect(page).toHaveURL(/\/app\/allocation$/)
   await expect(page.locator('#main-content')).toBeVisible()
   // The page must show at least one key allocation concept

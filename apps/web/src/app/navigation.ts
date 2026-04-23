@@ -1,5 +1,6 @@
 import type { AppPermission } from './permissions'
 import { APP_PERMISSION_VALUES, hasPermissionByEffective } from './permissions'
+import { migrateLegacyAppPath } from './layers'
 import config from './navigation.config.json'
 
 export type NavSurface = 'app' | 'admin'
@@ -37,26 +38,27 @@ export function toSurfacePath(rawPath: string): string {
   const withSuffix = (nextPath: string) => `${nextPath}${suffix}`
 
   if (pathname === '/dashboard') return withSuffix('/admin/dashboard')
-  if (pathname === '/market/conclusion') return withSuffix('/app/market')
-  if (pathname === '/macro') return withSuffix('/app/macro')
-  if (pathname === '/macro/regime') return withSuffix('/app/macro-regime')
-  if (pathname === '/research/workbench') return withSuffix('/app/workbench')
-  if (pathname === '/research/funnel') return withSuffix('/app/funnel')
-  if (pathname === '/research/decision') return withSuffix('/app/decision')
-  if (pathname === '/portfolio/positions') return withSuffix('/app/positions')
-  if (pathname === '/portfolio/orders') return withSuffix('/app/orders')
-  if (pathname === '/portfolio/review') return withSuffix('/app/review')
-  if (pathname === '/portfolio/allocation') return withSuffix('/app/allocation')
+  if (pathname === '/market/conclusion') return withSuffix('/app/desk/market')
+  if (pathname === '/macro') return withSuffix('/app/data/macro')
+  if (pathname === '/macro/regime') return withSuffix('/app/desk/macro-regime')
+  if (pathname === '/research/workbench') return withSuffix('/app/desk/workbench')
+  if (pathname === '/research/funnel') return withSuffix('/app/desk/funnel')
+  if (pathname === '/research/decision') return withSuffix('/app/desk/board')
+  if (pathname === '/portfolio/positions') return withSuffix('/app/desk/positions')
+  if (pathname === '/portfolio/orders') return withSuffix('/app/desk/orders')
+  if (pathname === '/portfolio/review') return withSuffix('/app/desk/review')
+  if (pathname === '/portfolio/allocation') return withSuffix('/app/desk/allocation')
   if (pathname === '/signals/audit') return withSuffix('/admin/system/signals-audit')
   if (pathname === '/signals/quality-config') return withSuffix('/admin/system/signals-quality')
   if (pathname === '/signals/state-timeline') return withSuffix('/admin/system/signals-state-timeline')
   if (pathname.startsWith('/system/')) return withSuffix(`/admin${pathname}`)
-  if (pathname.startsWith('/stocks/')) return withSuffix(`/app${pathname}`)
-  if (pathname.startsWith('/intelligence/')) return withSuffix(`/app${pathname}`)
-  if (pathname.startsWith('/signals/')) return withSuffix(`/app${pathname}`)
-  if (pathname.startsWith('/research/')) return withSuffix(`/app${pathname}`)
-  if (pathname.startsWith('/portfolio/')) return withSuffix(`/app${pathname}`)
-  if (pathname.startsWith('/chatrooms/')) return withSuffix(`/app${pathname}`)
+  if (pathname.startsWith('/stocks/')) return withSuffix(`/app/data${pathname}`)
+  if (pathname.startsWith('/intelligence/')) return withSuffix(`/app/data${pathname}`)
+  if (pathname.startsWith('/signals/')) return withSuffix(`/app/data${pathname}`)
+  if (pathname.startsWith('/research/')) return withSuffix(migrateLegacyAppPath(`/app${pathname}`))
+  if (pathname.startsWith('/portfolio/')) return withSuffix(migrateLegacyAppPath(`/app${pathname}`))
+  if (pathname.startsWith('/chatrooms/')) return withSuffix(`/app/data${pathname}`)
+  if (pathname.startsWith('/app/')) return withSuffix(migrateLegacyAppPath(pathname))
   return path
 }
 
@@ -68,93 +70,61 @@ export function inferNavSurface(rawPath: string): NavSurface {
 
 const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
   {
-    id: 'app-workspace',
-    title: '工作台',
+    id: 'layer1-desk',
+    title: '第一层 用户决策',
     order: 1,
     surface: 'app',
-    items: [{ to: '/app/workbench', label: '研究工作台', desc: '今日重点、待处理动作与风险预警', permission: 'research_advanced', surface: 'app' }],
+    items: [
+      { to: '/app/desk/workbench', label: '研究工作台', desc: '今日重点、待处理动作与风险预警', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/market', label: '市场结论', desc: '今日交易主线、主要风险与行业影响', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/funnel', label: '候选漏斗', desc: '候选生命周期状态机与流转追溯', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/board', label: '决策看板', desc: '动作执行、回执与闭环验证', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/orders', label: '计划单', desc: '计划单、执行单、取消单', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/positions', label: '持仓看板', desc: '当前纸面持仓与状态', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/review', label: '执行复盘', desc: '执行偏差与复盘结论', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/macro-regime', label: '三周期状态', desc: '短/中/长期宏观状态与配置语言', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/desk/allocation', label: '长线配置动作', desc: '宏观驱动的风险敞口与仓位切换', permission: 'research_advanced', surface: 'app' },
+    ],
   },
   {
-    id: 'app-market',
-    title: '市场',
+    id: 'layer2-data',
+    title: '第二层 数据资产',
     order: 2,
     surface: 'app',
-    items: [{ to: '/app/market', label: '市场结论', desc: '今日交易主线、风险与行业影响', permission: 'research_advanced', surface: 'app' }],
+    items: [
+      { to: '/app/data/scoreboard', label: '评分总览', desc: '宏观模式、行业排序、短名单与入选理由一站式查看', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/data/stocks/list', label: '股票列表', desc: '股票基础数据检索', permission: 'stocks_advanced', surface: 'app' },
+      { to: '/app/data/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced', surface: 'app' },
+      { to: '/app/data/macro', label: '宏观数据', desc: '宏观原始指标与口径', permission: 'macro_advanced', surface: 'app' },
+      { to: '/app/data/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read', surface: 'app' },
+      { to: '/app/data/intelligence/cn-news', label: '国内资讯', desc: '新浪 / 东财资讯统一看', permission: 'news_read', surface: 'app' },
+      { to: '/app/data/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced', surface: 'app' },
+      { to: '/app/data/signals/themes', label: '主题热点', desc: '主题强度、方向、预期与证据链', permission: 'signals_advanced', surface: 'app' },
+      { to: '/app/data/signals/graph', label: '产业链图谱', desc: '主题、行业、股票关系浏览', permission: 'signals_advanced', surface: 'app' },
+      { to: '/app/data/chatrooms/investment', label: '群聊投资倾向', desc: '群聊结论、情绪和标的清单', permission: 'chatrooms_advanced', surface: 'app' },
+    ],
   },
   {
-    id: 'app-funnel',
-    title: '候选',
+    id: 'layer3-lab',
+    title: '第三层 验证与研究',
     order: 3,
     surface: 'app',
-    items: [{ to: '/app/funnel', label: '候选漏斗', desc: '候选生命周期状态机与流转追溯', permission: 'research_advanced', surface: 'app' }],
-  },
-  {
-    id: 'app-decision',
-    title: '决策',
-    order: 4,
-    surface: 'app',
     items: [
-      { to: '/app/decision', label: '决策看板', desc: '宏观-行业-个股评分与执行参考', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/research/scoreboard', label: '评分总览', desc: '宏观模式、行业排序、短名单与入选理由一站式查看', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/lab/quant-factors', label: '因子与回测', desc: '因子挖掘、组合验证与回测沉淀', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/lab/multi-role', label: '多角色研究', desc: '多角色协作研究与论证', permission: 'multi_role_analyze', surface: 'app' },
+      { to: '/app/lab/roundtable', label: '首席圆桌', desc: '首席视角下的圆桌讨论与裁决', permission: 'multi_role_analyze', surface: 'app' },
+      { to: '/app/lab/trend', label: '趋势分析', desc: '趋势判断与节奏研究', permission: 'trend_analyze', surface: 'app' },
+      { to: '/app/lab/reports', label: '研究报告', desc: '研究报告沉淀与查阅', permission: 'research_advanced', surface: 'app' },
+      { to: '/app/lab/task-inbox', label: '研究任务收件箱', desc: '研究侧任务进度与状态', permission: 'research_advanced', surface: 'app' },
     ],
   },
   {
-    id: 'app-execution',
-    title: '执行',
-    order: 5,
-    surface: 'app',
-    items: [{ to: '/app/orders', label: '计划单', desc: '计划单、执行单、取消单', permission: 'research_advanced', surface: 'app' }],
-  },
-  {
-    id: 'app-positions',
-    title: '持仓',
-    order: 6,
-    surface: 'app',
-    items: [{ to: '/app/positions', label: '持仓看板', desc: '当前纸面持仓与状态', permission: 'research_advanced', surface: 'app' }],
-  },
-  {
-    id: 'app-review',
-    title: '复盘',
-    order: 7,
-    surface: 'app',
-    items: [{ to: '/app/review', label: '执行复盘', desc: '执行偏差与复盘结论', permission: 'research_advanced', surface: 'app' }],
-  },
-  {
-    id: 'app-macro',
-    title: '宏观',
-    order: 8,
-    surface: 'app',
-    items: [
-      { to: '/app/macro-regime', label: '三周期状态', desc: '短/中/长期宏观状态、组合动作建议与冲突裁决', permission: 'research_advanced', surface: 'app' },
-      { to: '/app/allocation', label: '长线配置动作', desc: '宏观驱动的风险敞口、仓位上限与防守/进攻切换', permission: 'research_advanced', surface: 'app' },
-    ],
-  },
-  {
-    id: 'app-inputs',
-    title: '研究输入',
-    order: 9,
-    surface: 'app',
-    items: [
-      { to: '/app/stocks/scores', label: '综合评分', desc: '行业内评分与核心指标排序', permission: 'stocks_advanced', surface: 'app' },
-      { to: '/app/intelligence/global-news', label: '国际资讯', desc: '全球财经新闻、评分与映射', permission: 'news_read', surface: 'app' },
-      { to: '/app/signals/overview', label: '投资信号', desc: '股票与主题信号总览', permission: 'signals_advanced', surface: 'app' },
-      { to: '/app/signals/graph', label: '产业链图谱', desc: '主题、行业、股票关系浏览', permission: 'signals_advanced', surface: 'app' },
-      { to: '/app/chatrooms/investment', label: '投资倾向', desc: '群聊结论、情绪和标的清单', permission: 'chatrooms_advanced', surface: 'app' },
-    ],
-  },
-  {
-    id: 'admin-workspace',
-    title: '总控台',
+    id: 'layer4-admin',
+    title: '第四层 后台治理',
     order: 1,
     surface: 'admin',
-    items: [{ to: '/admin/dashboard', label: '系统总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system', surface: 'admin' }],
-  },
-  {
-    id: 'admin-governance',
-    title: '系统治理',
-    order: 2,
-    surface: 'admin',
     items: [
+      { to: '/admin/dashboard', label: '系统总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system', surface: 'admin' },
@@ -246,13 +216,13 @@ export function resolveDefaultLandingPath(options: {
   if (role !== 'admin') {
     for (const group of groups) {
       for (const item of group.items) {
-        if (item.to === '/app/workbench' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
-          return '/app/workbench'
+        if (item.to === '/app/desk/workbench' && hasPermissionByEffective(effectivePermissions, role, item.permission)) {
+          return '/app/desk/workbench'
         }
       }
     }
     if (hasPermissionByEffective(effectivePermissions, role, 'research_advanced')) {
-      return '/app/workbench'
+      return '/app/desk/workbench'
     }
   }
 
@@ -261,7 +231,7 @@ export function resolveDefaultLandingPath(options: {
   }
 
   if (role === 'admin' && hasPermissionByEffective(effectivePermissions, role, 'research_advanced')) {
-    return '/app/workbench'
+    return '/app/desk/workbench'
   }
 
   for (const group of groups) {
@@ -271,5 +241,5 @@ export function resolveDefaultLandingPath(options: {
       }
     }
   }
-  return '/app/intelligence/global-news'
+  return '/app/data/intelligence/global-news'
 }

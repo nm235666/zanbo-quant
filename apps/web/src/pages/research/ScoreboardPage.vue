@@ -1,23 +1,23 @@
 <template>
-  <AppShell title="评分总览" subtitle="数据统计层主入口：聚合评分证据，不承载动作执行。">
+  <AppShell title="评分总览" subtitle="聚合评分证据，不承载动作执行。">
     <div class="space-y-4">
       <PageSection title="总览状态" subtitle="先确认当前评分快照是否完整，再决定下钻到方向验证层。">
         <div class="flex flex-wrap gap-2">
           <button class="rounded-2xl bg-[var(--brand)] px-4 py-3 font-semibold text-white disabled:opacity-60" :disabled="isFetching" @click="refetch()">
             {{ isFetching ? '刷新中...' : '刷新总览' }}
           </button>
-          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/decision">打开决策看板</RouterLink>
-          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/stocks/scores">查看股票评分列表</RouterLink>
+          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/desk/board">打开决策看板</RouterLink>
+          <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)]" to="/app/data/stocks/scores">查看股票评分列表</RouterLink>
         </div>
         <div class="mt-3 rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 text-sm text-[var(--muted)]">
           <div>
             本页使用 <code>/api/decision/scores</code> 聚合统计与理由包；执行动作与回执请到
-            <RouterLink to="/app/decision" class="font-semibold text-[var(--brand)] hover:underline">决策看板</RouterLink>。
+            <RouterLink to="/app/desk/board" class="font-semibold text-[var(--brand)] hover:underline">决策看板</RouterLink>。
           </div>
           <div class="mt-2 flex flex-wrap gap-2 text-xs">
-            <span class="metric-chip">数据统计层</span>
-            <span class="metric-chip">结果展示层输入</span>
-            <span class="metric-chip">方向验证层下钻</span>
+            <span class="metric-chip">第二层 数据资产</span>
+            <span class="metric-chip">用户决策层输入</span>
+            <span class="metric-chip">验证与研究层下钻</span>
           </div>
         </div>
 
@@ -41,7 +41,7 @@
           :description="shortlistEmptyDescription"
         >
           <template #action>
-            <RouterLink class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" to="/app/stocks/scores">去看股票评分</RouterLink>
+            <RouterLink class="rounded-2xl bg-[var(--brand)] px-4 py-2 font-semibold text-white" to="/app/data/stocks/scores">去看股票评分</RouterLink>
           </template>
         </StatePanel>
 
@@ -53,7 +53,7 @@
           :description="`以下数据源当前缺失或未准备好：${degradedSources.join('、')}。页面仍会继续展示已有评分结果。`"
         >
           <template #action>
-            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]" to="/app/decision">去看执行视角</RouterLink>
+            <RouterLink class="rounded-2xl border border-[var(--line)] bg-white px-4 py-2 font-semibold text-[var(--ink)]" to="/app/desk/board">去看执行视角</RouterLink>
           </template>
         </StatePanel>
       </PageSection>
@@ -91,7 +91,7 @@
       <PageSection title="自动短名单" subtitle="优先展示高分样本，并给出建议动作和下钻入口。">
         <DataTable :columns="shortlistColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无自动短名单" caption="自动短名单">
           <template #cell-ts_code="{ row }">
-            <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
+            <RouterLink :to="`/app/data/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
               {{ row.name || row.ts_code || '-' }}
             </RouterLink>
             <div class="mt-1 text-xs text-[var(--muted)]">{{ row.ts_code || '-' }}</div>
@@ -101,10 +101,10 @@
           <template #cell-position_label="{ row }"><StatusBadge :value="row.position_label || 'muted'" :label="row.position_label || '-'"/></template>
           <template #cell_actions="{ row }">
             <div class="flex flex-wrap gap-2">
-              <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink :to="`/app/data/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 股票详情
               </RouterLink>
-              <RouterLink :to="`/app/decision?ts_code=${encodeURIComponent(row.ts_code || '')}`" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+              <RouterLink :to="`/app/desk/board?ts_code=${encodeURIComponent(row.ts_code || '')}`" class="rounded-full border border-[var(--line)] bg-[var(--panel-soft)] px-3 py-2 text-xs font-semibold text-[var(--muted)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                 执行视角
               </RouterLink>
             </div>

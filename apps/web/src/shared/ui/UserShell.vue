@@ -31,6 +31,7 @@
       </aside>
 
       <div class="min-w-0 flex-1">
+        <LayerNavBar class="mb-3" :groups="navGroups" />
         <header class="mb-4 rounded-[var(--radius-lg)] border border-emerald-100 bg-white/95 px-4 py-4 shadow-[var(--shadow-card)] backdrop-blur" data-shell-header="app">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0">
@@ -130,6 +131,7 @@
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
+import LayerNavBar from './LayerNavBar.vue'
 import { useShellFrame } from './useShellFrame'
 
 defineProps<{

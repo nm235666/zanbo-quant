@@ -193,9 +193,9 @@ class ProjectionMaturityTest(unittest.TestCase):
         detail = _read("apps/web/src/pages/stocks/StockDetailPage.vue")
         has_bridge = any(
             token in scores or token in detail
-            for token in ("/app/decision", "/research/decision")
+            for token in ("/app/decision", "/research/decision", "/app/desk/board")
         )
-        self.assertTrue(has_bridge, "Stocks module must have a bridge to the decision board (/app/decision)")
+        self.assertTrue(has_bridge, "Stocks module must have a bridge to the decision board (/app/desk/board)")
 
     def test_news_bridge_to_decision(self):
         """NewsListPageBlock.vue must have goDecision or → 决策板."""
@@ -217,8 +217,12 @@ class ProjectionMaturityTest(unittest.TestCase):
         """SignalChainGraphPage.vue must have goToDecision linking to the decision board."""
         content = _read("apps/web/src/pages/signals/SignalChainGraphPage.vue")
         self.assertIn("goToDecision", content, "Signal graph must have goToDecision function")
-        has_bridge = "/app/decision" in content or "/research/decision" in content
-        self.assertTrue(has_bridge, "Signal graph must link to the decision board (/app/decision)")
+        has_bridge = (
+            "/app/decision" in content
+            or "/research/decision" in content
+            or "/app/desk/board" in content
+        )
+        self.assertTrue(has_bridge, "Signal graph must link to the decision board (/app/desk/board)")
 
     def test_decision_board_has_retrospective_section(self):
         """DecisionBoardPage.vue must have a 复盘 (retrospective) section."""
@@ -233,19 +237,19 @@ class ProjectionMaturityTest(unittest.TestCase):
     # ───────────────────────────────────────────────
 
     def test_default_landing_prioritizes_decision_board(self):
-        """resolveDefaultLandingPath must send non-admin research users to /app/workbench (the唯一主入口)
+        """resolveDefaultLandingPath must send non-admin research users to /app/desk/workbench (the唯一主入口)
         before any /admin/dashboard fallback."""
         content = _read("apps/web/src/app/navigation.ts")
         func_start = content.find("export function resolveDefaultLandingPath")
         self.assertGreater(func_start, 0, "resolveDefaultLandingPath function must exist")
         func_body = content[func_start:]
-        workbench_pos = func_body.find("/app/workbench")
+        workbench_pos = func_body.find("/app/desk/workbench")
         dashboard_pos = func_body.find("/admin/dashboard")
-        self.assertGreater(workbench_pos, 0, "/app/workbench must be checked in resolveDefaultLandingPath")
+        self.assertGreater(workbench_pos, 0, "/app/desk/workbench must be checked in resolveDefaultLandingPath")
         self.assertGreater(dashboard_pos, 0, "/admin/dashboard must also be handled for admin landing")
         self.assertLess(
             workbench_pos, dashboard_pos,
-            "resolveDefaultLandingPath must route non-admin research users to /app/workbench before /admin/dashboard",
+            "resolveDefaultLandingPath must route non-admin research users to /app/desk/workbench before /admin/dashboard",
         )
 
     def test_stocks_empty_state_machine(self):

@@ -1,5 +1,5 @@
 <template>
-  <AppShell title="投研决策板" subtitle="方向验证层主入口：聚焦动作编排、闭环回执与复盘验证。">
+  <AppShell title="投研决策板" subtitle="聚焦动作编排、闭环回执与复盘验证。">
     <div class="space-y-4">
       <div class="page-hero-grid">
         <div class="page-hero-card">
@@ -15,7 +15,7 @@
             <button class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 font-semibold text-[var(--ink)] disabled:opacity-60" :disabled="isSnapshotPending" @click="runSnapshot">
               {{ isSnapshotPending ? '生成中...' : '生成快照' }}
             </button>
-            <RouterLink to="/app/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+            <RouterLink to="/app/desk/orders" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
               执行任务
             </RouterLink>
           </div>
@@ -64,11 +64,11 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="text-[var(--muted)]">
             统计证据（宏观评分卡、行业排序、入选理由包）已收敛到
-            <RouterLink to="/app/research/scoreboard" class="font-semibold text-[var(--brand)] hover:underline">评分总览</RouterLink>
+            <RouterLink to="/app/data/scoreboard" class="font-semibold text-[var(--brand)] hover:underline">评分总览</RouterLink>
             。本页只保留动作与验证闭环所需字段。
           </div>
           <RouterLink
-            to="/app/research/scoreboard"
+            to="/app/data/scoreboard"
             class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
           >
             打开评分总览
@@ -227,7 +227,7 @@
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <RouterLink
-                :to="`/app/stocks/detail/${candidate.ts_code}`"
+                :to="`/app/data/stocks/detail/${candidate.ts_code}`"
                 class="rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
               >
                 股票详情
@@ -262,7 +262,7 @@
               <div class="flex items-baseline gap-2">
                 <RouterLink
                   v-if="item.ts_code"
-                  :to="`/app/stocks/detail/${item.ts_code}`"
+                  :to="`/app/data/stocks/detail/${item.ts_code}`"
                   class="block truncate text-sm font-semibold text-[var(--ink)] hover:underline"
                 >
                   {{ item.stock_name || item.ts_code }}
@@ -284,7 +284,7 @@
                     'bg-gray-100 text-gray-500': item.execution_status === 'cancelled',
                   }"
                 >{{ { planned: '待执行', executing: '执行中', done: '已完成', cancelled: '已取消' }[item.execution_status as string] || '未关联' }}</span>
-                <RouterLink v-if="item.execution_status" :to="`/app/orders?decision_action_id=${item.id}`" class="text-xs text-[var(--brand)] hover:underline">查看执行</RouterLink>
+                <RouterLink v-if="item.execution_status" :to="`/app/desk/orders?decision_action_id=${item.id}`" class="text-xs text-[var(--brand)] hover:underline">查看执行</RouterLink>
               </div>
               <div v-if="item.note" class="mt-1 line-clamp-2 text-xs text-[var(--muted)]">{{ item.note }}</div>
             </div>
@@ -298,7 +298,7 @@
         subtitle="第三层验证入口：历史看多/看空裁决的收益与命中率，用于评估判断质量。"
       >
         <div class="mb-3 flex flex-wrap gap-2 text-xs">
-          <RouterLink to="/app/research/quant-factors" class="metric-chip font-semibold text-[var(--brand)]">
+          <RouterLink to="/app/lab/quant-factors" class="metric-chip font-semibold text-[var(--brand)]">
             进入验证与研究层（因子/回测）
           </RouterLink>
         </div>
@@ -344,7 +344,7 @@
               <span v-else class="text-[var(--muted)]">-</span>
               <RouterLink
                 v-if="row.payload?.context?.job_id"
-                :to="`/app/research/multi-role?restore_job=${row.payload.context.job_id}`"
+                :to="`/app/lab/multi-role?restore_job=${row.payload.context.job_id}`"
                 class="rounded-full border border-[var(--line)] bg-white px-2 py-0.5 text-xs text-[var(--brand)] hover:underline"
               >
                 原始分析
@@ -382,7 +382,7 @@
               <div class="mt-3 flex flex-wrap gap-2">
                 <RouterLink
                   v-if="focusStock.ts_code"
-                  :to="`/app/stocks/detail/${focusStock.ts_code}`"
+                  :to="`/app/data/stocks/detail/${focusStock.ts_code}`"
                   class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                 >
                   打开股票详情
@@ -433,12 +433,12 @@
               <span class="metric-chip">验证 {{ validation.status || 'idle' }}</span>
               <span class="metric-chip">行业数 {{ industries.length }}</span>
               <span class="metric-chip">Top 行业 {{ topIndustryName || '-' }}</span>
-              <RouterLink :to="`/app/research/scoreboard`" class="metric-chip font-semibold text-[var(--brand)]">去看统计总览</RouterLink>
+              <RouterLink :to="`/app/data/scoreboard`" class="metric-chip font-semibold text-[var(--brand)]">去看统计总览</RouterLink>
             </div>
           </div>
           <DataTable :columns="stockColumns" :rows="shortlist" row-key="ts_code" empty-text="暂无短名单股票" caption="股票短名单">
             <template #cell-ts_code="{ row }">
-              <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
+              <RouterLink :to="`/app/data/stocks/detail/${row.ts_code}`" class="font-semibold text-[var(--brand)] hover:underline">
                 {{ row.name || row.ts_code || '-' }}
               </RouterLink>
               <div class="mt-1 text-xs text-[var(--muted)]">{{ row.ts_code || '-' }}</div>
@@ -455,7 +455,7 @@
             </template>
             <template #cell_actions="{ row }">
               <div class="flex flex-wrap gap-2">
-                <RouterLink :to="`/app/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
+                <RouterLink :to="`/app/data/stocks/detail/${row.ts_code}`" class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]">
                   股票详情
                 </RouterLink>
                 <button class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:opacity-60" :disabled="isActionPending" @click="submitManualAction('confirm', row.ts_code, `短名单确认：${row.name || row.ts_code || '-'}`, row.name || row.ts_code || '')">
@@ -606,7 +606,7 @@
               </RouterLink>
               <RouterLink
                 v-if="item.ts_code"
-                :to="`/app/stocks/detail/${item.ts_code}`"
+                :to="`/app/data/stocks/detail/${item.ts_code}`"
                 class="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold text-[var(--ink)] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
               >
                 查看股票详情
@@ -1354,8 +1354,8 @@ function actionRestoreLink(item: Record<string, any>) {
   const source = actionSource(item)
   const jobId = actionJobId(item)
   if (!jobId) return ''
-  if (source === 'multi_role_v3') return `/app/research/multi-role?restore_job=${encodeURIComponent(jobId)}`
-  if (source === 'chief_roundtable') return `/app/research/roundtable?job_id=${encodeURIComponent(jobId)}`
+  if (source === 'multi_role_v3') return `/app/lab/multi-role?restore_job=${encodeURIComponent(jobId)}`
+  if (source === 'chief_roundtable') return `/app/lab/roundtable?job_id=${encodeURIComponent(jobId)}`
   return ''
 }
 

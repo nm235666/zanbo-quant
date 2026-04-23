@@ -139,14 +139,14 @@ function openCandidate(item: Record<string, any>) {
   const tsCode = String(item.ts_code || '').trim()
   const candidateName = String(item.candidate_name || '').trim()
   if (tsCode) {
-    router.push({ path: `/app/stocks/detail/${encodeURIComponent(tsCode)}` })
+    router.push({ path: `/app/data/stocks/detail/${encodeURIComponent(tsCode)}` })
     return
   }
   if (String(item.candidate_type || '').trim() === '主题') {
-    router.push({ path: '/app/signals/themes', query: { keyword: candidateName } })
+    router.push({ path: '/app/data/signals/themes', query: { keyword: candidateName } })
     return
   }
-  router.push({ path: '/app/chatrooms/investment', query: { target_keyword: candidateName } })
+  router.push({ path: '/app/data/chatrooms/investment', query: { target_keyword: candidateName } })
 }
 
 function prevPage() {

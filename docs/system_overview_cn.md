@@ -11,12 +11,23 @@
 
 | 层级 | 目标问题 | 代表页面（canonical） |
 | --- | --- | --- |
-| 第一层 用户决策层 | 今天该如何做投资动作 | `/app/workbench`、`/app/decision`、`/app/funnel`、`/app/orders`、`/app/review` |
-| 第二层 数据资产层 | 数据口径与证据是否可靠 | `/app/research/scoreboard`、`/app/stocks/scores`、`/app/signals/overview` |
-| 第三层 验证与研究层 | 策略与因子是否有效可复用 | `/app/research/quant-factors`、`/api/decision/calibration` |
-| 第四层 后台治理层 | 系统是否稳定可管控 | `/admin/dashboard`、`/admin/system/*` |
+| 层级 | URL 前缀 | 目标问题 | 代表页面（canonical） |
+| --- | --- | --- | --- |
+| 第一层 用户决策层 | `/app/desk/*` | 今天该如何做投资动作 | `/app/desk/workbench`、`/app/desk/board`、`/app/desk/funnel`、`/app/desk/orders`、`/app/desk/review` |
+| 第二层 数据资产层 | `/app/data/*` | 数据口径与证据是否可靠 | `/app/data/scoreboard`、`/app/data/stocks/scores`、`/app/data/signals/overview` |
+| 第三层 验证与研究层 | `/app/lab/*` | 策略与因子是否有效可复用 | `/app/lab/quant-factors`、`/api/decision/calibration` |
+| 第四层 后台治理层 | `/admin/*` | 系统是否稳定可管控 | `/admin/dashboard`、`/admin/system/*` |
 
-说明：历史路径（如 `/research/decision`）保留重定向兼容，但文档与验收统一使用 canonical 路径。
+说明：历史路径（如 `/app/decision`、`/app/workbench`、`/app/research/scoreboard` 等）保留 301 重定向兼容，但文档与验收统一使用 canonical 路径。
+
+### 0.1 导航壳层结构（顶部 4 层 Tab + 面包屑）
+
+`AppShell` 顶部通过 `LayerNavBar` 渲染 4 个固定层级 Tab，并以"第 X 层 › 分组 › 当前页"形式给出层级面包屑：
+
+- 4 层 Tab：`用户决策 / 数据资产 / 验证研究 / 后台治理`，命中所在前缀的 Tab 默认高亮（`data-layer-active`）。
+- 点击 Tab：跳转到该层默认页（取自 [apps/web/src/app/layers.ts](apps/web/src/app/layers.ts) 的 `defaultPath`）；权限不足时跳转到 `/upgrade?reason=permission` 并保留来源。
+- 侧栏：从 11 个独立分组聚合为 4 个分层分组（`layer1-desk` / `layer2-data` / `layer3-lab` / `layer4-admin`），评分总览归位到第二层数据资产层。
+- 路径迁移：所有旧 `/app/*` URL 通过 [apps/web/src/app/router.ts](apps/web/src/app/router.ts) 的 `redirect` 与 `migrateLegacyAppPath` 一次跳转到新前缀，不再有"既能用旧 URL 也能用新 URL"的双口径。
 
 ## 1. 目前系统已经具备的能力
 
@@ -184,7 +195,7 @@
 ## 3. 前端页面清单
 
 > 说明：前端路由以 `apps/web/src/app/router.ts` 为准；下面列的是当前主入口页面。`/stocks/minline` 目前已重定向到 `/stocks/prices`，不再作为独立主入口维护。
-> canonical 路径统一使用 `/app/*` 与 `/admin/*` 前缀（例如 `/app/decision`、`/app/funnel`、`/app/orders`、`/app/review`），历史无前缀路径仅保留重定向兼容。
+> canonical 路径统一使用 `/app/desk|data|lab/*` 与 `/admin/*` 前缀（例如 `/app/desk/board`、`/app/desk/funnel`、`/app/desk/orders`、`/app/desk/review`、`/app/data/scoreboard`、`/app/lab/quant-factors`），历史无前缀与早期 `/app/*` 平铺路径仅保留重定向兼容。
 > 当前页面清单仍按现有真实路径列出，并按“四层架构重基线”持续收敛：第一层用户决策、第二层数据资产、第三层验证与研究、第四层后台治理。研究、判断、决策、执行、复盘相关页面优先归第一层；原始与加工数据展示优先归第二层；因子/回测/策略验证优先归第三层；权限、任务、配置、监控、审计归第四层。
 
 | 页面 | 模式归属 | 主要用途 |
@@ -284,7 +295,7 @@
 3. 生成执行提示与风险说明
 4. 读取 / 写入决策快照与 Kill Switch 状态
 5. 记录人工确认、拒绝、暂缓等动作留痕
-6. 在前端 `/app/decision` 和 `/app/stocks/detail/:tsCode?` 中展示可解释决策结果
+6. 在前端 `/app/desk/board` 和 `/app/data/stocks/detail/:tsCode?` 中展示可解释决策结果
 7. 作为后续策略验证、淘汰和人工确认的统一入口
 
 ### 4.6 API 边界（评分与决策）
@@ -366,11 +377,11 @@
 `策略生成/因子挖掘 -> 回测验证 -> 复盘修正 -> 反馈到用户决策层`
 
 对应入口：
-- 页面：`/app/research/quant-factors`
+- 页面：`/app/lab/quant-factors`
 - 决策验证 API：`/api/decision/calibration`
 - 量化验证 API：`/api/quant-factors/*`
 
-说明：验证与研究层用于“证明方法有效”，不直接承担用户动作执行；动作执行仍在第一层用户决策层完成（`/app/decision`、`/app/orders`）。
+说明：验证与研究层用于“证明方法有效”，不直接承担用户动作执行；动作执行仍在第一层用户决策层完成（`/app/desk/board`、`/app/desk/orders`）。
 
 ## 5. 当前自动运行的定时任务
 

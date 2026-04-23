@@ -43,14 +43,14 @@ test.describe('导航与菜单', () => {
   })
 
   test('页面跳转正常', async ({ page }) => {
-    await page.goto('/app/signals/overview')
+    await page.goto('/app/data/signals/overview')
     await page.waitForTimeout(3000)
     await expect(page.locator('body')).toBeVisible()
     await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
     await expect(page.locator('[data-shell-nav="app"]')).toContainText('研究输入')
     await expect(page.locator('[data-shell-nav="app"]')).not.toContainText('系统治理')
     
-    await page.goto('/app/intelligence/global-news')
+    await page.goto('/app/data/intelligence/global-news')
     await page.waitForTimeout(3000)
     await expect(page.locator('body')).toBeVisible()
     await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()

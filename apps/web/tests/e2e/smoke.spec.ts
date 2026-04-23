@@ -38,7 +38,7 @@ test('pro 默认落点正确且可打开评分总览', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/workbench$/)
   await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   await expect(page.locator('[data-shell-switch="app"]')).toHaveCount(0)
-  await page.goto('/app/research/scoreboard')
+  await page.goto('/app/data/scoreboard')
   await expect(page).toHaveURL(/\/app\/research\/scoreboard$/)
   await expect(page.locator('[data-shell-surface="app"]')).toBeVisible()
   await expect(page.locator('header').getByText('评分总览')).toBeVisible()
@@ -60,7 +60,7 @@ test('limited 默认落点正确且无权限页跳 upgrade', async ({ page, requ
 
 test('三个主研究页首屏可渲染', async ({ page }) => {
   await login(page, 'pro')
-  for (const path of ['/app/research/scoreboard', '/app/stocks/scores', '/app/decision']) {
+  for (const path of ['/app/data/scoreboard', '/app/data/stocks/scores', '/app/desk/board']) {
     await page.goto(path)
     await expect(page).toHaveURL(new RegExp(path.replace(/\//g, '\\/')))
     await expect(page.locator('#main-content')).toBeVisible()

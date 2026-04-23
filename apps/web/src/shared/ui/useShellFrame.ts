@@ -60,8 +60,19 @@ export function useShellFrame(surface: NavSurface) {
     const targetPath = String(to || '').split('?')[0] || ''
     if (!targetPath) return false
     if (route.path === targetPath) return true
-    if (targetPath.startsWith('/stocks/detail/') || targetPath.startsWith('/app/stocks/detail/')) {
-      return route.path.startsWith('/stocks/detail') || route.path.startsWith('/app/stocks/detail')
+    if (
+      targetPath === '/app/data/stocks/list' ||
+      targetPath === '/app/data/stocks/detail' ||
+      targetPath.startsWith('/app/data/stocks/detail/')
+    ) {
+      return (
+        route.path.startsWith('/app/data/stocks/detail') ||
+        route.path.startsWith('/app/stocks/detail') ||
+        route.path.startsWith('/stocks/detail')
+      )
+    }
+    if (targetPath.startsWith('/app/data/chatrooms/investment')) {
+      return route.path.startsWith('/app/data/chatrooms/investment')
     }
     return false
   }

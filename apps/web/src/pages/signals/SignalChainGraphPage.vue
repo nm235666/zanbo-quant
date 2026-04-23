@@ -45,7 +45,7 @@
                 <button class="rounded-2xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white" @click="applyFilters">
                   {{ isFetching ? '加载中...' : '刷新图谱' }}
                 </button>
-                <RouterLink to="/app/workbench?from=signals_graph" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
+                <RouterLink to="/app/desk/workbench?from=signals_graph" class="rounded-2xl border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold text-[var(--ink)]">
                   进入决策工作台
                 </RouterLink>
               </div>
@@ -728,7 +728,7 @@ function goToDecision(node: GraphNode | null) {
   if (statusLabel) evidenceParts.push(`状态=${statusLabel}`)
   query.evidence = evidenceParts.join(' · ')
   query.note = `信号触发观察 · ${label.slice(0, 20)}${summary ? ' · ' + summary.slice(0, 20) : ''}`
-  router.push({ path: '/app/decision', query })
+  router.push({ path: '/app/desk/board', query })
 }
 
 function syncRouteFromQuery() {

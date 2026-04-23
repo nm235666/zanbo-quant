@@ -32,7 +32,7 @@ class FrontendApiSmokeTest(unittest.TestCase):
         upgrade_page = (ROOT / "apps/web/src/pages/auth/UpgradePage.vue").read_text(encoding="utf-8")
 
         self.assertIn("export function resolveDefaultLandingPath", navigation_ts)
-        self.assertIn("return '/app/intelligence/global-news'", navigation_ts)
+        self.assertIn("return '/app/data/intelligence/global-news'", navigation_ts)
         self.assertIn("resolveDefaultLandingPath", login_page)
         self.assertIn("authStore.permissionCatalog", upgrade_page)
         self.assertIn("auth.trend_quota", upgrade_page)
