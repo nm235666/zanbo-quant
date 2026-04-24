@@ -39,6 +39,7 @@ _CONTRACTS: tuple[ApiLayerContract, ...] = (
     ApiLayerContract(pattern="/api/jobs", layer="layer4_backoffice_governance", domain="job_governance", methods=("GET",), mode="prefix"),
     ApiLayerContract(pattern="/api/job-runs", layer="layer4_backoffice_governance", domain="job_governance", methods=("GET",), mode="prefix"),
     ApiLayerContract(pattern="/api/job-alerts", layer="layer4_backoffice_governance", domain="job_governance", methods=("GET",), mode="prefix"),
+    ApiLayerContract(pattern="/api/agents", layer="layer4_backoffice_governance", domain="agent_governance", methods=("GET", "POST"), mode="prefix"),
     ApiLayerContract(pattern="/api/source-monitor", layer="layer4_backoffice_governance", domain="ops_monitoring", methods=("GET",), mode="exact"),
     ApiLayerContract(pattern="/api/database-audit", layer="layer4_backoffice_governance", domain="ops_monitoring", methods=("GET",), mode="exact"),
     ApiLayerContract(pattern="/api/db-health", layer="layer4_backoffice_governance", domain="ops_monitoring", methods=("GET",), mode="exact"),

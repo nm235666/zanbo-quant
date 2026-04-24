@@ -155,6 +155,7 @@ from backend.routes import llm_quick_insight as llm_quick_insight_routes
 from backend.routes import macro_regime as macro_regime_routes
 from backend.routes import portfolio_allocation as portfolio_allocation_routes
 from backend.routes import analytics as analytics_routes
+from backend.routes import agents as agents_routes
 from backend.layers import (
     assert_layer_write_allowed,
     build_layered_route_deps,
@@ -405,6 +406,7 @@ ROUTE_PERMISSIONS_FALLBACK: dict[str, str] = {
     "/chatrooms/investment": "chatrooms_advanced",
     "/system/source-monitor": "admin_system",
     "/system/jobs-ops": "admin_system",
+    "/system/agents-ops": "admin_system",
     "/system/llm-providers": "admin_system",
     "/system/permissions": "admin_system",
     "/system/database-audit": "admin_system",
@@ -488,6 +490,7 @@ NAVIGATION_GROUPS_FALLBACK: list[dict[str, object]] = [
         "items": [
             {"to": "/system/source-monitor", "label": "数据源监控", "desc": "数据源、进程、实时链路统一看板", "permission": "admin_system"},
             {"to": "/system/jobs-ops", "label": "任务调度中心", "desc": "任务列表、dry-run、触发与告警观测", "permission": "admin_system"},
+            {"to": "/system/agents-ops", "label": "Agent 运营台", "desc": "Agent 运行、审批、步骤与审计追踪", "permission": "admin_system"},
             {"to": "/system/llm-providers", "label": "LLM 节点管理", "desc": "模型节点 CRUD、限速配置与联通测试", "permission": "admin_system"},
             {"to": "/system/permissions", "label": "角色权限策略", "desc": "配置 pro/limited/admin 的权限与日配额", "permission": "admin_system"},
             {"to": "/system/database-audit", "label": "数据库审计", "desc": "缺口、重复、未评分、陈旧数据", "permission": "admin_system"},
@@ -7976,7 +7979,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         def _has(perm: str) -> bool:
             return perm in perms
 
-        if path.startswith("/api/system/") or path.startswith("/api/jobs") or path.startswith("/api/job-"):
+        if path.startswith("/api/system/") or path.startswith("/api/jobs") or path.startswith("/api/job-") or path.startswith("/api/agents"):
             return _has("admin_system")
         if path.startswith("/api/auth/users") or path.startswith("/api/auth/user/") or path.startswith("/api/auth/sessions") or path.startswith("/api/auth/audit-logs") or path.startswith("/api/auth/invite"):
             return _has("admin_users")
@@ -8351,6 +8354,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         if analytics_routes.dispatch_post(self, parsed, payload, deps):
             return
+        if agents_routes.dispatch_post(self, parsed, payload, deps):
+            return
 
         self._send_json({"error": "Not Found"}, status=404)
 
@@ -8447,6 +8452,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         if macro_regime_routes.dispatch_get(self, parsed, deps):
             return
         if portfolio_allocation_routes.dispatch_get(self, parsed, deps):
+            return
+        if agents_routes.dispatch_get(self, parsed, deps):
             return
 
         if self._serve_frontend_static(parsed):

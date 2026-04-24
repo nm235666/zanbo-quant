@@ -157,6 +157,7 @@ export const router = createRouter({
     { path: '/admin/dashboard', component: () => import('../pages/dashboard/DashboardPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
     { path: '/admin/system/source-monitor', component: () => import('../pages/system/SourceMonitorPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
     { path: '/admin/system/jobs-ops', component: () => import('../pages/system/JobsOpsPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
+    { path: '/admin/system/agents-ops', component: () => import('../pages/system/AgentOpsPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
     { path: '/admin/system/llm-providers', component: () => import('../pages/system/LlmProvidersPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
     { path: '/admin/system/permissions', component: () => import('../pages/system/RolePoliciesPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },
     { path: '/admin/system/database-audit', component: () => import('../pages/system/DatabaseAuditPage.vue'), meta: { auth: true, permission: 'admin_system', surface: 'admin', layer: 'l4' } as RouteMetaAuth },

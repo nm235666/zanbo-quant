@@ -126,6 +126,7 @@ const FALLBACK_NAV_GROUPS: NavGroupConfig[] = [
       { to: '/admin/dashboard', label: '系统总控台', desc: '全局健康度、热点、任务与新鲜度', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/source-monitor', label: '数据源监控', desc: '数据源、进程、实时链路统一看板', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/jobs-ops', label: '任务调度中心', desc: '任务列表、dry-run、触发与告警观测', permission: 'admin_system', surface: 'admin' },
+      { to: '/admin/system/agents-ops', label: 'Agent 运营台', desc: 'Agent 运行、审批、步骤与审计追踪', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/llm-providers', label: 'LLM 节点管理', desc: '模型节点 CRUD、限速配置与联通测试', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/permissions', label: '角色权限策略', desc: '配置 pro/limited/admin 的权限与日配额', permission: 'admin_system', surface: 'admin' },
       { to: '/admin/system/database-audit', label: '数据库审计', desc: '缺口、重复、未评分、陈旧数据', permission: 'admin_system', surface: 'admin' },
