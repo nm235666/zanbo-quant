@@ -1411,7 +1411,143 @@ def _score_reason_for_stock(item: dict[str, Any]) -> dict[str, Any]:
         "position_label": str(item.get("position_label") or _position_label(_as_float(item.get("total_score")))),
         "decision_reason": str(item.get("decision_reason") or _build_stock_reason(item)),
         "decision_risk": str(item.get("decision_risk") or _build_stock_risk(item)),
+        "source_date": str(item.get("score_date") or item.get("source_date") or ""),
         "summary_points": summary_points[:4],
+    }
+
+
+def _load_stock_score_row_for_stock(conn, *, ts_code: str) -> dict[str, Any]:
+    normalized_ts_code = str(ts_code or "").strip().upper()
+    if not normalized_ts_code or not _table_exists(conn, "stock_scores_daily"):
+        return {}
+    latest_score_date = conn.execute("SELECT MAX(score_date) FROM stock_scores_daily").fetchone()[0]
+    if not latest_score_date:
+        return {}
+    row = conn.execute(
+        """
+        SELECT
+            score_date, ts_code, name, symbol, market, area, industry,
+            industry_rank, industry_count, score_grade, industry_score_grade,
+            total_score, industry_total_score, trend_score, industry_trend_score,
+            financial_score, industry_financial_score, valuation_score, industry_valuation_score,
+            capital_flow_score, industry_capital_flow_score, event_score, industry_event_score,
+            news_score, industry_news_score, risk_score, industry_risk_score,
+            latest_trade_date, latest_risk_date, score_payload_json, source, update_time
+        FROM stock_scores_daily
+        WHERE score_date = ? AND UPPER(TRIM(ts_code)) = ?
+        LIMIT 1
+        """,
+        (latest_score_date, normalized_ts_code),
+    ).fetchone()
+    if not row:
+        return {}
+    item = dict(row)
+    payload = _parse_json(item.get("score_payload_json"))
+    item["score_payload"] = payload
+    item["score_summary"] = payload.get("score_summary", {})
+    item["raw_metrics"] = payload.get("raw_metrics", {})
+    item["position_label"] = _position_label(_as_float(item.get("total_score")))
+    item["decision_reason"] = _build_stock_reason(item)
+    item["decision_risk"] = _build_stock_risk(item)
+    return item
+
+
+def evaluate_evidence_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    score = packet.get("score") if isinstance(packet.get("score"), dict) else {}
+    news = packet.get("news") if isinstance(packet.get("news"), dict) else {}
+    signals = packet.get("signals") if isinstance(packet.get("signals"), dict) else {}
+    candidate_pool = packet.get("candidate_pool") if isinstance(packet.get("candidate_pool"), dict) else {}
+    degraded_sources = list(packet.get("degraded_sources") or [])
+    missing: list[str] = []
+    if str(score.get("status") or "") != "ok":
+        missing.append("score")
+    if int(news.get("count") or 0) <= 0:
+        missing.append("news")
+    if int(signals.get("count") or 0) <= 0:
+        missing.append("signals")
+    if int(candidate_pool.get("matched_count") or 0) <= 0:
+        missing.append("candidate_pool")
+    supporting_sources = 0
+    supporting_sources += 1 if int(news.get("count") or 0) > 0 else 0
+    supporting_sources += 1 if int(signals.get("count") or 0) > 0 else 0
+    supporting_sources += 1 if int(candidate_pool.get("matched_count") or 0) > 0 else 0
+    complete = str(score.get("status") or "") == "ok" and supporting_sources >= 1
+    warnings: list[str] = []
+    if "score" in missing:
+        warnings.append("缺少最新评分证据，无法判断候选是否仍在评分体系内。")
+    if supporting_sources <= 0:
+        warnings.append("缺少新闻、信号或群聊候选池中的任一辅助证据。")
+    elif missing:
+        label_map = {"news": "个股新闻", "signals": "投资信号", "candidate_pool": "群聊候选池"}
+        readable = [label_map.get(item, item) for item in missing if item != "score"]
+        if readable:
+            warnings.append(f"辅助证据不完整：缺少{'、'.join(readable)}。")
+    if degraded_sources:
+        warnings.append(f"部分证据源不可用：{'、'.join(str(x) for x in degraded_sources)}。")
+    status = "complete" if complete else "incomplete"
+    return {
+        "evidence_status": status,
+        "missing_evidence": missing,
+        "warning_messages": warnings,
+        "evidence_chain_complete": complete,
+    }
+
+
+def build_stock_evidence_packet(conn, *, ts_code: str, name: str = "") -> dict[str, Any]:
+    normalized_ts_code = str(ts_code or "").strip().upper()
+    score_item = _load_stock_score_row_for_stock(conn, ts_code=normalized_ts_code)
+    resolved_name = str(name or score_item.get("name") or normalized_ts_code).strip()
+    score_reason = _score_reason_for_stock(score_item) if score_item else {"status": "empty"}
+    news_reason = _recent_stock_news_for_stock(conn=conn, ts_code=normalized_ts_code, limit=3)
+    signal_reason = _signal_reason_for_stock(conn=conn, ts_code=normalized_ts_code, name=resolved_name)
+    candidate_reason = _candidate_pool_reason_for_stock(conn=conn, ts_code=normalized_ts_code, name=resolved_name)
+    degraded_sources = [
+        source_name
+        for source_name, source_packet in {
+            "news": news_reason,
+            "signals": signal_reason,
+            "candidate_pool": candidate_reason,
+        }.items()
+        if str(source_packet.get("status") or "") == "missing_source"
+    ]
+    packet = {
+        "ts_code": normalized_ts_code,
+        "name": resolved_name,
+        "industry": str(score_item.get("industry") or ""),
+        "score": score_reason,
+        "news": news_reason,
+        "signals": signal_reason,
+        "candidate_pool": candidate_reason,
+        "degraded_sources": degraded_sources,
+        "status": "degraded" if degraded_sources else "ok",
+    }
+    packet.update(evaluate_evidence_packet(packet))
+    return packet
+
+
+def summarize_evidence_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    score = packet.get("score") if isinstance(packet.get("score"), dict) else {}
+    news = packet.get("news") if isinstance(packet.get("news"), dict) else {}
+    signals = packet.get("signals") if isinstance(packet.get("signals"), dict) else {}
+    candidate_pool = packet.get("candidate_pool") if isinstance(packet.get("candidate_pool"), dict) else {}
+    latest_dates = [
+        str(score.get("source_date") or ""),
+        str(news.get("latest_pub_time") or ""),
+        str(signals.get("latest_signal_date") or ""),
+        str(candidate_pool.get("latest_analysis_date") or ""),
+    ]
+    latest_dates = [item for item in latest_dates if item]
+    return {
+        "evidence_status": packet.get("evidence_status", "incomplete"),
+        "evidence_chain_complete": bool(packet.get("evidence_chain_complete")),
+        "missing_evidence": list(packet.get("missing_evidence") or []),
+        "warning_messages": list(packet.get("warning_messages") or [])[:3],
+        "score_status": score.get("status") or "empty",
+        "total_score": score.get("total_score"),
+        "news_count": int(news.get("count") or 0),
+        "signal_count": int(signals.get("count") or 0),
+        "candidate_pool_count": int(candidate_pool.get("matched_count") or 0),
+        "latest_evidence_time": max(latest_dates) if latest_dates else "",
     }
 
 
@@ -1516,30 +1652,7 @@ def query_decision_scoreboard(*, sqlite3_module, db_path: str, page_size: int = 
             if not ts_code:
                 continue
             name = str(item.get("name") or "").strip()
-            score_reason = _score_reason_for_stock(item)
-            news_reason = _recent_stock_news_for_stock(conn=conn, ts_code=ts_code, limit=3)
-            signal_reason = _signal_reason_for_stock(conn=conn, ts_code=ts_code, name=name)
-            candidate_reason = _candidate_pool_reason_for_stock(conn=conn, ts_code=ts_code, name=name)
-            degraded_sources = [
-                source_name
-                for source_name, packet in {
-                    "news": news_reason,
-                    "signals": signal_reason,
-                    "candidate_pool": candidate_reason,
-                }.items()
-                if str(packet.get("status") or "") == "missing_source"
-            ]
-            reason_packets[ts_code] = {
-                "ts_code": ts_code,
-                "name": name,
-                "industry": str(item.get("industry") or ""),
-                "score": score_reason,
-                "news": news_reason,
-                "signals": signal_reason,
-                "candidate_pool": candidate_reason,
-                "degraded_sources": degraded_sources,
-                "status": "degraded" if degraded_sources else "ok",
-            }
+            reason_packets[ts_code] = build_stock_evidence_packet(conn, ts_code=ts_code, name=name)
 
         return {
             "generated_at": _utc_now(),

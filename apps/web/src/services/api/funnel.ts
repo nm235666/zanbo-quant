@@ -9,12 +9,42 @@ export interface FunnelCandidate {
   last_transition_reason?: string
   last_updated?: string
   created_at?: string
+  evidence_summary?: FunnelEvidenceSummary
 }
 
 export interface FunnelMetrics {
   candidate_count?: number
   avg_days_to_decision?: number | null
   conversion_rate?: number | null
+}
+
+export interface FunnelEvidenceSummary {
+  evidence_status?: string
+  evidence_chain_complete?: boolean
+  missing_evidence?: string[]
+  warning_messages?: string[]
+  score_status?: string
+  total_score?: number | null
+  news_count?: number
+  signal_count?: number
+  candidate_pool_count?: number
+  latest_evidence_time?: string
+}
+
+export interface FunnelEvidencePacket {
+  ts_code?: string
+  name?: string
+  industry?: string
+  score?: Record<string, any>
+  news?: Record<string, any>
+  signals?: Record<string, any>
+  candidate_pool?: Record<string, any>
+  degraded_sources?: string[]
+  status?: string
+  evidence_status?: string
+  missing_evidence?: string[]
+  warning_messages?: string[]
+  evidence_chain_complete?: boolean
 }
 
 export interface FunnelTransitionPayload {
@@ -32,6 +62,7 @@ export async function fetchFunnelCandidates(params?: {
   q?: string
   limit?: number
   offset?: number
+  include_evidence?: 1 | boolean
 }) {
   const { data } = await http.get('/api/funnel/candidates', { params })
   return data

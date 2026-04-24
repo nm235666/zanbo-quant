@@ -671,7 +671,7 @@ import InfoCard from '../../shared/ui/InfoCard.vue'
 import StatCard from '../../shared/ui/StatCard.vue'
 import StatusBadge from '../../shared/ui/StatusBadge.vue'
 import QualityGate from '../../shared/ui/QualityGate.vue'
-import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
+import { fetchDecisionActions, fetchDecisionBoard, fetchDecisionCalibration, fetchDecisionHistory, fetchDecisionScoreboard, recordDecisionAction, runDecisionSnapshot, setDecisionKillSwitch } from '../../services/api/decision'
 import { fetchLatestAllocation } from '../../services/api/portfolio_allocation'
 import type { DecisionTraceReceipt } from '../../services/api/decision'
 import { fetchStockPrices } from '../../services/api/stocks'
@@ -801,6 +801,11 @@ const { data: allocationData } = useQuery({
   queryKey: ['portfolio-allocation-decision'],
   queryFn: fetchLatestAllocation,
 })
+
+const { data: scoreboardData } = useQuery({
+  queryKey: ['decision-scoreboard-evidence'],
+  queryFn: () => fetchDecisionScoreboard({ page_size: 20 }),
+})
 const currentAllocation = computed(() => (allocationData.value as any)?.allocation ?? null)
 const positionSizeHint = computed(() => {
   const alloc = currentAllocation.value
@@ -814,6 +819,17 @@ const positionWarningVisible = computed(() =>
   !actionPositionPct.value.trim() &&
   !actionPositionPctRange.value.trim()
 )
+
+function evidencePacketForTsCode(tsCode: string): Record<string, any> {
+  const normalized = String(tsCode || '').trim().toUpperCase()
+  const packets = (scoreboardData.value as any)?.reason_packets || {}
+  return normalized ? (packets[normalized] || {}) : {}
+}
+
+function missingEvidenceForPacket(packet: Record<string, any>): string[] {
+  const missing = packet?.missing_evidence
+  return Array.isArray(missing) ? missing.map((item) => String(item)).filter(Boolean) : []
+}
 
 const toggleKillSwitchMutation = useMutation({
   mutationFn: (allowTrading: boolean) => setDecisionKillSwitch({ allow_trading: allowTrading, reason: killReasonDraft.value }),
@@ -855,6 +871,8 @@ const actionMutation = useMutation({
     const evidenceSources = evidenceRaw
       ? evidenceRaw.split(/[,，;；]/).map((s) => ({ label: s.trim() })).filter((s) => s.label)
       : undefined
+    const evidencePacket = evidencePacketForTsCode(payload.ts_code)
+    const hasEvidencePacket = Object.keys(evidencePacket).length > 0
     const reviewConclusion = actionReviewConclusionDraft.value.trim() || undefined
     return recordDecisionAction({
       action_type: payload.action_type,
@@ -870,6 +888,9 @@ const actionMutation = useMutation({
         gate_audit: payload._gate_audit || '',
       },
       evidence_sources: evidenceSources,
+      evidence_packet: hasEvidencePacket ? evidencePacket : undefined,
+      missing_evidence: hasEvidencePacket ? missingEvidenceForPacket(evidencePacket) : undefined,
+      evidence_chain_complete: hasEvidencePacket ? Boolean(evidencePacket.evidence_chain_complete) : Boolean(evidenceSources?.length),
       review_conclusion: reviewConclusion,
       position_recommendation: actionPositionPct.value.trim() || undefined,
       position_pct_range: actionPositionPctRange.value.trim() || undefined,
@@ -911,6 +932,9 @@ const actionMutation = useMutation({
       messageParts.push(`执行任务已自动创建：${data.execution_task.order_id}`)
     } else if (data?.execution_task_warning) {
       messageParts.push(`执行任务提示：${data.execution_task_warning}`)
+    }
+    if (Array.isArray(data?.evidence_warnings) && data.evidence_warnings.length) {
+      messageParts.push(`证据提示：${data.evidence_warnings.join('；')}`)
     }
     message.value = messageParts.join('；')
     actionPositionPctRange.value = ''

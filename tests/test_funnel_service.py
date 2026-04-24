@@ -108,6 +108,82 @@ class FunnelServiceStatusTest(unittest.TestCase):
         self.assertEqual(listing["items"][0]["ts_code"], "000001.SZ")
         self.assertEqual(int(listing["items"][0].get("state_version") or 0), 1)
 
+    def test_list_and_detail_attach_evidence_when_requested(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE stock_scores_daily (
+                    score_date TEXT,
+                    ts_code TEXT
+                )
+                """
+            )
+            conn.execute("INSERT INTO stock_scores_daily (score_date, ts_code) VALUES ('2026-04-23', '000001.SZ')")
+            conn.execute(
+                """
+                CREATE TABLE funnel_candidates (
+                    id TEXT PRIMARY KEY,
+                    ts_code TEXT,
+                    name TEXT,
+                    source TEXT,
+                    trigger_source TEXT,
+                    reason TEXT,
+                    evidence_ref TEXT,
+                    state TEXT,
+                    state_version INTEGER,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO funnel_candidates (
+                    id, ts_code, name, source, trigger_source, reason, evidence_ref, state, state_version, created_at, updated_at
+                ) VALUES ('cid-evidence', '000001.SZ', '平安银行', 'test', 'researcher', 'test', '', 'ingested', 1, '2026-04-23T00:00:00Z', '2026-04-23T00:00:00Z')
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        def connect_override():
+            return sqlite3.connect(db_path)
+
+        def apply_row_factory(conn):
+            conn.row_factory = sqlite3.Row
+
+        packet = {
+            "ts_code": "000001.SZ",
+            "evidence_status": "incomplete",
+            "evidence_chain_complete": False,
+            "missing_evidence": ["signals"],
+            "warning_messages": ["缺少投资信号"],
+        }
+        summary = {
+            "evidence_status": "incomplete",
+            "evidence_chain_complete": False,
+            "missing_evidence": ["signals"],
+            "signal_count": 0,
+        }
+
+        with patch.object(funnel_service._db, "connect", side_effect=connect_override), patch.object(
+            funnel_service._db, "apply_row_factory", side_effect=apply_row_factory
+        ), patch.object(funnel_service._db, "table_exists", side_effect=_table_exists_sqlite), patch.object(
+            funnel_service, "build_stock_evidence_packet", return_value=packet
+        ), patch.object(funnel_service, "summarize_evidence_packet", return_value=summary):
+            plain = funnel_service.list_candidates(limit=10, offset=0)
+            enriched = funnel_service.list_candidates(limit=10, offset=0, include_evidence=True)
+            detail = funnel_service.get_candidate("cid-evidence")
+
+        self.assertNotIn("evidence_summary", plain["items"][0])
+        self.assertEqual(enriched["items"][0]["evidence_summary"]["missing_evidence"], ["signals"])
+        self.assertEqual(detail["evidence_packet"]["ts_code"], "000001.SZ")
+        self.assertEqual(detail["missing_evidence"], ["signals"])
+        self.assertFalse(detail["evidence_chain_complete"])
+
     def test_metrics_avg_days_when_first_decision_transition_exists(self):
         db_path = self._mk_db()
         conn = sqlite3.connect(db_path)

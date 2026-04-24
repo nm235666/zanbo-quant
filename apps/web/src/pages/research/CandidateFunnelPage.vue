@@ -217,9 +217,22 @@
                   >
                     已进入 ≥{{ staleIngestedDays }} 天
                   </span>
+                  <span
+                    v-if="candidate.evidence_summary"
+                    class="ml-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold"
+                    :class="evidenceBadgeClass(candidate.evidence_summary)"
+                  >
+                    {{ evidenceStatusLabel(candidate.evidence_summary) }}
+                  </span>
                 </div>
                 <div v-if="candidate.last_transition_reason" class="mt-0.5 text-xs text-[var(--muted)] truncate max-w-sm">
                   {{ candidate.last_transition_reason }}
+                </div>
+                <div v-if="candidate.evidence_summary" class="mt-1 flex flex-wrap gap-1.5 text-[10px] text-[var(--muted)]">
+                  <span class="metric-chip">评分 {{ formatMaybeNumber(candidate.evidence_summary.total_score, 1) }}</span>
+                  <span class="metric-chip">新闻 {{ candidate.evidence_summary.news_count || 0 }}</span>
+                  <span class="metric-chip">信号 {{ candidate.evidence_summary.signal_count || 0 }}</span>
+                  <span class="metric-chip">群聊 {{ candidate.evidence_summary.candidate_pool_count || 0 }}</span>
                 </div>
               </div>
               <div class="flex items-center gap-2">
@@ -248,6 +261,49 @@
               当前：{{ stateLabel(selectedCandidate.current_state) }}
             </span>
             <span class="text-xs text-[var(--muted)]">状态版本 {{ selectedCandidate.state_version ?? '—' }}</span>
+          </div>
+
+          <div class="rounded-2xl border px-4 py-3" :class="evidenceChainComplete ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="text-xs font-semibold" :class="evidenceChainComplete ? 'text-emerald-700' : 'text-amber-700'">候选证据包</div>
+                <div class="mt-1 text-sm font-bold text-[var(--ink)]">{{ evidencePanelTitle }}</div>
+              </div>
+              <span class="rounded-full border bg-white px-2.5 py-1 text-xs font-semibold" :class="evidenceChainComplete ? 'border-emerald-200 text-emerald-700' : 'border-amber-200 text-amber-700'">
+                {{ evidenceStatusLabel(selectedCandidate.evidence_summary || evidenceSummaryFromPacket) }}
+              </span>
+            </div>
+            <div v-if="candidateDetailLoading" class="mt-3 rounded-xl border border-dashed border-[var(--line)] bg-white px-3 py-4 text-sm text-[var(--muted)]">
+              正在加载证据包…
+            </div>
+            <div v-else-if="!hasEvidencePacket" class="mt-3 rounded-xl border border-dashed border-amber-200 bg-white px-3 py-4 text-sm text-amber-800">
+              后端未返回证据包，请刷新页面或确认 API 已重启到最新版本。
+            </div>
+            <div v-if="evidenceWarnings.length" class="mt-2 space-y-1 text-xs text-amber-800">
+              <div v-for="warning in evidenceWarnings" :key="warning">{{ warning }}</div>
+            </div>
+            <div v-if="hasEvidencePacket" class="mt-3 grid gap-2 md:grid-cols-2">
+              <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+                <div class="font-semibold text-[var(--ink)]">评分</div>
+                <div class="mt-1">总分 {{ formatMaybeNumber(evidencePacket.score?.total_score, 1) }} · {{ evidencePacket.score?.position_label || '-' }}</div>
+                <div class="mt-1 truncate">{{ evidencePacket.score?.decision_reason || '暂无评分理由' }}</div>
+              </div>
+              <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+                <div class="font-semibold text-[var(--ink)]">新闻</div>
+                <div class="mt-1">总数 {{ evidencePacket.news?.count || 0 }} · 高重要 {{ evidencePacket.news?.high_importance_count || 0 }}</div>
+                <div class="mt-1 truncate">{{ evidencePacket.news?.items?.[0]?.title || '暂无个股新闻' }}</div>
+              </div>
+              <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+                <div class="font-semibold text-[var(--ink)]">信号</div>
+                <div class="mt-1">命中 {{ evidencePacket.signals?.count || 0 }} · 最近 {{ evidencePacket.signals?.latest_signal_date || '-' }}</div>
+                <div class="mt-1 truncate">{{ (evidencePacket.signals?.directions || []).join(' / ') || '暂无方向' }}</div>
+              </div>
+              <div class="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-xs text-[var(--muted)]">
+                <div class="font-semibold text-[var(--ink)]">群聊候选池</div>
+                <div class="mt-1">匹配 {{ evidencePacket.candidate_pool?.matched_count || 0 }} · 偏向 {{ evidencePacket.candidate_pool?.dominant_bias || '-' }}</div>
+                <div class="mt-1">提及 {{ evidencePacket.candidate_pool?.mention_count || 0 }} · 群数 {{ evidencePacket.candidate_pool?.room_count || 0 }}</div>
+              </div>
+            </div>
           </div>
 
           <div class="rounded-2xl border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-xs text-[var(--muted)]">
@@ -362,6 +418,8 @@ import {
   fetchFunnelReviewSnapshots,
   transitionFunnelCandidate,
   type FunnelCandidate,
+  type FunnelEvidencePacket,
+  type FunnelEvidenceSummary,
   type FunnelMetrics,
 } from '../../services/api/funnel'
 
@@ -443,6 +501,7 @@ const {
       q: listSearchApplied.value || undefined,
       limit: pageSize,
       offset: (listPage.value - 1) * pageSize,
+      include_evidence: 1,
     }),
 })
 
@@ -484,6 +543,32 @@ const transitionsList = computed(() => {
   return d.transitions as Record<string, unknown>[]
 })
 
+const candidateDetail = computed<Record<string, any>>(() => (candidateDetailRaw.value || {}) as Record<string, any>)
+const evidencePacket = computed<FunnelEvidencePacket>(() => (candidateDetail.value.evidence_packet || {}) as FunnelEvidencePacket)
+const hasEvidencePacket = computed(() => Object.keys(evidencePacket.value || {}).length > 0)
+const evidenceWarnings = computed<string[]>(() => {
+  const warnings = candidateDetail.value.warning_messages
+  if (Array.isArray(warnings)) return warnings.map((item) => String(item)).filter(Boolean)
+  const packetWarnings = evidencePacket.value.warning_messages
+  return Array.isArray(packetWarnings) ? packetWarnings.map((item) => String(item)).filter(Boolean) : []
+})
+const evidenceChainComplete = computed(() => Boolean(candidateDetail.value.evidence_chain_complete ?? evidencePacket.value.evidence_chain_complete))
+const evidencePanelTitle = computed(() => {
+  if (candidateDetailLoading.value) return '正在加载候选证据包'
+  if (!hasEvidencePacket.value) return '证据包未返回'
+  return evidenceChainComplete.value ? '证据链完整' : '证据链不完整，动作可继续但建议补证据'
+})
+const evidenceSummaryFromPacket = computed<FunnelEvidenceSummary>(() => ({
+  evidence_status: String(evidencePacket.value.evidence_status || ''),
+  evidence_chain_complete: Boolean(evidencePacket.value.evidence_chain_complete),
+  missing_evidence: Array.isArray(evidencePacket.value.missing_evidence) ? evidencePacket.value.missing_evidence : [],
+  warning_messages: Array.isArray(evidencePacket.value.warning_messages) ? evidencePacket.value.warning_messages : [],
+  total_score: evidencePacket.value.score?.total_score,
+  news_count: Number(evidencePacket.value.news?.count || 0),
+  signal_count: Number(evidencePacket.value.signals?.count || 0),
+  candidate_pool_count: Number(evidencePacket.value.candidate_pool?.matched_count || 0),
+}))
+
 const allCandidates = computed<FunnelCandidate[]>(() => {
   const raw = candidatesData.value
   if (!raw) return []
@@ -497,6 +582,7 @@ const allCandidates = computed<FunnelCandidate[]>(() => {
     last_transition_reason: String(item?.last_transition_reason || item?.reason || ''),
     last_updated: String(item?.last_updated || item?.updated_at || ''),
     created_at: String(item?.created_at || ''),
+    evidence_summary: item?.evidence_summary || undefined,
   }))
 })
 
@@ -558,6 +644,25 @@ function isStaleIngested(c: FunnelCandidate): boolean {
   if (c.current_state !== 'ingested') return false
   const ref = c.last_updated || c.created_at || ''
   return daysSinceUpdate(ref) >= staleIngestedDays
+}
+
+function formatMaybeNumber(value: unknown, digits = 1): string {
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toFixed(digits) : '-'
+}
+
+function evidenceStatusLabel(summary?: FunnelEvidenceSummary): string {
+  if (!summary) return '无证据'
+  if (summary.evidence_chain_complete || summary.evidence_status === 'complete') return '证据完整'
+  const missing = Array.isArray(summary.missing_evidence) ? summary.missing_evidence : []
+  if (missing.includes('score')) return '缺评分'
+  if (missing.length) return `缺${missing.length}项证据`
+  return '证据不足'
+}
+
+function evidenceBadgeClass(summary?: FunnelEvidenceSummary): string {
+  if (summary?.evidence_chain_complete || summary?.evidence_status === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  return 'border-amber-200 bg-amber-50 text-amber-700'
 }
 
 const metricsItems = computed<MetricGridItem[]>(() => {

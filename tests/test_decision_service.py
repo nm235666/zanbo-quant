@@ -157,6 +157,91 @@ class DecisionServiceTest(unittest.TestCase):
         os.close(fd)
         return path
 
+    def test_build_stock_evidence_packet_reuses_score_news_signal_chatroom(self):
+        db_path = self._mk_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO stock_scores_daily (
+                    score_date, ts_code, name, symbol, market, area, industry, industry_rank, industry_count,
+                    score_grade, industry_score_grade, total_score, industry_total_score, trend_score,
+                    industry_trend_score, financial_score, industry_financial_score, valuation_score,
+                    industry_valuation_score, capital_flow_score, industry_capital_flow_score, event_score,
+                    industry_event_score, news_score, industry_news_score, risk_score, industry_risk_score,
+                    latest_trade_date, latest_risk_date, score_payload_json, source, update_time
+                ) VALUES (
+                    '2026-04-08', '000001.SZ', '平安银行', '000001', '主板', '深圳', '银行', 1, 8,
+                    'A', 'A', 91.5, 88.2, 89.0, 86.0, 92.0, 90.0, 85.0, 83.0, 77.0, 74.0, 68.0, 63.0, 72.0, 70.0, 80.0, 78.0,
+                    '2026-04-08', '2026-04-08', ?, 'unit_test', '2026-04-08T10:00:00Z'
+                )
+                """,
+                (json.dumps({"score_summary": {"trend": "趋势稳健"}}, ensure_ascii=False),),
+            )
+            conn.execute(
+                """
+                INSERT INTO stock_news_items (ts_code, pub_time, title, summary, link, llm_finance_importance, llm_summary)
+                VALUES ('000001.SZ', '2026-04-08 11:00:00', '平安银行获资金关注', 'news', 'https://example.com/news', '高', '资金面改善')
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO investment_signal_tracker_7d (
+                    signal_key, signal_type, subject_name, ts_code, direction, signal_strength, confidence,
+                    evidence_count, news_count, stock_news_count, chatroom_count, signal_status,
+                    latest_signal_date, source_summary_json
+                ) VALUES (
+                    'stock:000001.SZ', 'stock', '平安银行', '000001.SZ', '看多', 85, 78, 4, 2, 1, 1, '活跃', '2026-04-08', '{}'
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO chatroom_stock_candidate_pool (
+                    candidate_name, candidate_type, bullish_room_count, bearish_room_count, net_score,
+                    dominant_bias, mention_count, room_count, latest_analysis_date, ts_code, sample_reasons_json
+                ) VALUES ('平安银行', '股票', 3, 0, 8.5, '看多', 5, 3, '2026-04-08', '000001.SZ', '[]')
+                """
+            )
+            conn.commit()
+
+            packet = decision_service.build_stock_evidence_packet(conn, ts_code="000001.SZ", name="平安银行")
+        finally:
+            conn.close()
+
+        self.assertTrue(packet["evidence_chain_complete"])
+        self.assertEqual(packet["evidence_status"], "complete")
+        self.assertEqual(packet["score"]["total_score"], 91.5)
+        self.assertEqual(packet["news"]["count"], 1)
+        self.assertEqual(packet["signals"]["count"], 1)
+        self.assertEqual(packet["candidate_pool"]["matched_count"], 1)
+
+    def test_record_decision_action_stores_evidence_packet_snapshot(self):
+        db_path = self._mk_db()
+        packet = {
+            "ts_code": "000001.SZ",
+            "evidence_chain_complete": False,
+            "missing_evidence": ["signals"],
+            "score": {"status": "ok", "total_score": 88.0},
+        }
+        result = decision_service.record_decision_action(
+            sqlite3_module=sqlite3,
+            db_path=db_path,
+            action_type="confirm",
+            ts_code="000001.SZ",
+            stock_name="平安银行",
+            payload={
+                "evidence_packet": packet,
+                "missing_evidence": ["signals"],
+                "evidence_chain_complete": False,
+            },
+        )
+        self.assertEqual(result["payload"]["evidence_packet"]["ts_code"], "000001.SZ")
+        self.assertFalse(result["payload"]["evidence_chain_complete"])
+        self.assertEqual(result["payload"]["missing_evidence"], ["signals"])
+
     def test_board_stock_history_and_switch_flow(self):
         db_path = self._mk_db()
         conn = sqlite3.connect(db_path)

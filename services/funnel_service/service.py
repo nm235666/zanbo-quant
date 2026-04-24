@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import db_compat as _db
+from services.decision_service.service import build_stock_evidence_packet, summarize_evidence_packet
 
 FUNNEL_CANDIDATES_TABLE = "funnel_candidates"
 FUNNEL_TRANSITIONS_TABLE = "funnel_transitions"
@@ -129,6 +130,7 @@ def list_candidates(
     ts_q: str = "",
     limit: int = 50,
     offset: int = 0,
+    include_evidence: bool = False,
 ) -> dict[str, Any]:
     try:
         conn = _db.connect()
@@ -165,6 +167,14 @@ def list_candidates(
             params_page = params + [limit, offset]
             rows = conn.execute(sql, params_page).fetchall()
             items = [_row_to_dict(r) for r in rows]
+            if include_evidence:
+                for item in items:
+                    packet = build_stock_evidence_packet(
+                        conn,
+                        ts_code=str(item.get("ts_code") or ""),
+                        name=str(item.get("name") or ""),
+                    )
+                    item["evidence_summary"] = summarize_evidence_packet(packet)
             status_payload = _derive_funnel_status(total=total, table_exists=True, upstream_hint=upstream_hint)
             return {
                 "items": items,
@@ -223,6 +233,16 @@ def get_candidate(candidate_id: str) -> dict[str, Any] | None:
                 ).fetchall()
                 transitions = [_row_to_dict(r) for r in t_rows]
             candidate["transitions"] = transitions
+            packet = build_stock_evidence_packet(
+                conn,
+                ts_code=str(candidate.get("ts_code") or ""),
+                name=str(candidate.get("name") or ""),
+            )
+            candidate["evidence_packet"] = packet
+            candidate["evidence_status"] = packet.get("evidence_status", "incomplete")
+            candidate["missing_evidence"] = list(packet.get("missing_evidence") or [])
+            candidate["warning_messages"] = list(packet.get("warning_messages") or [])
+            candidate["evidence_chain_complete"] = bool(packet.get("evidence_chain_complete"))
             return candidate
         finally:
             conn.close()

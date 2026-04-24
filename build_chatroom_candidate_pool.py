@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import db_compat as sqlite3
+from db_compat import table_exists
+import sqlite3 as stdlib_sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -12,6 +14,13 @@ from realtime_streams import publish_app_event
 DEFAULT_DB_PATH = Path(__file__).resolve().parent / "stock_codes.db"
 DEFAULT_SOURCE_TABLE = "chatroom_investment_analysis"
 DEFAULT_TARGET_TABLE = "chatroom_stock_candidate_pool"
+
+
+def apply_row_factory(conn: sqlite3.Connection) -> None:
+    if sqlite3.using_postgres():
+        conn.row_factory = sqlite3.Row
+    else:
+        conn.row_factory = stdlib_sqlite3.Row
 
 
 def normalize_text(value: str) -> str:
@@ -65,6 +74,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-room-count", type=int, default=1, help="至少被多少个群提到才入池")
     parser.add_argument("--only-bias", default="", help="只汇总指定方向：看多 或 看空")
     parser.add_argument("--window-days", type=int, default=7, help="累计窗口天数；>0 表示近 N 天累计，<=0 表示每群仅取最新一条")
+    parser.add_argument("--signal-window-days", type=int, default=30, help="群聊荐股信号并入候选池的累计窗口天数")
     return parser.parse_args()
 
 
@@ -117,7 +127,11 @@ def ensure_table(conn: sqlite3.Connection, table_name: str) -> None:
         ("alias_confidence", "REAL"),
     ]:
         if ddl[0] not in existing:
-            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {ddl[0]} {ddl[1]}")
+            try:
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {ddl[0]} {ddl[1]}")
+            except Exception as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
     conn.commit()
 
 
@@ -125,10 +139,10 @@ def load_stock_aliases(conn: sqlite3.Connection) -> tuple[set[str], dict[str, di
     aliases: set[str] = set()
     alias_map: dict[str, dict] = {}
     code_to_name: dict[str, str] = {}
-    table_exists = conn.execute(
+    stock_codes_exists = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='stock_codes'"
     ).fetchone()[0]
-    if not table_exists:
+    if not stock_codes_exists:
         return aliases, alias_map
 
     rows = conn.execute(
@@ -301,6 +315,21 @@ def load_window_rows(conn: sqlite3.Connection, table_name: str, window_days: int
     return conn.execute(sql, (cutoff_date_str(window_days),)).fetchall()
 
 
+def load_signal_prediction_rows(conn: sqlite3.Connection, table_name: str, window_days: int) -> list[sqlite3.Row]:
+    if not table_exists(conn, table_name):
+        return []
+    sql = f"""
+    SELECT talker, room_id, signal_date, signal_time, ts_code, stock_name, direction,
+           source_content, room_strength_label, validation_status, target_trade_date, return_1d, verdict
+    FROM {table_name}
+    WHERE COALESCE(signal_date, '') >= ?
+      AND COALESCE(ts_code, '') <> ''
+      AND COALESCE(direction, '') IN ('看多', '看空')
+    ORDER BY COALESCE(signal_date, '') DESC, COALESCE(signal_time, '') DESC, id DESC
+    """
+    return conn.execute(sql, (cutoff_date_str(window_days),)).fetchall()
+
+
 def upsert_candidate_rows(conn: sqlite3.Connection, table_name: str, rows: list[dict]) -> int:
     now = now_utc_str()
     conn.execute(f"DELETE FROM {table_name}")
@@ -364,7 +393,9 @@ def record_alias_hits(conn: sqlite3.Connection, alias_hits: dict[str, int]) -> N
 def main() -> int:
     args = parse_args()
     conn = sqlite3.connect(args.db_path)
-    conn.row_factory = sqlite3.Row
+    apply_row_factory(conn)
+    latest_rows: list[sqlite3.Row] = []
+    affected = 0
     try:
         ensure_table(conn, args.target_table)
         stock_aliases, alias_map = load_stock_aliases(conn)
@@ -442,6 +473,68 @@ def main() -> int:
                 if latest_date and latest_date > bucket["latest_analysis_date"]:
                     bucket["latest_analysis_date"] = latest_date
 
+        signal_rows = load_signal_prediction_rows(conn, "chatroom_stock_signal_predictions", int(args.signal_window_days))
+        for row in signal_rows:
+            ts_code = str(row["ts_code"] or "").strip().upper()
+            raw_name = str(row["stock_name"] or "").strip()
+            direction = str(row["direction"] or "").strip()
+            if not ts_code or direction not in {"看多", "看空"}:
+                continue
+            if args.only_bias.strip() and direction != args.only_bias.strip():
+                continue
+            resolved = resolve_stock_candidate(ts_code, alias_map) or resolve_stock_candidate(raw_name, alias_map)
+            canonical_name = str((resolved or {}).get("stock_name") or raw_name or lookup_stock_name_by_code(alias_map, ts_code) or ts_code).strip()
+            bucket_key = ts_code or canonical_name
+            bucket = pool.setdefault(
+                bucket_key,
+                {
+                    "candidate_name": canonical_name,
+                    "candidate_type": "股票",
+                    "ts_code": ts_code,
+                    "alias_hit_name": raw_name if raw_name and normalize_text(raw_name) != normalize_text(canonical_name) else "",
+                    "alias_source": str((resolved or {}).get("alias_type") or "chatroom_stock_signal_predictions").strip(),
+                    "alias_confidence": float((resolved or {}).get("confidence") or 1.0),
+                    "bullish_room_ids": set(),
+                    "bearish_room_ids": set(),
+                    "room_ids": set(),
+                    "talkers": set(),
+                    "reasons": [],
+                    "mention_count": 0,
+                    "latest_analysis_date": str(row["signal_date"] or ""),
+                },
+            )
+            if not bucket.get("ts_code"):
+                bucket["ts_code"] = ts_code
+            if not bucket.get("candidate_name") or normalize_text(str(bucket.get("candidate_name") or "")) == normalize_text(ts_code):
+                bucket["candidate_name"] = canonical_name
+            bucket["candidate_type"] = "股票"
+            bucket["mention_count"] += 1
+            room_key = str(row["room_id"] or row["talker"] or "")
+            talker = str(row["talker"] or "")
+            bucket["room_ids"].add(room_key)
+            bucket["talkers"].add(talker)
+            source_content = str(row["source_content"] or "").strip()
+            if len(bucket["reasons"]) < 10:
+                payload = {
+                    "bias": direction,
+                    "reason": source_content[:240] or "群聊荐股信号",
+                    "talker": talker,
+                    "source": "chatroom_stock_signal_predictions",
+                    "signal_date": str(row["signal_date"] or ""),
+                    "verdict": str(row["verdict"] or ""),
+                }
+                if raw_name and raw_name != canonical_name:
+                    payload["raw_name"] = raw_name
+                    payload["canonical_name"] = canonical_name
+                bucket["reasons"].append(payload)
+            if direction == "看多":
+                bucket["bullish_room_ids"].add(room_key)
+            else:
+                bucket["bearish_room_ids"].add(room_key)
+            latest_date = str(row["signal_date"] or "")
+            if latest_date and latest_date > bucket["latest_analysis_date"]:
+                bucket["latest_analysis_date"] = latest_date
+
         final_rows: list[dict] = []
         for _, bucket in pool.items():
             bullish_room_count = len(bucket["bullish_room_ids"])
@@ -488,6 +581,7 @@ def main() -> int:
         print(f"source_rows={len(latest_rows)} candidates={affected}")
         if int(args.window_days) > 0:
             print(f"window_days={int(args.window_days)} cutoff={cutoff_date_str(args.window_days)}")
+        print(f"signal_window_days={int(args.signal_window_days)}")
     publish_app_event(
         event="chatroom_candidate_pool_update",
         payload={
@@ -495,6 +589,7 @@ def main() -> int:
             "candidates": int(affected),
             "target_table": args.target_table,
             "window_days": int(args.window_days),
+            "signal_window_days": int(args.signal_window_days),
         },
         producer="build_chatroom_candidate_pool.py",
     )

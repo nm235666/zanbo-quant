@@ -91,6 +91,9 @@ export async function recordDecisionAction(payload: {
   context?: Record<string, any>
   /** Structured evidence items: source label + optional url/value */
   evidence_sources?: Array<{ label: string; url?: string; value?: string }>
+  evidence_packet?: Record<string, any>
+  missing_evidence?: string[]
+  evidence_chain_complete?: boolean
   /** Lifecycle status of the resulting action: pending | running | done | failed */
   execution_status?: string
   /** Free-text review conclusion, recorded after action is evaluated */

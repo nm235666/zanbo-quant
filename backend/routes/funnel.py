@@ -53,6 +53,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
         params = parse_qs(parsed.query)
         state = params.get("state", [""])[0].strip()
         ts_q = (params.get("q", [""])[0] or params.get("ts_q", [""])[0]).strip()
+        include_evidence = str(params.get("include_evidence", [""])[0] or "").strip().lower() in {"1", "true", "yes", "on"}
         try:
             limit = int(params.get("limit", ["50"])[0] or 50)
             offset = int(params.get("offset", ["0"])[0] or 0)
@@ -61,7 +62,7 @@ def dispatch_get(handler, parsed, deps: dict) -> bool:
             return True
         limit = max(1, min(limit, 200))
         try:
-            payload = list_candidates(state=state, ts_q=ts_q, limit=limit, offset=offset)
+            payload = list_candidates(state=state, ts_q=ts_q, limit=limit, offset=offset, include_evidence=include_evidence)
         except Exception as exc:  # pragma: no cover
             handler._send_json({"ok": False, "error": f"候选标的查询失败: {exc}"}, status=500)
             return True

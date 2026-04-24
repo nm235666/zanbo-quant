@@ -303,6 +303,11 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
         # Structured evidence and review fields — stored in payload JSON blob
         evidence_sources_raw = payload.get("evidence_sources")
         evidence_sources = evidence_sources_raw if isinstance(evidence_sources_raw, list) else []
+        evidence_packet = payload.get("evidence_packet") if isinstance(payload.get("evidence_packet"), dict) else {}
+        missing_evidence_raw = payload.get("missing_evidence")
+        missing_evidence = [str(x) for x in missing_evidence_raw] if isinstance(missing_evidence_raw, list) else []
+        evidence_chain_complete_raw = payload.get("evidence_chain_complete")
+        evidence_chain_complete = bool(evidence_chain_complete_raw) if evidence_chain_complete_raw is not None else bool(evidence_sources)
         execution_status = str(payload.get("execution_status", "") or "").strip()
         review_conclusion = str(payload.get("review_conclusion", "") or "").strip()
         # P1-5: Idempotency key — prevent duplicate submissions (double-click protection)
@@ -315,15 +320,22 @@ def dispatch_post(handler, parsed, payload: dict, deps: dict) -> bool:
             return True
         # P0-5: Evidence chain enforcement — warn if key actions lack evidence sources
         evidence_warnings = []
-        if action_type in ("confirm", "reject") and not evidence_sources:
-            evidence_warnings.append("此动作缺少证据来源引用，建议通过决策板附加 trace_id 或 run_id")
+        if action_type in ("confirm", "reject") and not evidence_chain_complete:
+            if missing_evidence:
+                evidence_warnings.append(f"证据链不完整，缺少：{'、'.join(missing_evidence)}")
+            else:
+                evidence_warnings.append("此动作缺少完整证据包，建议补充评分与至少一种新闻/信号/群聊证据")
         action_payload: dict = {
             "context": context,
             "source": str(context.get("source") or "decision_board"),
-            "evidence_chain_complete": bool(evidence_sources),
+            "evidence_chain_complete": evidence_chain_complete,
         }
         if evidence_sources:
             action_payload["evidence_sources"] = evidence_sources
+        if evidence_packet:
+            action_payload["evidence_packet"] = evidence_packet
+        if missing_evidence:
+            action_payload["missing_evidence"] = missing_evidence
         if execution_status:
             action_payload["execution_status"] = execution_status
         if review_conclusion:
